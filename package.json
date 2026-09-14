@@ -37,6 +37,7 @@
   "private": true,
   "version": "1.0.0",
   "scripts": {
+    "postinstall": "npm ci --prefix server --no-audit --no-fund",
     "build": "npm run build:frontend && npm run build:api",
     "build:frontend": "vite build",
     "build:api": "npm run build --prefix server",
