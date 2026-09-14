@@ -139,6 +139,28 @@ export function lerVariaveisAoVivo<K extends string>(
 const envSchema = z.object({
   DEVORA_API_ENV: z.enum(['development', 'test', 'staging', 'production']).default('development'),
   DEVORA_API_PORT: z.coerce.number().default(8787),
+  /**
+   * EM QUE ENDEREÇO A API ESCUTA.
+   *
+   * O padrão é 127.0.0.1: na VPS quem fala com a internet é o Caddy (80/443),
+   * que encaminha para a API na própria máquina. Escutar em todas as
+   * interfaces (`*:8787`) publicava a porta da API direto, por fora do HTTPS.
+   * Quem precisa de outra coisa diz explicitamente — `0.0.0.0` para a rede
+   * local ou dentro de um container, `::1` para IPv6. Só endereço ou nome de
+   * host: sem protocolo, sem porta, sem barra. Vazio vale o padrão.
+   */
+  DEVORA_API_HOST: z.preprocess(
+    (valor) => (typeof valor === 'string' && valor.trim() === '' ? undefined : valor),
+    z
+      .string()
+      .trim()
+      .max(253, 'DEVORA_API_HOST longo demais: use um endereço IP ou nome de host.')
+      .regex(
+        /^[A-Za-z0-9.:-]+$/,
+        'DEVORA_API_HOST aceita só endereço IP ou nome de host (sem http://, porta ou barra). Ex.: 127.0.0.1',
+      )
+      .default('127.0.0.1'),
+  ),
   /*
     DEVORA_PUBLIC_BASE_URL SAIU DAQUI (GAP-PRD-153). Estava declarada, validada
     e nos três exemplos, e nada a lia — o QR da plaquinha usa

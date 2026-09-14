@@ -125,8 +125,13 @@ export async function startServer(): Promise<void> {
   aoPerderODono = () => void desligar('instancia_perdida', 1);
 
   await new Promise<void>((resolve) => {
-    server.listen(env.DEVORA_API_PORT, () => {
-      logInfo('API_SERVER_STARTED', { port: env.DEVORA_API_PORT, env: env.DEVORA_API_ENV });
+    // No endereço declarado (padrão 127.0.0.1): na VPS, só o Caddy fala com a internet.
+    server.listen(env.DEVORA_API_PORT, env.DEVORA_API_HOST, () => {
+      logInfo('API_SERVER_STARTED', {
+        host: env.DEVORA_API_HOST,
+        port: env.DEVORA_API_PORT,
+        env: env.DEVORA_API_ENV,
+      });
       resolve();
     });
   });

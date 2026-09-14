@@ -31,9 +31,16 @@ WORKDIR /app
 # volume: recriar o container apagava as fotos de produto, de loja e de OS, e o
 # banco continuava apontando para elas. O backup vai para OUTRO volume — backup
 # no mesmo lugar do banco não é backup.
+#
+# DENTRO DO CONTAINER A API ESCUTA EM TODAS AS INTERFACES. O padrão da API é
+# 127.0.0.1 (na VPS só o Caddy fala com a internet); aqui isso deixaria a
+# porta inalcançável para o mapeamento do compose e para o Caddy do compose
+# (`reverse_proxy api:8787`). Quem limita a exposição é o compose, que publica
+# a porta só em 127.0.0.1 da máquina.
 ENV NODE_ENV=production \
     DEVORA_API_ENV=production \
     DEVORA_API_PORT=8787 \
+    DEVORA_API_HOST=0.0.0.0 \
     DEVORA_DATABASE_PATH=/app/server/data/grupo-sampaio.db \
     DEVORA_UPLOADS_DIR=/app/server/data/uploads \
     DEVORA_BACKUP_DIR=/app/backups     DEVORA_SERVIR_FRONTEND=true     DEVORA_FRONTEND_DIR=/app/out
