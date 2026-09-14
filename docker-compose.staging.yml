@@ -1,0 +1,41 @@
+# Grupo Sampaio ERP — HOMOLOGAÇÃO em container.
+#
+#   docker compose -f docker-compose.staging.yml up -d --build
+#
+# Homologação é onde o `.pfx` REAL é carregado para falar com a SEFAZ. Até o
+# lote D1 este arquivo trazia DEVORA_JWT_SECRET e DEVORA_ENCRYPTION_KEY
+# escritos aqui, e a régua do servidor os aceitava: o cofre de homologação
+# ficava selado com uma chave que qualquer leitor do repositório conhece
+# (GAP-PRD-060). Os dois agora vêm do ambiente do host, obrigatórios, e os
+# valores antigos estão na lista de publicados que o servidor recusa.
+#
+# Também não carrega mais `.env.staging.example` como env_file: ele traz
+# valores de exemplo, e exemplo não é configuração.
+
+services:
+  api:
+    build: .
+    restart: unless-stopped
+    ports:
+      - '${DEVORA_STAGING_PORTA:-8787}:8787'
+    environment:
+      DEVORA_API_ENV: staging
+      DEVORA_JWT_SECRET: ${DEVORA_JWT_SECRET:?defina DEVORA_JWT_SECRET proprio da homologacao - nunca o de producao}
+      DEVORA_ENCRYPTION_KEY: ${DEVORA_ENCRYPTION_KEY:?defina DEVORA_ENCRYPTION_KEY propria da homologacao - nunca a de producao}
+      # Senha do administrador inicial (login admin, provisória), só na primeira subida.
+      DEVORA_BOOTSTRAP_ADMIN_PASSWORD: ${DEVORA_BOOTSTRAP_ADMIN_PASSWORD:-}
+      DEVORA_FRONTEND_ORIGIN: ${DEVORA_FRONTEND_ORIGIN:?defina DEVORA_FRONTEND_ORIGIN com o endereco da homologacao}
+      DEVORA_TRUST_PROXY: ${DEVORA_TRUST_PROXY:-0}
+      GRUPO_SAMPAIO_PUBLIC_URL: ${GRUPO_SAMPAIO_PUBLIC_URL:-}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      DEVORA_DATABASE_PATH: /app/server/data/staging-grupo-sampaio.db
+      DEVORA_UPLOADS_DIR: /app/server/data/uploads
+      DEVORA_BACKUP_DIR: /app/backups
+    volumes:
+      - staging-dados:/app/server/data
+      - staging-backups:/app/backups
+    stop_grace_period: 15s
+
+volumes:
+  staging-dados:
+  staging-backups:

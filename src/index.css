@@ -1,0 +1,522 @@
+/* Tokens do Grupo Sampaio — fonte única de cor, espaçamento e tipografia.
+   Precisa vir ANTES de qualquer outra regra: em CSS, `@import` só é válido no
+   topo do arquivo. Colocado depois dos @tailwind, o import era descartado e
+   TODAS as variáveis --gs-* ficavam indefinidas, derrubando o estilo do ERP
+   inteiro (a tela de login aparecia como HTML sem CSS). */
+@import './design/tokens.css';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* As variáveis `--erp-*` são mantidas porque telas antigas ainda as
+       consomem; agora apontam para os tokens claros do Grupo Sampaio, de modo
+       que essas telas acompanham o novo tema sem precisar ser reescritas. */
+    --erp-bg: var(--gs-canvas);
+    --erp-panel: var(--gs-surface);
+    --erp-border: var(--gs-border);
+    --erp-text: var(--gs-text);
+    --erp-muted: var(--gs-muted);
+    --erp-primary: var(--gs-purple-700);
+    --erp-success: var(--gs-success);
+    --erp-warning: var(--gs-warning);
+    --erp-danger: var(--gs-danger);
+    --erp-info: var(--gs-info);
+  }
+}
+
+/* ═══════════════════════════════════════════
+   PDV CLASSICO — BACKGROUND CIRCUITO (desktop only)
+   ═══════════════════════════════════════════ */
+.pdv-circuit-bg {
+  background-color: #0a0a0a;
+}
+
+@layer utilities {
+  @keyframes shrink {
+    from { width: 100%; }
+    to { width: 0%; }
+  }
+  .animate-\[shrink_10s_linear_forwards\] {
+    animation: shrink 10s linear forwards;
+  }
+
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(-6px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  @keyframes fadeInUp {
+    from { opacity: 0; transform: translateY(12px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .animate-fade-in-up {
+    animation: fadeInUp 0.4s ease-out forwards;
+  }
+  .animate-fade-in-up-delay-1 {
+    animation: fadeInUp 0.4s ease-out 0.05s forwards;
+    opacity: 0;
+  }
+  .animate-fade-in-up-delay-2 {
+    animation: fadeInUp 0.4s ease-out 0.1s forwards;
+    opacity: 0;
+  }
+  .animate-fade-in-up-delay-3 {
+    animation: fadeInUp 0.4s ease-out 0.15s forwards;
+    opacity: 0;
+  }
+  .animate-fade-in-up-delay-4 {
+    animation: fadeInUp 0.4s ease-out 0.2s forwards;
+    opacity: 0;
+  }
+  .animate-fade-in-up-delay-5 {
+    animation: fadeInUp 0.4s ease-out 0.25s forwards;
+    opacity: 0;
+  }
+
+  @keyframes fadeInScale {
+    from { opacity: 0; transform: scale(0.96); }
+    to { opacity: 1; transform: scale(1); }
+  }
+  .animate-fade-in-scale {
+    animation: fadeInScale 0.2s ease-out forwards;
+  }
+
+  @keyframes slideUp {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .animate-slide-up {
+    animation: slideUp 0.25s ease-out forwards;
+  }
+
+  @keyframes slideInRight {
+    from { opacity: 0; transform: translateX(8px); }
+    to { opacity: 1; transform: translateX(0); }
+  }
+  .animate-slide-in-right {
+    animation: slideInRight 0.3s ease-out forwards;
+  }
+
+  @keyframes pulseSubtle {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.6; }
+  }
+  .animate-pulse-subtle {
+    animation: pulseSubtle 2s ease-in-out infinite;
+  }
+}
+
+/* ═══════════════════════════════════════════
+   HTML5-QRCODE: TORNA A MÁSCARA BRANCA SEMI-TRANSPARENTE
+   Assim você enxerga o código de barras através da máscara
+   e consegue posicionar ele dentro da mira amarela
+   ═══════════════════════════════════════════ */
+div[id^="qr-shaded-region"] {
+  border-color: rgba(0, 0, 0, 0.3) !important;
+}
+
+/* ═══════════════════════════════════════════
+   FORM HONEYPOT — anti-spam (não remover)
+   ═══════════════════════════════════════════ */
+.visually-hidden-field {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ═══════════════════════════════════════════
+   PRINT / PDF — Documentacao e exportacao
+   ═══════════════════════════════════════════ */
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 18mm 16mm 22mm 16mm;
+  }
+
+  body {
+    background: #ffffff !important;
+    color: #1a1a1a !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  /* Esconde elementos nao-imprimiveis */
+  .no-print,
+  nav,
+  .sidebar,
+  header nav,
+  footer,
+  button:not(.print-keep),
+  .react-modal,
+  [role="dialog"] {
+    display: none !important;
+  }
+
+  /* Container principal da documentacao */
+  .doc-print-area,
+  .doc-print-area * {
+    color: #1a1a1a !important;
+  }
+
+  /* Fundo escuro vira branco */
+  .doc-print-area .bg-\[\#0a0a0a\],
+  .doc-print-area .bg-\[\#111\],
+  .doc-print-area .bg-\[\#1a1a1a\],
+  .doc-print-area .bg-\[\#222\] {
+    background-color: #ffffff !important;
+  }
+
+  /* Bordas */
+  .doc-print-area .border-\[\#222\],
+  .doc-print-area .border-\[\#2a2a2a\],
+  .doc-print-area .border-\[\#333\] {
+    border-color: #d4d4d4 !important;
+  }
+
+  .doc-print-area .border-\[\#c9a96e\]\/20 {
+    border-color: #c9a96e !important;
+  }
+
+  /* Header */
+  .doc-print-area header {
+    background: #fafafa !important;
+    border-bottom: 2px solid #c9a96e !important;
+    padding-top: 24px !important;
+    padding-bottom: 24px !important;
+  }
+
+  .doc-print-area header .absolute {
+    display: none !important;
+  }
+
+  .doc-print-area header h1 {
+    color: #1a1a1a !important;
+    font-size: 26px !important;
+  }
+
+  .doc-print-area header p {
+    color: #555 !important;
+  }
+
+  /* Tags/badges no header */
+  .doc-print-area header .bg-\[\#1a1a1a\] {
+    background: #f0f0f0 !important;
+    border-color: #ccc !important;
+  }
+
+  .doc-print-area header .text-\[\#777\] {
+    color: #555 !important;
+  }
+
+  /* Sessoes - titulos */
+  .doc-print-area h2 {
+    color: #1a1a1a !important;
+  }
+
+  .doc-print-area h3 {
+    color: #333 !important;
+  }
+
+  /* Cards e caixas de fundo escuro */
+  .doc-print-area .bg-\[\#111\] {
+    background: #fafafa !important;
+    border: 1px solid #e0e0e0 !important;
+    page-break-inside: avoid;
+  }
+
+  /* Sub-cards internos */
+  .doc-print-area .bg-\[\#1a1a1a\] {
+    background: #f5f5f5 !important;
+    border-color: #e0e0e0 !important;
+  }
+
+  /* ASCII art boxes - manter fundo claro */
+  .doc-print-area pre {
+    background: #f9f9f9 !important;
+    color: #333 !important;
+    border: 1px solid #e0e0e0 !important;
+    border-radius: 6px !important;
+    font-size: 8.5px !important;
+    line-height: 1.25 !important;
+    white-space: pre-wrap !important;
+    word-break: break-all !important;
+  }
+
+  /* Codigo inline */
+  .doc-print-area code {
+    background: #f0f0f0 !important;
+    color: #b8860b !important;
+    border: 1px solid #e0e0e0 !important;
+  }
+
+  /* Tabelas */
+  .doc-print-area table {
+    border: 1px solid #ccc !important;
+    border-collapse: collapse !important;
+    width: 100% !important;
+    font-size: 9px !important;
+  }
+
+  .doc-print-area thead {
+    background: #f0f0f0 !important;
+  }
+
+  .doc-print-area thead th {
+    color: #333 !important;
+    border-bottom: 2px solid #c9a96e !important;
+    padding: 6px 8px !important;
+    font-size: 8px !important;
+  }
+
+  .doc-print-area tbody td {
+    border-bottom: 1px solid #e0e0e0 !important;
+    padding: 5px 8px !important;
+    color: #333 !important;
+    font-size: 8.5px !important;
+  }
+
+  .doc-print-area tbody tr {
+    background: #ffffff !important;
+  }
+
+  .doc-print-area tbody tr:hover {
+    background: #fafafa !important;
+  }
+
+  /* Textos */
+  .doc-print-area .text-\[\#eee\] {
+    color: #1a1a1a !important;
+  }
+
+  .doc-print-area .text-\[\#ccc\] {
+    color: #333 !important;
+  }
+
+  .doc-print-area .text-\[\#aaa\] {
+    color: #444 !important;
+  }
+
+  .doc-print-area .text-\[\#999\] {
+    color: #555 !important;
+  }
+
+  .doc-print-area .text-\[\#888\] {
+    color: #555 !important;
+  }
+
+  .doc-print-area .text-\[\#777\] {
+    color: #555 !important;
+  }
+
+  .doc-print-area .text-\[\#666\] {
+    color: #555 !important;
+  }
+
+  .doc-print-area .text-\[\#555\] {
+    color: #666 !important;
+  }
+
+  /* Cor dourada (c9a96e) - manter como accent */
+  .doc-print-area .text-\[\#c9a96e\] {
+    color: #b8860b !important;
+  }
+
+  .doc-print-area .bg-\[\#c9a96e\]\/10,
+  .doc-print-area .bg-\[\#c9a96e\]\/20 {
+    background: #fdf6e3 !important;
+  }
+
+  .doc-print-area .bg-\[\#c9a96e\]\/3 {
+    display: none !important;
+  }
+
+  /* Section icons */
+  .doc-print-area .bg-\[\#c9a96e\]\/10.rounded-xl {
+    background: #fdf6e3 !important;
+  }
+
+  /* Dots dourados */
+  .doc-print-area .bg-\[\#c9a96e\] {
+    background: #b8860b !important;
+  }
+
+  /* Badges coloridos de perfil - manter cores so um pouco */
+  .doc-print-area .bg-red-500\/15 { background: #fff0f0 !important; border-color: #e0c0c0 !important; }
+  .doc-print-area .bg-amber-500\/15 { background: #fffbf0 !important; border-color: #e0d0a0 !important; }
+  .doc-print-area .bg-sky-500\/15 { background: #f0f8ff !important; border-color: #c0d8e8 !important; }
+  .doc-print-area .bg-emerald-500\/15 { background: #f0fff4 !important; border-color: #c0e0c8 !important; }
+  .doc-print-area .bg-violet-500\/15 { background: #f8f0ff !important; border-color: #d0c0e8 !important; }
+  .doc-print-area .bg-slate-500\/15 { background: #f5f5f8 !important; border-color: #d0d0d8 !important; }
+  .doc-print-area .bg-cyan-500\/15 { background: #f0fcff !important; border-color: #c0e0e8 !important; }
+
+  .doc-print-area .text-red-400 { color: #c04040 !important; }
+  .doc-print-area .text-amber-400 { color: #b08020 !important; }
+  .doc-print-area .text-sky-400 { color: #3070a0 !important; }
+  .doc-print-area .text-emerald-400 { color: #308050 !important; }
+  .doc-print-area .text-violet-400 { color: #7050a0 !important; }
+  .doc-print-area .text-slate-400 { color: #606070 !important; }
+  .doc-print-area .text-cyan-400 { color: #307080 !important; }
+
+  /* Modulo cards com cor dinamica via classes bg-{cor}-500/10 */
+  .doc-print-area [class*="bg-emerald-500\/10"] { background: #f0fff4 !important; }
+  .doc-print-area [class*="bg-amber-500\/10"] { background: #fffbf0 !important; }
+  .doc-print-area [class*="bg-violet-500\/10"] { background: #f8f0ff !important; }
+  .doc-print-area [class*="bg-sky-500\/10"] { background: #f0f8ff !important; }
+  .doc-print-area [class*="bg-cyan-500\/10"] { background: #f0fcff !important; }
+  .doc-print-area [class*="bg-rose-500\/10"] { background: #fff0f4 !important; }
+  .doc-print-area [class*="bg-teal-500\/10"] { background: #f0fff8 !important; }
+  .doc-print-area [class*="bg-lime-500\/10"] { background: #f8fff0 !important; }
+  .doc-print-area [class*="bg-orange-500\/10"] { background: #fff8f0 !important; }
+  .doc-print-area [class*="bg-indigo-500\/10"] { background: #f4f0ff !important; }
+  .doc-print-area [class*="bg-slate-500\/10"] { background: #f5f5f8 !important; }
+  .doc-print-area [class*="bg-zinc-500\/10"] { background: #f5f5f5 !important; }
+  .doc-print-area [class*="bg-red-500\/10"] { background: #fff0f0 !important; }
+
+  .doc-print-area [class*="text-emerald-400"] { color: #308050 !important; }
+  .doc-print-area [class*="text-amber-400"] { color: #b08020 !important; }
+  .doc-print-area [class*="text-violet-400"] { color: #7050a0 !important; }
+  .doc-print-area [class*="text-sky-400"] { color: #3070a0 !important; }
+  .doc-print-area [class*="text-cyan-400"] { color: #307080 !important; }
+  .doc-print-area [class*="text-rose-400"] { color: #b05060 !important; }
+  .doc-print-area [class*="text-teal-400"] { color: #307060 !important; }
+  .doc-print-area [class*="text-lime-400"] { color: #508030 !important; }
+  .doc-print-area [class*="text-orange-400"] { color: #b06030 !important; }
+  .doc-print-area [class*="text-indigo-400"] { color: #6050a0 !important; }
+  .doc-print-area [class*="text-slate-400"] { color: #606070 !important; }
+  .doc-print-area [class*="text-zinc-400"] { color: #606060 !important; }
+  .doc-print-area [class*="text-red-400"] { color: #c04040 !important; }
+
+  /* Separadores */
+  .doc-print-area .divide-\[\#222\] > * {
+    border-color: #e0e0e0 !important;
+  }
+
+  .doc-print-area .border-t-\[\#222\] {
+    border-top-color: #e0e0e0 !important;
+  }
+
+  .doc-print-area .border-t-\[\#c9a96e\]\/20 {
+    border-top-color: #c9a96e !important;
+  }
+
+  /* Margens e espacamento reduzido para papel */
+  .doc-print-area .max-w-5xl {
+    max-width: 100% !important;
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+    padding-top: 12px !important;
+  }
+
+  .doc-print-area section {
+    margin-bottom: 20px !important;
+    page-break-inside: avoid;
+  }
+
+  .doc-print-area .mb-14 {
+    margin-bottom: 20px !important;
+  }
+
+  .doc-print-area .mb-6 {
+    margin-bottom: 12px !important;
+  }
+
+  .doc-print-area .mb-5 {
+    margin-bottom: 10px !important;
+  }
+
+  .doc-print-area .gap-3 {
+    gap: 6px !important;
+  }
+
+  .doc-print-area .gap-4 {
+    gap: 8px !important;
+  }
+
+  .doc-print-area .gap-5 {
+    gap: 10px !important;
+  }
+
+  .doc-print-area .p-6 {
+    padding: 12px !important;
+  }
+
+  .doc-print-area .p-5 {
+    padding: 10px !important;
+  }
+
+  .doc-print-area .p-4 {
+    padding: 8px !important;
+  }
+
+  /* Fontes menores para caber no papel */
+  .doc-print-area h2 {
+    font-size: 18px !important;
+  }
+
+  .doc-print-area h3 {
+    font-size: 13px !important;
+  }
+
+  .doc-print-area p,
+  .doc-print-area li {
+    font-size: 9.5px !important;
+    line-height: 1.4 !important;
+  }
+
+  /* Rounded corners mais suaves */
+  .doc-print-area .rounded-xl {
+    border-radius: 4px !important;
+  }
+
+  .doc-print-area .rounded-lg {
+    border-radius: 3px !important;
+  }
+
+  /* Remove animacoes e transicoes */
+  .doc-print-area * {
+    transition: none !important;
+    animation: none !important;
+  }
+
+  /* Botao de download escondido na impressao */
+  .doc-download-btn {
+    display: none !important;
+  }
+
+  /* Lista de topicos internos */
+  .doc-print-area ul li {
+    color: #444 !important;
+  }
+
+  .doc-print-area .text-\[\#777\],
+  .doc-print-area .text-\[\#888\],
+  .doc-print-area .text-\[\#999\] {
+    color: #444 !important;
+  }
+
+  /* Link/strong elements */
+  .doc-print-area strong {
+    color: #1a1a1a !important;
+  }
+
+  .doc-print-area strong.text-\[\#c9a96e\] {
+    color: #b8860b !important;
+  }
+
+  /* Numero de pagina */
+  @bottom-center {
+    content: "Grupo Sampaio — Página " counter(page);
+    font-size: 8px;
+    color: #999;
+    font-family: 'Inter', sans-serif;
+  }
+}

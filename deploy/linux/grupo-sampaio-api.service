@@ -1,0 +1,35 @@
+# Grupo Sampaio ERP — a API como serviço systemd (GAP-PRD-013)
+#
+#   sudo cp deploy/linux/grupo-sampaio-api.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now grupo-sampaio-api
+#   journalctl -u grupo-sampaio-api -f          # o log, com a hora
+#
+# Troque /opt/grupo-sampaio pela pasta da instalação (onde está o .env e
+# server/dist) e `grupo-sampaio` pelo usuário que é dono dela. Antes de
+# ligar: `node server/dist/scripts/conferir-implantacao.js` na mesma pasta.
+
+[Unit]
+Description=Grupo Sampaio ERP - API
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=grupo-sampaio
+Group=grupo-sampaio
+WorkingDirectory=/opt/grupo-sampaio
+# A API lê o .env desta pasta ao subir.
+ExecStart=/usr/bin/node server/dist/index.js
+# Caiu, sobe de novo — sempre. As seis empresas dependem dela.
+Restart=always
+RestartSec=3
+# SIGTERM: a API desliga com prazo de 8 s (fecha conexões e o banco).
+KillSignal=SIGTERM
+TimeoutStopSec=20
+NoNewPrivileges=true
+ProtectSystem=full
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

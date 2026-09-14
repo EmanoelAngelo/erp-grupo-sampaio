@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Grupo Sampaio</title>
+    <meta name="description" content="Lojas do Grupo Sampaio — Preço Justo, Gringa, Me Mimei, Conceito e PJ Motors, em Pelotas/RS." />
+    <!--
+      O que NÃO mora mais aqui, e por quê:
+
+      - `canonical`, `og:*`, `twitter:*`, `keywords`, `author`, `geo.*` do
+        projeto anterior. O canonical apontava para outro domínio: era um
+        pedido, a cada página, para o buscador tratar este site como cópia.
+      - Font Awesome, RemixIcon e a fonte Pacifico. Três folhas externas
+        baixadas em toda visita e usadas em lugar nenhum — a fonte da
+        interface é `--gs-font` (`src/design/tokens.css`), pilha de sistema,
+        sem Google Fonts. Os `preconnect` saíram junto: só existiam para elas.
+      - `robots`. O painel (`/sistema`, `/pdv`, `/login`, `/oficina`) e a loja
+        (`/`, `/loja`) dividem este mesmo HTML, então uma meta aqui valeria
+        para os dois. Quem separa é `public/robots.txt`.
+    -->
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

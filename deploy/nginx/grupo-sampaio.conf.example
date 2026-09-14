@@ -1,0 +1,73 @@
+# Grupo Sampaio ERP — nginx na frente da API (GAP-PRD-013)
+#
+# Copie para /etc/nginx/sites-available/grupo-sampaio, troque o domínio e os
+# caminhos, ligue com um link em sites-enabled e `nginx -t && nginx -s reload`.
+# O certificado sai do certbot (`certbot --nginx -d erp.seudominio.com.br`).
+#
+# Na API: DEVORA_TRUST_PROXY=1 e DEVORA_FRONTEND_ORIGIN=https://erp.seudominio.com.br.
+# Aqui o nginx serve as telas (MODO B); se a API servir
+# (DEVORA_SERVIR_FRONTEND=true), troque o `location /` por um proxy_pass igual
+# ao de /api/.
+
+server {
+    listen 80;
+    listen [::]:80;
+    server_name erp.seudominio.com.br;
+    return 301 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl http2;
+    listen [::]:443 ssl http2;
+    server_name erp.seudominio.com.br;
+
+    ssl_certificate     /etc/letsencrypt/live/erp.seudominio.com.br/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/erp.seudominio.com.br/privkey.pem;
+
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+    server_tokens off;
+
+    # Foto de produto, certificado A1 e planilha viajam em base64 no corpo; a
+    # API aceita até 8 MB nessas rotas. O padrão do nginx (1 MB) cortaria antes.
+    client_max_body_size 10m;
+
+    # As telas: o build do frontend (`npm run build:frontend`).
+    root /opt/grupo-sampaio/out;
+
+    # Mapa de fonte (.map) nunca sai (GAP-PRD-210): o build padrão não gera, e
+    # o modo DEVORA_BUILD_SOURCEMAP=hidden gera para a ferramenta de erros —
+    # não para o navegador. Regex vence o prefixo /assets/ abaixo.
+    location ~* \.map$ {
+        return 404;
+    }
+
+    # Bundle com hash no nome: cache longo.
+    location /assets/ {
+        try_files $uri =404;
+        add_header Cache-Control "public, max-age=31536000, immutable";
+    }
+
+    # Fallback de SPA: /sistema/pdv não é arquivo, é rota da tela. O index e
+    # o service worker nunca ficam em cache.
+    location / {
+        try_files $uri $uri/ /index.html;
+        add_header Cache-Control "no-cache";
+    }
+
+    location /api/ {
+        proxy_pass http://127.0.0.1:8787;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Request-Id $request_id;
+        proxy_read_timeout 120s;
+    }
+
+    location /uploads/ {
+        proxy_pass http://127.0.0.1:8787;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}

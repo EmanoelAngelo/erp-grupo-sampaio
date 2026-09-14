@@ -1,0 +1,13 @@
+# Grupo Sampaio ERP — o Caddy do `docker compose --profile https` (GAP-PRD-013).
+#
+# O domínio vem de DEVORA_DOMINIO (ambiente do host). A API do compose serve
+# as telas (DEVORA_SERVIR_FRONTEND=true na imagem), então tudo vai para ela.
+
+{$DEVORA_DOMINIO} {
+	encode zstd gzip
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		-Server
+	}
+	reverse_proxy api:8787
+}

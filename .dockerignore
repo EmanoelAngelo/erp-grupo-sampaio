@@ -1,0 +1,45 @@
+# O CONTEXTO DO BUILD É SÓ CÓDIGO (GAP-PRD-061).
+#
+# Sem este arquivo, o `COPY . .` do builder levava para a camada da imagem tudo
+# o que está na pasta: na instalação da loja, 3,6 GB de backups, o banco
+# operacional com o -wal (venda, cliente e fiscal reais das seis empresas), o
+# .env com os segredos e os dois node_modules. A camada do builder fica na
+# cache de quem builda — dado de cliente e segredo em lugar nenhum deveriam
+# estar.
+#
+# A regra é a do .gitignore, e mais estrita: o que não é código não entra.
+# `tests/a-imagem-docker-guarda-o-que-e-dado.test.ts` confere esta lista contra
+# os caminhos da instalação e contra a árvore real.
+
+# Dependências: o builder instala as próprias com `npm ci`.
+**/node_modules
+
+# Artefatos de build: o builder produz os próprios.
+out
+dist
+server/dist
+
+# DADO DE OPERAÇÃO — banco, WAL, snapshots, backups, fotos, quarentena.
+server/data
+server/backups
+data
+**/*.db
+**/*.db-wal
+**/*.db-shm
+
+# Segredos: .env e toda cópia dele; certificados e chaves.
+**/.env
+**/.env.*
+**/*.pfx
+**/*.p12
+**/*.pem
+**/*.key
+
+# O que não é código.
+.git
+.github
+.claude
+**/*.log
+vitest-*.txt
+cp37-spec-full.txt
+_extract_cp37.ps1

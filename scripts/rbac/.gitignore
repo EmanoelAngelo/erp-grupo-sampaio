@@ -1,0 +1,10 @@
+# Intermediários da cadeia de `regenerar.mjs`: saem de novo a cada execução.
+# Ficam versionadas só as SAÍDAS (catalogo-final.json, modelos.json,
+# mapa-final.json, mapa-rota-capability.tsv e os relatórios .md), que são as
+# entradas de `gerar-artefatos.mjs` e o apêndice que a F2 lê.
+_inventario-rotas.tsv
+_rotas-resolvidas.json
+_uso-por-capability.json
+_modelos-dia1.json
+catalogo.json
+sites-*.json

@@ -1,0 +1,259 @@
+/**
+ * Design tokens — Grupo Sampaio · Gestão Empresarial
+ *
+ * Linguagem visual: superfícies claras, cards brancos, sombras suaves,
+ * sidebar clara com item ativo sólido, header com faixa de destaque em
+ * gradiente. Densidade e tamanho de alvo pensados para operação de balcão,
+ * não para painel de leitura.
+ *
+ * Todo componente deve consumir estes tokens em vez de cores literais, para
+ * que ajuste de identidade aconteça num lugar só.
+ */
+
+:root {
+  /* ---------------------------------------------------------- identidade */
+  --gs-purple-950: #2d0f41;
+  --gs-purple-900: #3b1453;
+  --gs-purple-800: #4f1a6d;
+  --gs-purple-700: #6b2280;
+  --gs-purple-600: #832d94;
+  --gs-purple-100: #f3e9f7;
+
+  --gs-orange-700: #c93a12;
+  --gs-orange-600: #e8461e;
+  --gs-orange-500: #f4611e;
+  --gs-orange-400: #fb7a3c;
+  --gs-orange-100: #ffeee6;
+
+  /* Faixa superior do sistema. */
+  --gs-header-gradient: linear-gradient(
+    90deg,
+    var(--gs-purple-950) 0%,
+    var(--gs-purple-700) 45%,
+    var(--gs-orange-600) 100%
+  );
+
+  /* ------------------------------------------------------------ superfícies */
+  --gs-canvas: #f6f4f9;
+  --gs-surface: #ffffff;
+  --gs-surface-muted: #faf9fc;
+  --gs-surface-hover: #f3f0f7;
+  --gs-sidebar: #ffffff;
+  --gs-sidebar-active: var(--gs-orange-500);
+  --gs-sidebar-active-text: #ffffff;
+
+  /* ---------------------------------------------------------------- traços */
+  --gs-border: #e6e1ec;
+  --gs-border-strong: #d3ccdd;
+  --gs-focus-ring: var(--gs-purple-700);
+
+  /* ----------------------------------------------------------------- texto */
+  --gs-text: #1f1b24;
+  --gs-text-soft: #4a4356;
+  --gs-muted: #6b6577;
+  --gs-text-invert: #ffffff;
+
+  /* --------------------------------------------------------------- estados */
+  --gs-success: #0f8a4f;
+  --gs-success-bg: #e6f6ed;
+  --gs-warning: #b57604;
+  --gs-warning-bg: #fdf3e0;
+  --gs-danger: #c62828;
+  --gs-danger-bg: #fdecec;
+  --gs-info: #1466b8;
+  --gs-info-bg: #e8f2fc;
+
+  /* --------------------------------------------------------------- sombras */
+  --gs-shadow-sm: 0 1px 2px rgba(31, 27, 36, 0.06);
+  --gs-shadow: 0 1px 3px rgba(31, 27, 36, 0.08), 0 1px 2px rgba(31, 27, 36, 0.04);
+  --gs-shadow-md: 0 4px 12px rgba(31, 27, 36, 0.08);
+  --gs-shadow-lg: 0 12px 32px rgba(31, 27, 36, 0.12);
+
+  /* ------------------------------------------------------------ geometria */
+  --gs-radius-sm: 4px;
+  --gs-radius: 8px;
+  --gs-radius-lg: 12px;
+
+  /* Escala de espaçamento em passos de 4px. */
+  --gs-space-1: 4px;
+  --gs-space-2: 8px;
+  --gs-space-3: 12px;
+  --gs-space-4: 16px;
+  --gs-space-5: 20px;
+  --gs-space-6: 24px;
+  --gs-space-8: 32px;
+
+  /* ----------------------------------------------------------- tipografia */
+  --gs-font: 'Segoe UI', Roboto, -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial,
+    sans-serif;
+  /* Escala um passo acima da anterior: o ERP é operado o dia inteiro e a
+     referência usa tipografia de produto comercial, não de painel técnico. */
+  --gs-text-xs: 12px;
+  --gs-text-sm: 13px;
+  --gs-text-base: 15px;
+  --gs-text-lg: 18px;
+  --gs-text-xl: 22px;
+  --gs-text-2xl: 28px;
+  --gs-text-3xl: 36px;
+
+  /* ------------------------------------------------------------- estrutura */
+  /* A referência usa barra superior alta, com a marca em destaque, e sidebar
+     larga o suficiente para ícone + rótulo + chevron sem truncar. A barra
+     fina anterior deixava o topo vazio e a identidade pequena. */
+  --gs-sidebar-width: 268px;
+  --gs-topbar-height: 72px;
+  --gs-subbar-height: 44px;
+}
+
+/* O ERP administrativo é uma ferramenta de trabalho em ambiente claro; o
+   tema escuro fica restrito às telas que o pedem explicitamente. */
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--gs-canvas);
+  color: var(--gs-text);
+  font-family: var(--gs-font);
+  font-size: var(--gs-text-base);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Foco sempre visível — requisito de acessibilidade por teclado. */
+:where(a, button, input, select, textarea, [tabindex]):focus-visible {
+  outline: 2px solid var(--gs-focus-ring);
+  outline-offset: 2px;
+  border-radius: var(--gs-radius-sm);
+}
+
+/* Alvo mínimo confortável para operação de balcão. */
+:where(button, [role='button']) {
+  min-height: 32px;
+}
+
+/* Campo de formulário no TOQUE: fonte menor que 16px faz o iOS dar zoom no
+   foco — a tela pula para dentro do campo e o cliente tem de beliscar de
+   volta a cada campo do checkout. O corpo é 15px e os campos herdavam;
+   max() sobe só o que estava abaixo, e uma classe explícita de tamanho no
+   campo continua ganhando (classe > dois elementos).
+
+   `html input`, e não `input`: este arquivo é @import ANTES do preflight do
+   Tailwind, que também declara font-size em `input` — mesma especificidade,
+   e a ordem entregava a vitória a ele. Medido na tela: a regra simples saía
+   derrotada e o campo seguia em 15px. */
+@media (pointer: coarse) {
+  html input,
+  html select,
+  html textarea {
+    font-size: max(var(--gs-text-base), 16px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ==========================================================================
+   A CARA DE CADA MARCA (rodada 40)
+
+   As páginas da loja consomem tokens — zero cor literal, medido. Então a
+   identidade de uma marca é um ESCOPO que redefine os tokens que a loja usa:
+   nada de reescrever tela. O escopo entra por `data-marca="<slug>"` na casca.
+
+   As paletas saem dos LOGOS que o dono enviou, com o combinado:
+     - preco-justo: o preto do círculo + o verde do cifrão + branco
+     - me-mimei:    preto + branco da assinatura + o rosa neon do letreiro
+     - conceito:    preto e branco, monocromático
+     - pj-motors:   grafite + prata do anel + verde elétrico
+     - gringa:      PROVISÓRIA (o dono ainda vai mandar o logo): azul-marinho
+                    neutro, para a página existir sem fingir uma marca.
+
+   O que cada escopo redefine é o que as telas da loja de fato usam:
+   `--gs-header-gradient` (cabeçalho), a rampa `--gs-purple-*` (títulos,
+   botões, links) e a rampa `--gs-orange-*` (preço em promoção, CTA).
+   ========================================================================== */
+
+[data-marca='preco-justo'] {
+  --gs-purple-950: #0c120d;
+  --gs-purple-900: #14201a;
+  --gs-purple-800: #1c5c31;
+  --gs-purple-700: #23843f;
+  --gs-purple-600: #2e9e4a;
+  --gs-purple-100: #e7f4ea;
+  --gs-orange-700: #1c5c31;
+  --gs-orange-600: #23843f;
+  --gs-orange-500: #2e9e4a;
+  --gs-orange-400: #55b56d;
+  --gs-orange-100: #e7f4ea;
+  --gs-header-gradient: linear-gradient(90deg, #0c120d 0%, #14201a 55%, #23843f 100%);
+}
+
+[data-marca='me-mimei'] {
+  --gs-purple-950: #120a0f;
+  --gs-purple-900: #1d1118;
+  --gs-purple-800: #8f1054;
+  --gs-purple-700: #c2166f;
+  --gs-purple-600: #e02a88;
+  --gs-purple-100: #fbe9f3;
+  --gs-orange-700: #8f1054;
+  --gs-orange-600: #d81b6a;
+  --gs-orange-500: #ff2d87;
+  --gs-orange-400: #ff65a8;
+  --gs-orange-100: #ffe9f2;
+  --gs-header-gradient: linear-gradient(90deg, #120a0f 0%, #1d1118 50%, #c2166f 100%);
+}
+
+[data-marca='conceito'] {
+  --gs-purple-950: #0d0d0d;
+  --gs-purple-900: #171717;
+  --gs-purple-800: #262626;
+  --gs-purple-700: #343434;
+  --gs-purple-600: #4a4a4a;
+  --gs-purple-100: #efefef;
+  --gs-orange-700: #171717;
+  --gs-orange-600: #262626;
+  --gs-orange-500: #343434;
+  --gs-orange-400: #5c5c5c;
+  --gs-orange-100: #efefef;
+  --gs-header-gradient: linear-gradient(90deg, #0d0d0d 0%, #171717 60%, #343434 100%);
+}
+
+[data-marca='pj-motors'] {
+  --gs-purple-950: #101214;
+  --gs-purple-900: #1a1e22;
+  --gs-purple-800: #23272b;
+  --gs-purple-700: #31373d;
+  --gs-purple-600: #4a525a;
+  --gs-purple-100: #eceef0;
+  --gs-orange-700: #157a35;
+  --gs-orange-600: #1c9c44;
+  --gs-orange-500: #26c257;
+  --gs-orange-400: #52d379;
+  --gs-orange-100: #e6f7eb;
+  --gs-header-gradient: linear-gradient(90deg, #101214 0%, #23272b 55%, #4a525a 100%);
+}
+
+/* PROVISÓRIA até o logo chegar — o dono vai mandar. Azul-marinho neutro. */
+[data-marca='gringa'] {
+  --gs-purple-950: #0c1420;
+  --gs-purple-900: #142238;
+  --gs-purple-800: #1e3a5f;
+  --gs-purple-700: #27507f;
+  --gs-purple-600: #33689f;
+  --gs-purple-100: #e9f0f8;
+  --gs-orange-700: #1e3a5f;
+  --gs-orange-600: #27507f;
+  --gs-orange-500: #33689f;
+  --gs-orange-400: #6b93bd;
+  --gs-orange-100: #e9f0f8;
+  --gs-header-gradient: linear-gradient(90deg, #0c1420 0%, #142238 55%, #27507f 100%);
+}

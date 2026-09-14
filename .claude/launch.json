@@ -1,0 +1,21 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "api",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev:api"],
+      "port": 8787,
+      "autoPort": false,
+      "comment": "8787 é obrigatória: sem VITE_API_BASE_URL, o frontend deriva a URL da API dessa porta fixa (src/lib/api/client.ts, DEFAULT_API_PORT). Em outra porta, nenhuma requisição chega."
+    },
+    {
+      "name": "dev",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev"],
+      "port": 3000,
+      "autoPort": false,
+      "comment": "3000 é obrigatória: está no allowlist de CORS padrão (server/src/config/env.ts, DEVORA_FRONTEND_ORIGIN). Numa porta sorteada, o navegador vira origem não autorizada e todo preflight falha."
+    }
+  ]
+}

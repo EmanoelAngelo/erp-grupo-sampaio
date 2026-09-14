@@ -1,0 +1,11 @@
+# Os arquivos de publicacao vao para servidores Linux (systemd, nginx, Caddy):
+# copiados de um checkout no Windows com CRLF, o systemd e o nginx leem o \r
+# como parte do valor. Os scripts do Windows ficam em CRLF.
+deploy/linux/** text eol=lf
+deploy/nginx/** text eol=lf
+deploy/caddy/** text eol=lf
+deploy/windows/*.ps1 text eol=crlf
+Dockerfile text eol=lf
+.dockerignore text eol=lf
+docker-compose*.yml text eol=lf
+docs/audits/remediacao/journal/*.jsonl merge=union

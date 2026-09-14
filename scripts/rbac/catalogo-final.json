@@ -1,0 +1,3889 @@
+{
+ "base": "C:/Users/User/Desktop/devora-ent-rbac (branch ent/rbac, HEAD fb4c1118)",
+ "catalog_version": 1,
+ "total": 141,
+ "novas": [
+  "pdv.device_login",
+  "sales.quotes.cancel",
+  "sales.consignment.close"
+ ],
+ "capabilities": [
+  {
+   "code": "group.admin",
+   "area": "Grupo",
+   "pagina": "Empresas do grupo / Usuários",
+   "label": "Administrar o grupo",
+   "descricao": "Responde pelo grupo: entrega capabilities de escopo grupo, aplica o modelo \"Administrador do grupo\", entra automaticamente em empresa nova (substitui respondePeloGrupo/listGroupAdminIds). Só é entregue por quem já a tem.",
+   "escopo": "grupo",
+   "leitura_ou_escrita": "gerir",
+   "perfis_de_hoje": [
+    "admin_geral",
+    "gestor"
+   ],
+   "desde": 1,
+   "modelos_padrao": [
+    "admin_geral",
+    "gestor"
+   ],
+   "rotas_que_cobram": 0,
+   "pontos_de_servico": 25,
+   "pontos_de_tela": 2,
+   "origem": "catalogo.json"
+  },
+  {
+   "code": "group.companies.manage",
+   "area": "Grupo",
+   "pagina": "/sistema/empresas",
+   "label": "Empresas do grupo",
+   "descricao": "Listar, criar empresa (com o primeiro gerente) e ligar plaquinha por empresa. GET/POST /core/companies, PATCH /core/companies/:id/equipment-tags.",
+   "escopo": "grupo",
+   "leitura_ou_escrita": "gerir",
+   "perfis_de_hoje": [
+    "admin_geral",
+    "gestor"
+   ],
+   "desde": 1,
+   "modelos_padrao": [
+    "admin_geral",
+    "gestor"
+   ],
+   "rotas_que_cobram": 3,
+   "pontos_de_servico": 2,
+   "pontos_de_tela": 3,
+   "origem": "catalogo.json"
+  },
+  {
+   "code": "group.dashboard.view",
+   "area": "Grupo",
+   "pagina": "Painel do grupo",
+   "label": "Painel do grupo (visões consolidadas)",
+   "descricao": "Visões que atravessam as empresas: certificados A1 de todas (GET /core/fiscal/certificates/group) e Asaas do grupo (GET /core/integrations/asaas/grupo).",
+   "escopo": "grupo",
+   "leitura_ou_escrita": "ler",
+   "perfis_de_hoje": [
+    "admin_geral",
+    "gestor"
+   ],
+   "desde": 1,
+   "modelos_padrao": [
+    "admin_geral",
+    "gestor"
+   ],
+   "rotas_que_cobram": 2,
+   "pontos_de_servico": 1,
+   "pontos_de_tela": 1,
+   "origem": "catalogo.json"
+  },
+  {
+   "code": "group.audit.view",
+   "area": "Grupo",
+   "pagina": "/sistema/usuarios (histórico da pessoa)",
+   "label": "Auditoria do grupo",
+   "descricao": "Ler a trilha de auditoria de todas as empresas em que a capability vale, numa leitura só (histórico de uma pessoa entre empresas). Nova: hoje a trilha só é lida empresa a empresa pelos donos.",
+   "escopo": "grupo",
+   "leitura_ou_escrita": "ler",
+   "perfis_de_hoje": [
+    "admin_geral",
+    "gestor"
+   ],
+   "desde": 1,
+   "modelos_padrao": [
+    "admin_geral",
+    "gestor"
+   ],
+   "rotas_que_cobram": 0,
+   "pontos_de_servico": 0,
+   "pontos_de_tela": 0,
+   "origem": "catalogo.json"
+  },
+  {
+   "code": "audit.view",
+   "area": "Relatórios",
+   "pagina": "/sistema/relatorios/auditoria",
+   "label": "Auditoria da empresa",
+   "descricao": "Trilha de auditoria e liberações de gestor da empresa ativa (GET /core/audit, GET /core/authorizations).",
+   "escopo": "empresa",
+   "leitura_ou_escrita": "ler",
+   "perfis_de_hoje": [
+    "admin_geral",
+    "gestor"
+   ],
+   "desde": 1,
+   "modelos_padrao": [
+    "admin_geral",
+    "gestor"
+   ],
+   "rotas_que_cobram": 2,
+   "pontos_de_servico": 0,
+   "pontos_de_tela": 3,
+   "origem": "catalogo.json"
+  },
+  {
+   "code": "permissions.templates.manage",
+   "area": "Usuários",
+   "pagina": "/sistema/usuarios/modelos",
+   "label": "Modelos de permissão",
+   "descricao": "Criar, editar, duplicar e arquivar modelos (Operador de Caixa, Gerente de Loja…). Nova: não existe tela nem rota hoje.",
+   "escopo": "grupo",
+   "leitura_ou_escrita": "gerir",
+   "perfis_de_hoje": [
+    "admin_geral",
+    "gestor"
+   ],
+   "desde": 1,
+   "modelos_padrao": [
+    "admin_geral",
+    "gestor"
+   ],
+   "rotas_que_cobram": 0,
+   "pontos_de_servico": 0,
+   "pontos_de_tela": 0,
+   "origem": "catalogo.json"
+  },
+  {
+   "code": "system.status.view",
+   "area": "Sistema",
+   "pagina": "/sistema/configuracoes/sistema",
+   "label": "Estado do sistema",
+   "descricao": "Versão, prontidão e saúde (GET /system/readiness, GET /system/release).",
+   "escopo": "grupo",
+   "leitura_ou_escrita": "ler",
+   "perfis_de_hoje": [
+    "admin_geral",
+    "gestor"
+   ],
+   "desde": 1,
+   "modelos_padrao": [
+    "admin_geral",
+    "gestor"
+   ],
+   "rotas_que_cobram": 2,
+   "pontos_de_servico": 6,
+   "pontos_de_tela": 3,
+   "origem": "catalogo.json"
+  },
+  {
+   "code": "system.secrets.view",
+   "area": "Sistema",
+   "pagina": "/sistema/configuracoes/sistema",
+   "label": "Cofre de segredos (conferência)",
+   "descricao": "Quais segredos existem e quais faltam, sem o valor (GET /core/system/secrets-readiness).",
+   "escopo": "grupo",
+   "leitura_ou_escrita": "ler",
+   "perfis_de_hoje": [
+    "admin_geral",
+    "gestor"
+   ],
+   "desde": 1,
+   "modelos_padrao": [
+    "admin_geral",
+    "gestor"
+   ],
+   "rotas_que_cobram": 1,
+   "pontos_de_servico": 0,
+   "pontos_de_tela": 0,
+   "origem": "catalogo.json"
+  },
+  {
+   "code": "system.deploy.view",
+   "area": "Sistema",
+   "pagina": "/sistema/configuracoes/implantacao",
+   "label": "Implantação (ver)",
+   "descricao": "Checklist de implantação do grupo e por empresa (GET /system/implantacao*).",
+   "escopo": "grupo",
+   "leitura_ou_escrita": "ler",
+   "perfis_de_hoje": [
+    "admin_geral",
+    "gestor"
+   ],
+   "desde": 1,
+   "modelos_padrao": [
+    "admin_geral",
+    "gestor"
+   ],
+   "rotas_que_cobram": 3,
+   "pontos_de_servico": 6,
+   "pontos_de_tela": 4,
+   "origem": "catalogo.json"
+  },
+  {
+   "code": "system.deploy.manage",
+   "area": "Sistema",
+   "pagina": "/sistema/configuracoes/implantacao",
+   "label": "Implantação (marcar itens)",
+   "descricao": "Marcar/desmarcar item do checklist de implantação (PUT/DELETE /system/implantacao/empresas/:id/itens/:item/marca).",
+   "escopo": "grupo",
+   "leitura_ou_escrita": "gerir",
+   "perfis_de_hoje": [
+    "admin_geral",
+    "gestor"
+   ],
+   "desde": 1,
+   "modelos_padrao": [
+    "admin_geral",
+    "gestor"
+   ],
+   "rotas_que_cobram": 2,
+   "pontos_de_servico": 1,
+   "pontos_de_tela": 0,
+   "origem": "catalogo.json"
+  },
+  {
+   "code": "system.backup.view",
+   "area": "Sistema",
+   "pagina": "/sistema/configuracoes/backup",
+   "label": "Backup (ver)",
+   "descricao": "Estado do backup do banco das seis empresas (GET /system/backup/status).",
+   "escopo": "grupo",
+   "leitura_ou_escrita": "ler",
+   "perfis_de_hoje": [
+    "admin_geral",
+    "gestor"
+   ],
+   "desde": 1,
+   "modelos_padrao": [
+    "admin_geral",
+    "gestor"
+   ],
+   "rotas_que_cobram": 1,
+   "pontos_de_servico": 2,
+   "pontos_de_tela": 3,
+   "origem": "catalogo.json"
+  },
+  {
+   "code": "system.backup.manage",
+   "area": "Sistema",
+   "pagina": "/sistema/configuracoes/backup",
+   "label": "Backup (conferir destino)",
+   "descricao": "Conferir o bucket de backup (POST /system/backup/conferir-bucket).",
+   "escopo": "grupo",
+   "leitura_ou_escrita": "gerir",
+   "perfis_de_hoje": [
+    "admin_geral",
+    "gestor"
+   ],
+   "desde": 1,
+   "modelos_padrao": [
+    "admin_geral",
+    "gestor"
+   ],
+   "rotas_que_cobram": 1,
+   "pontos_de_servico": 1,
+   "pontos_de_tela": 0,
+   "origem": "catalogo.json"
+  },
+  {
+   "code": "integrations.google_login.manage",
+   "area": "Integrações",
+   "pagina": "/sistema/integracoes/google",
+   "label": "Entrar com Google (loja)",
+   "descricao": "Configuração da instalação para o login Google do portal do cliente (GET/PUT /core/portal/login-google).",
+   "escopo": "grupo",
+   "leitura_ou_escrita": "gerir",
+   "perfis_de_hoje": [
+    "admin_geral",
+    "gestor"
+   ],
+   "desde": 1,
+   "modelos_padrao": [
+    "admin_geral",
+    "gestor"
+   ],
+   "rotas_que_cobram": 2,
+   "pontos_de_servico": 0,
+   "pontos_de_tela": 3,
+   "origem": "catalogo.json"
+  },
+  {
+   "code": "devices.view",
+   "area": "Integrações",
+   "pagina": "/sistema/configuracoes/terminais",
+   "label": "Tokens de terminal (ver)",
+   "descricao": "Listar os computadores registrados como terminal (GET /auth/devices).",
+   "escopo": "empresa",
+   "leitura_ou_escrita": "ler",
+   "perfis_de_hoje": [
+    "admin_geral",
+    "gestor"
+   ],
+   "desde": 1,
+   "modelos_padrao": [
+    "admin_geral",
+    "gestor"
+   ],
+   "rotas_que_cobram": 1,
+   "pontos_de_servico": 1,
+   "pontos_de_tela": 0,
+   "origem": "catalogo.json"
+  },
+  {
+   "code": "devices.manage",
+   "area": "Integrações",
+   "pagina": "/sistema/configuracoes/terminais",
+   "label": "Tokens de terminal (registrar/revogar)",
+   "descricao": "Registrar computador como terminal de um caixa e revogar o token (POST /auth/device/enroll, /auth/device/:id/revoke).",
+   "escopo": "empresa",
+   "leitura_ou_escrita": "gerir",
+   "perfis_de_hoje": [
+    "admin_geral",
+    "gestor"
+   ],
+   "desde": 1,
+   "modelos_padrao": [
+    "admin_geral",
+    "gestor"
+   ],
+   "rotas_que_cobram": 2,
+   "pontos_de_servico": 2,
+   "pontos_de_tela": 1,
+   "origem": "catalogo.json"
+  },
+  {
+   "code": "users.password_recovery.manage",
+   "area": "Usuários",
+   "pagina": "/sistema/usuarios",
+   "label": "\"Esqueci minha senha\" da equipe",
+   "descricao": "Ligar/desligar a recuperação de senha por e-mail na empresa (GET/PUT /core/team/recuperacao-de-senha).",
+   "escopo": "empresa",
+   "leitura_ou_escrita": "gerir",
+   "perfis_de_hoje": [
+    "admin_geral",
+    "gestor"
+   ],
+   "desde": 1,
+   "modelos_padrao": [
+    "admin_geral",
+    "gestor"
+   ],
+   "rotas_que_cobram": 2,
+   "pontos_de_servico": 0,
+   "pontos_de_tela": 1,
+   "origem": "catalogo.json"
+  },
+  {
+   "code": "settings.management_policy.manage",
+   "area": "Configurações",
+   "pagina": "/sistema/configuracoes/politica-de-gestao",
+   "label": "Política de gestão (salvar)",
+   "descricao": "Decidir se a equipe vê dinheiro no painel e custo do estoque (PUT /core/management-policy).",
+   "escopo": "empresa",
+   "leitura_ou_escrita": "gerir",
+   "perfis_de_hoje": [
+    "admin_geral",
+    "gestor"
+   ],
+   "desde": 1,
+   "modelos_padrao": [
+    "admin_geral",
+    "gestor"
+   ],
+   "rotas_que_cobram": 2,
+   "pontos_de_servico": 0,
+   "pontos_de_tela": 4,
+   "origem": "catalogo.json"
+  },
+  {
+   "code": "fiscal.certificate.manage",
+   "area": "Fiscal",
+   "pagina": "/sistema/fiscal/certificado",
+   "label": "Certificado A1",
+   "descricao": "Ver, enviar e revogar o certificado que assina nota em nome da empresa (GET/POST /core/fiscal/certificate, /revoke).",
+   "escopo": "empresa",
+   "leitura_ou_escrita": "gerir",
+   "perfis_de_hoje": [
+    "admin_geral",
+    "gestor"
+   ],
+   "desde": 1,
+   "modelos_padrao": [
+    "admin_geral",
+    "gestor"
+   ],
+   "rotas_que_cobram": 3,
+   "pontos_de_servico": 1,
+   "pontos_de_tela": 3,
+   "origem": "catalogo.json"
+  },
+  {
+   "code": "fiscal.policy.manage",
+   "area": "Fiscal",
+   "pagina": "/sistema/fiscal/configuracao",
+   "label": "Políticas fiscais e produção",
+   "descricao": "Política de emissão, de atos, de contingência e liberação de produção na SEFAZ (PUT emission-policy/acts/contingency policy, POST production-unlock).",
+   "escopo": "empresa",
+   "leitura_ou_escrita": "gerir",
+   "perfis_de_hoje": [
+    "admin_geral",
+    "gestor"
+   ],
+   "desde": 1,
+   "modelos_padrao": [
+    "admin_geral",
+    "gestor"
+   ],
+   "rotas_que_cobram": 4,
+   "pontos_de_servico": 0,
+   "pontos_de_tela": 0,
+   "origem": "catalogo.json"
+  },
+  {
+   "code": "users.view",
+   "area": "Usuários",
+   "pagina": "/sistema/usuarios",
+   "label": "Usuários e equipe (ver)",
+   "descricao": "Lista da equipe da empresa, modelos que quem pergunta pode entregar (GET /core/team, /core/team/profiles).",
+   "escopo": "empresa",
+   "leitura_ou_escrita": "ler",
+   "perfis_de_hoje": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina"
+   ],
+   "desde": 1,
+   "modelos_padrao": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina"
+   ],
+   "rotas_que_cobram": 2,
+   "pontos_de_servico": 1,
+   "pontos_de_tela": 7,
+   "origem": "catalogo.json"
+  },
+  {
+   "code": "users.manage",
+   "area": "Usuários",
+   "pagina": "/sistema/usuarios",
+   "label": "Usuários e equipe (cadastrar, editar, vincular)",
+   "descricao": "Criar pessoa, editar nome/e-mail, aplicar/personalizar modelo, escopo de PDV e bancada, vincular conta existente, remover desta empresa (POST/PATCH /core/team*, /team/link, /remove-from-company).",
+   "escopo": "empresa",
+   "leitura_ou_escrita": "gerir",
+   "perfis_de_hoje": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina"
+   ],
+   "desde": 1,
+   "modelos_padrao": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina"
+   ],
+   "rotas_que_cobram": 4,
+   "pontos_de_servico": 30,
+   "pontos_de_tela": 2,
+   "origem": "catalogo.json"
+  },
+  {
+   "code": "users.deactivate",
+   "area": "Usuários",
+   "pagina": "/sistema/usuarios",
+   "label": "Desativar/reativar conta",
+   "descricao": "Desliga a conta em TODAS as empresas da pessoa (POST /core/team/:id/active); exige alcance em todas elas.",
+   "escopo": "empresa",
+   "leitura_ou_escrita": "gerir",
+   "perfis_de_hoje": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina"
+   ],
+   "desde": 1,
+   "modelos_padrao": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina"
+   ],
+   "rotas_que_cobram": 1,
+   "pontos_de_servico": 3,
+   "pontos_de_tela": 0,
+   "origem": "catalogo.json"
+  },
+  {
+   "code": "users.reset_password",
+   "area": "Usuários",
+   "pagina": "/sistema/usuarios",
+   "label": "Redefinir senha",
+   "descricao": "Definir senha provisória e derrubar as sessões (POST /core/team/:id/password); exige alcance em todas as empresas do alvo.",
+   "escopo": "empresa",
+   "leitura_ou_escrita": "gerir",
+   "perfis_de_hoje": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina"
+   ],
+   "desde": 1,
+   "modelos_padrao": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina"
+   ],
+   "rotas_que_cobram": 1,
+   "pontos_de_servico": 2,
+   "pontos_de_tela": 0,
+   "origem": "catalogo.json"
+  },
+  {
+   "code": "dashboard.view",
+   "area": "Painel",
+   "pagina": "/sistema/painel",
+   "label": "Página principal do gestor",
+   "descricao": "Painel do dia da empresa (GET /core/dashboard) e leitura da política de gestão. Atravessa para outra empresa só onde a pessoa também tem esta capability.",
+   "escopo": "empresa",
+   "leitura_ou_escrita": "ler",
+   "perfis_de_hoje": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina",
+    "estoquista",
+    "atendente"
+   ],
+   "desde": 1,
+   "modelos_padrao": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina",
+    "estoquista",
+    "atendente",
+    "pdv_painel",
+    "gerente_operacao_loja"
+   ],
+   "rotas_que_cobram": 2,
+   "pontos_de_servico": 1,
+   "pontos_de_tela": 11,
+   "origem": "catalogo.json"
+  },
+  {
+   "code": "dashboard.money.view",
+   "area": "Painel",
+   "pagina": "/sistema/painel",
+   "label": "Dinheiro no painel",
+   "descricao": "Faturamento e valores no painel mesmo com a política de gestão desligada (veDinheiroDoPainel).",
+   "escopo": "empresa",
+   "leitura_ou_escrita": "ler",
+   "perfis_de_hoje": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina"
+   ],
+   "desde": 1,
+   "modelos_padrao": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina",
+    "gerente_operacao_loja"
+   ],
+   "rotas_que_cobram": 0,
+   "pontos_de_servico": 3,
+   "pontos_de_tela": 0,
+   "origem": "catalogo.json"
+  },
+  {
+   "code": "pdv.sell",
+   "area": "PDV",
+   "pagina": "/pdv",
+   "label": "Vender no PDV",
+   "descricao": "Montar carrinho, finalizar venda, Pix, venda offline, pedir liberação (POST /core/sales, /offline-sales, /pdv/pix-asaas). Exige também o escopo do PDV/caixa.",
+   "escopo": "pdv",
+   "leitura_ou_escrita": "operar",
+   "perfis_de_hoje": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina",
+    "atendente",
+    "operador_caixa",
+    "operador_caixa_loja",
+    "operador_caixa_oficina"
+   ],
+   "desde": 1,
+   "modelos_padrao": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina",
+    "atendente",
+    "operador_caixa",
+    "operador_caixa_loja",
+    "operador_caixa_oficina",
+    "somente_pdv",
+    "pdv_painel",
+    "gerente_operacao_loja"
+   ],
+   "rotas_que_cobram": 38,
+   "pontos_de_servico": 6,
+   "pontos_de_tela": 5,
+   "origem": "catalogo.json"
+  },
+  {
+   "code": "pdv.cash.operate",
+   "area": "PDV",
+   "pagina": "/pdv, /sistema/caixa",
+   "label": "Operar caixa (gaveta)",
+   "descricao": "Abrir, suprir, sangrar, fechar e reabrir o turno; abrir a gaveta; receber título no balcão (POST /core/cash/*, /print/drawer/open). Exige o escopo do caixa.",
+   "escopo": "pdv",
+   "leitura_ou_escrita": "operar",
+   "perfis_de_hoje": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina",
+    "operador_caixa",
+    "operador_caixa_loja",
+    "operador_caixa_oficina"
+   ],
+   "desde": 1,
+   "modelos_padrao": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina",
+    "operador_caixa",
+    "operador_caixa_loja",
+    "operador_caixa_oficina",
+    "somente_pdv",
+    "pdv_painel",
+    "gerente_operacao_loja"
+   ],
+   "rotas_que_cobram": 17,
+   "pontos_de_servico": 10,
+   "pontos_de_tela": 7,
+   "origem": "catalogo.json"
+  },
+  {
+   "code": "pdv.payment.charge",
+   "area": "PDV",
+   "pagina": "/pdv",
+   "label": "Cobrar na maquininha",
+   "descricao": "Cobrança no terminal de cartão, desistir e confirmar teste (POST /core/pdv/terminal/charge, /desistir, /confirmar-teste).",
+   "escopo": "pdv",
+   "leitura_ou_escrita": "operar",
+   "perfis_de_hoje": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina",
+    "operador_caixa",
+    "operador_caixa_loja",
+    "operador_caixa_oficina"
+   ],
+   "desde": 1,
+   "modelos_padrao": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina",
+    "operador_caixa",
+    "operador_caixa_loja",
+    "operador_caixa_oficina",
+    "somente_pdv",
+    "pdv_painel",
+    "gerente_operacao_loja"
+   ],
+   "rotas_que_cobram": 5,
+   "pontos_de_servico": 4,
+   "pontos_de_tela": 0,
+   "origem": "catalogo.json"
+  },
+  {
+   "code": "pdv.backoffice",
+   "area": "PDV",
+   "pagina": "/pdv (retaguarda)",
+   "label": "Retaguarda pelo balcão",
+   "descricao": "O caixa da OFICINA cadastra peça rápido, faz entrada de NF-e/CT-e e ajusta estoque pelo balcão (POST /core/products, /purchases/nfe|cte|notes*, POST /stock/movements). O caixa da loja não tem: o login do PDV da Preço Justo não administra produto nem estoque (PJ-CAIXA).",
+   "escopo": "empresa",
+   "leitura_ou_escrita": "operar",
+   "perfis_de_hoje": [
+    "admin_geral",
+    "gestor",
+    "operador_caixa_oficina"
+   ],
+   "desde": 1,
+   "modelos_padrao": [
+    "admin_geral",
+    "gestor",
+    "operador_caixa_oficina"
+   ],
+   "rotas_que_cobram": 13,
+   "pontos_de_servico": 0,
+   "pontos_de_tela": 2,
+   "origem": "catalogo.json"
+  },
+  {
+   "code": "pdv.supervise",
+   "area": "PDV",
+   "pagina": "/sistema/conferencia-maquininha",
+   "label": "Conferência do PDV",
+   "descricao": "Cobranças sem resposta, pendências, tratativa, vincular venda, estorno manual, Pix pendente (/core/pdv/terminal/uncertain|pendencias|reconcile…, /pdv/pix-pendentes).",
+   "escopo": "empresa",
+   "leitura_ou_escrita": "gerir",
+   "perfis_de_hoje": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina"
+   ],
+   "desde": 1,
+   "modelos_padrao": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina",
+    "gerente_operacao_loja"
+   ],
+   "rotas_que_cobram": 7,
+   "pontos_de_servico": 3,
+   "pontos_de_tela": 4,
+   "origem": "catalogo.json"
+  },
+  {
+   "code": "pdv.terminal.activation",
+   "area": "PDV",
+   "pagina": "/sistema/configuracoes/maquininhas",
+   "label": "Ligar/desligar maquininha por caixa",
+   "descricao": "Liga e desliga a configuração de maquininha do PDV (GET/POST /core/pdv/terminal/configurations*).",
+   "escopo": "empresa",
+   "leitura_ou_escrita": "gerir",
+   "perfis_de_hoje": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina"
+   ],
+   "desde": 1,
+   "modelos_padrao": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina"
+   ],
+   "rotas_que_cobram": 3,
+   "pontos_de_servico": 0,
+   "pontos_de_tela": 4,
+   "origem": "catalogo.json"
+  },
+  {
+   "code": "sales.view",
+   "area": "Vendas",
+   "pagina": "/sistema/vendas, /sistema/caixa",
+   "label": "Vendas (ver)",
+   "descricao": "Lista e detalhe de vendas, caixas e gavetas, devoluções, orçamentos, consignações, status fiscal da venda (leituras do escritório).",
+   "escopo": "empresa",
+   "leitura_ou_escrita": "ler",
+   "perfis_de_hoje": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina",
+    "estoquista",
+    "atendente"
+   ],
+   "desde": 1,
+   "modelos_padrao": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina",
+    "estoquista",
+    "atendente",
+    "gerente_operacao_loja"
+   ],
+   "rotas_que_cobram": 33,
+   "pontos_de_servico": 4,
+   "pontos_de_tela": 18,
+   "origem": "catalogo.json"
+  },
+  {
+   "code": "sales.supervise",
+   "area": "Vendas",
+   "pagina": "/sistema/vendas",
+   "label": "Supervisão de vendas",
+   "descricao": "Expirar pré-vendas vencidas, descartar venda offline, confirmar pagamento pendente (POST /quotes/expire-overdue, /offline-sales/:id/discard, /sales/:id/payments/:id/confirmar).",
+   "escopo": "empresa",
+   "leitura_ou_escrita": "gerir",
+   "perfis_de_hoje": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina"
+   ],
+   "desde": 1,
+   "modelos_padrao": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina",
+    "gerente_operacao_loja"
+   ],
+   "rotas_que_cobram": 3,
+   "pontos_de_servico": 0,
+   "pontos_de_tela": 2,
+   "origem": "catalogo.json"
+  },
+  {
+   "code": "sales.quotes.manage",
+   "area": "Vendas",
+   "pagina": "/sistema/orcamentos",
+   "label": "Orçamentos e pré-vendas",
+   "descricao": "Criar, editar, promover a pré-venda, renovar, reservar unidades (POST/PATCH /core/quotes*). Converter/cancelar exige também pdv.cash.operate.",
+   "escopo": "empresa",
+   "leitura_ou_escrita": "operar",
+   "perfis_de_hoje": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina",
+    "atendente",
+    "operador_caixa",
+    "operador_caixa_loja",
+    "operador_caixa_oficina"
+   ],
+   "desde": 1,
+   "modelos_padrao": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina",
+    "atendente",
+    "operador_caixa",
+    "operador_caixa_loja",
+    "operador_caixa_oficina",
+    "gerente_operacao_loja"
+   ],
+   "rotas_que_cobram": 8,
+   "pontos_de_servico": 0,
+   "pontos_de_tela": 2,
+   "origem": "catalogo.json"
+  },
+  {
+   "code": "sales.consignment.manage",
+   "area": "Vendas",
+   "pagina": "/sistema/consignacoes",
+   "label": "Consignação (condicional)",
+   "descricao": "Criar consignação e registrar retorno (POST /core/consignments, /retorno). Faturar/fechar exige também pdv.cash.operate.",
+   "escopo": "empresa",
+   "leitura_ou_escrita": "operar",
+   "perfis_de_hoje": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina",
+    "atendente",
+    "operador_caixa",
+    "operador_caixa_loja",
+    "operador_caixa_oficina"
+   ],
+   "desde": 1,
+   "modelos_padrao": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina",
+    "atendente",
+    "operador_caixa",
+    "operador_caixa_loja",
+    "operador_caixa_oficina"
+   ],
+   "rotas_que_cobram": 5,
+   "pontos_de_servico": 0,
+   "pontos_de_tela": 1,
+   "origem": "catalogo.json"
+  },
+  {
+   "code": "sales.returns.operate",
+   "area": "Vendas",
+   "pagina": "/sistema/vendas/devolucoes",
+   "label": "Cancelar e devolver venda",
+   "descricao": "Pedir cancelamento ou devolução (POST /core/sales/:id/cancel, /core/sale-returns); sem a alçada correspondente, a rota pede a liberação de um gestor.",
+   "escopo": "empresa",
+   "leitura_ou_escrita": "operar",
+   "perfis_de_hoje": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina",
+    "estoquista",
+    "atendente"
+   ],
+   "desde": 1,
+   "modelos_padrao": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina",
+    "estoquista",
+    "atendente",
+    "gerente_operacao_loja"
+   ],
+   "rotas_que_cobram": 2,
+   "pontos_de_servico": 2,
+   "pontos_de_tela": 0,
+   "origem": "catalogo.json"
+  },
+  {
+   "code": "sales.cancel.direct",
+   "area": "Vendas",
+   "pagina": "/sistema/vendas/devolucoes",
+   "label": "Cancelar venda sem liberação",
+   "descricao": "Cancela direto, sem pedir senha de gestor (comLiberacaoPontual de POST /core/sales/:id/cancel).",
+   "escopo": "empresa",
+   "leitura_ou_escrita": "gerir",
+   "perfis_de_hoje": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja"
+   ],
+   "desde": 1,
+   "modelos_padrao": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_operacao_loja"
+   ],
+   "rotas_que_cobram": 0,
+   "pontos_de_servico": 2,
+   "pontos_de_tela": 1,
+   "origem": "catalogo.json"
+  },
+  {
+   "code": "settings.sale_policy.manage",
+   "area": "Configurações",
+   "pagina": "/sistema/configuracoes/politica-de-venda",
+   "label": "Política do balcão",
+   "descricao": "Limite de desconto, prazo do fiado, validade da pré-venda, teto de sangria (GET/PUT /core/sale-policies).",
+   "escopo": "empresa",
+   "leitura_ou_escrita": "gerir",
+   "perfis_de_hoje": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina"
+   ],
+   "desde": 1,
+   "modelos_padrao": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina"
+   ],
+   "rotas_que_cobram": 2,
+   "pontos_de_servico": 0,
+   "pontos_de_tela": 3,
+   "origem": "catalogo.json"
+  },
+  {
+   "code": "approval.discount",
+   "area": "Alçada",
+   "pagina": "Diálogo \"Chamar gestor\"",
+   "label": "Liberar desconto acima do limite",
+   "descricao": "Autoriza com a própria senha o desconto de outro operador, e dá desconto acima do limite sem pedir (desconto_acima_limite).",
+   "escopo": "empresa",
+   "leitura_ou_escrita": "gerir",
+   "perfis_de_hoje": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina"
+   ],
+   "desde": 1,
+   "modelos_padrao": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina",
+    "gerente_operacao_loja"
+   ],
+   "rotas_que_cobram": 0,
+   "pontos_de_servico": 17,
+   "pontos_de_tela": 0,
+   "origem": "catalogo.json"
+  },
+  {
+   "code": "approval.cash_withdrawal",
+   "area": "Alçada",
+   "pagina": "Diálogo \"Chamar gestor\"",
+   "label": "Liberar sangria especial",
+   "descricao": "Autoriza sangria acima do teto e faz sangria acima do teto sem pedir (sangria_especial).",
+   "escopo": "empresa",
+   "leitura_ou_escrita": "gerir",
+   "perfis_de_hoje": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina"
+   ],
+   "desde": 1,
+   "modelos_padrao": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina",
+    "gerente_operacao_loja"
+   ],
+   "rotas_que_cobram": 0,
+   "pontos_de_servico": 9,
+   "pontos_de_tela": 1,
+   "origem": "catalogo.json"
+  },
+  {
+   "code": "approval.cash_reopen",
+   "area": "Alçada",
+   "pagina": "Diálogo \"Chamar gestor\"",
+   "label": "Liberar reabertura de caixa",
+   "descricao": "Autoriza reabrir turno fechado e reabre sem pedir (reabrir_caixa).",
+   "escopo": "empresa",
+   "leitura_ou_escrita": "gerir",
+   "perfis_de_hoje": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina"
+   ],
+   "desde": 1,
+   "modelos_padrao": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina",
+    "gerente_operacao_loja"
+   ],
+   "rotas_que_cobram": 0,
+   "pontos_de_servico": 9,
+   "pontos_de_tela": 1,
+   "origem": "catalogo.json"
+  },
+  {
+   "code": "approval.sale_cancel",
+   "area": "Alçada",
+   "pagina": "Diálogo \"Chamar gestor\"",
+   "label": "Liberar cancelamento de venda",
+   "descricao": "Autoriza o cancelamento de UMA venda de outro operador (cancelar_venda, bilhete preso à venda).",
+   "escopo": "empresa",
+   "leitura_ou_escrita": "gerir",
+   "perfis_de_hoje": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina"
+   ],
+   "desde": 1,
+   "modelos_padrao": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina",
+    "gerente_operacao_loja"
+   ],
+   "rotas_que_cobram": 0,
+   "pontos_de_servico": 8,
+   "pontos_de_tela": 0,
+   "origem": "catalogo.json"
+  },
+  {
+   "code": "approval.sale_return",
+   "area": "Alçada",
+   "pagina": "Diálogo \"Chamar gestor\"",
+   "label": "Liberar devolução de venda",
+   "descricao": "Autoriza a devolução de UMA venda de outro operador e devolve sem pedir (devolver_venda).",
+   "escopo": "empresa",
+   "leitura_ou_escrita": "gerir",
+   "perfis_de_hoje": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina"
+   ],
+   "desde": 1,
+   "modelos_padrao": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina",
+    "gerente_operacao_loja"
+   ],
+   "rotas_que_cobram": 0,
+   "pontos_de_servico": 8,
+   "pontos_de_tela": 1,
+   "origem": "catalogo.json"
+  },
+  {
+   "code": "customers.view",
+   "area": "Clientes",
+   "pagina": "/sistema/clientes",
+   "label": "Clientes (ver)",
+   "descricao": "Lista e ficha de clientes, créditos do cliente.",
+   "escopo": "empresa",
+   "leitura_ou_escrita": "ler",
+   "perfis_de_hoje": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina",
+    "estoquista",
+    "atendente"
+   ],
+   "desde": 1,
+   "modelos_padrao": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina",
+    "estoquista",
+    "atendente"
+   ],
+   "rotas_que_cobram": 3,
+   "pontos_de_servico": 0,
+   "pontos_de_tela": 3,
+   "origem": "catalogo.json"
+  },
+  {
+   "code": "customers.manage",
+   "area": "Clientes",
+   "pagina": "/sistema/clientes",
+   "label": "Clientes (cadastrar/editar)",
+   "descricao": "POST/PUT /core/customers.",
+   "escopo": "empresa",
+   "leitura_ou_escrita": "operar",
+   "perfis_de_hoje": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina",
+    "atendente",
+    "operador_caixa_loja",
+    "operador_caixa_oficina"
+   ],
+   "desde": 1,
+   "modelos_padrao": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina",
+    "atendente",
+    "operador_caixa_loja",
+    "operador_caixa_oficina"
+   ],
+   "rotas_que_cobram": 2,
+   "pontos_de_servico": 0,
+   "pontos_de_tela": 1,
+   "origem": "catalogo.json"
+  },
+  {
+   "code": "customers.contact.view",
+   "area": "Clientes",
+   "pagina": "/sistema/clientes",
+   "label": "Contato completo do cliente",
+   "descricao": "Telefone, e-mail e documento inteiros; sem ela a projeção é mínima (alcanceDoCliente).",
+   "escopo": "empresa",
+   "leitura_ou_escrita": "ler",
+   "perfis_de_hoje": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina",
+    "atendente",
+    "operador_caixa",
+    "operador_caixa_loja",
+    "operador_caixa_oficina"
+   ],
+   "desde": 1,
+   "modelos_padrao": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina",
+    "atendente",
+    "operador_caixa",
+    "operador_caixa_loja",
+    "operador_caixa_oficina",
+    "somente_pdv",
+    "pdv_painel",
+    "gerente_operacao_loja"
+   ],
+   "rotas_que_cobram": 0,
+   "pontos_de_servico": 4,
+   "pontos_de_tela": 0,
+   "origem": "catalogo.json"
+  },
+  {
+   "code": "customers.privacy.manage",
+   "area": "Clientes",
+   "pagina": "/sistema/clientes",
+   "label": "LGPD do titular",
+   "descricao": "Dados do titular, anonimizar, política de retenção (POST /customers/:id/anonimizar, GET /dados-do-titular, GET /lgpd/retencao).",
+   "escopo": "empresa",
+   "leitura_ou_escrita": "gerir",
+   "perfis_de_hoje": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina"
+   ],
+   "desde": 1,
+   "modelos_padrao": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina"
+   ],
+   "rotas_que_cobram": 3,
+   "pontos_de_servico": 0,
+   "pontos_de_tela": 1,
+   "origem": "catalogo.json"
+  },
+  {
+   "code": "customers.portal.invite",
+   "area": "Clientes",
+   "pagina": "/sistema/clientes, OS",
+   "label": "Convidar para o portal",
+   "descricao": "Enviar convite do portal do cliente (POST /core/customers/:id/convite-portal).",
+   "escopo": "empresa",
+   "leitura_ou_escrita": "operar",
+   "perfis_de_hoje": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina",
+    "atendente",
+    "mecanico"
+   ],
+   "desde": 1,
+   "modelos_padrao": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina",
+    "atendente",
+    "mecanico"
+   ],
+   "rotas_que_cobram": 1,
+   "pontos_de_servico": 0,
+   "pontos_de_tela": 0,
+   "origem": "catalogo.json"
+  },
+  {
+   "code": "products.view",
+   "area": "Produtos",
+   "pagina": "/sistema/produtos",
+   "label": "Produtos (ver)",
+   "descricao": "Catálogo, categorias, marcas, auxiliares, imagens, histórico, promoções e cupons (leitura).",
+   "escopo": "empresa",
+   "leitura_ou_escrita": "ler",
+   "perfis_de_hoje": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina",
+    "estoquista",
+    "atendente"
+   ],
+   "desde": 1,
+   "modelos_padrao": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina",
+    "estoquista",
+    "atendente",
+    "gerente_operacao_loja"
+   ],
+   "rotas_que_cobram": 22,
+   "pontos_de_servico": 0,
+   "pontos_de_tela": 18,
+   "origem": "catalogo.json"
+  },
+  {
+   "code": "products.manage",
+   "area": "Produtos",
+   "pagina": "/sistema/produtos",
+   "label": "Produtos (cadastrar/editar)",
+   "descricao": "Cadastro e edição de produto, códigos de barras, imagens, kit, variações, auxiliares, importação de planilha, fotos em lote, arquivo da balança.",
+   "escopo": "empresa",
+   "leitura_ou_escrita": "gerir",
+   "perfis_de_hoje": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina",
+    "estoquista"
+   ],
+   "desde": 1,
+   "modelos_padrao": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina",
+    "estoquista"
+   ],
+   "rotas_que_cobram": 27,
+   "pontos_de_servico": 0,
+   "pontos_de_tela": 15,
+   "origem": "catalogo.json"
+  },
+  {
+   "code": "products.price.manage",
+   "area": "Produtos",
+   "pagina": "/sistema/produtos/auxiliares",
+   "label": "Preços e tabelas de preço",
+   "descricao": "Tabelas de preço, faixas por quantidade, tabela do cliente, reprecificação da nota (/catalog/price-tables*, /products/:id/price-tiers, /purchases/repricing/apply).",
+   "escopo": "empresa",
+   "leitura_ou_escrita": "gerir",
+   "perfis_de_hoje": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina"
+   ],
+   "desde": 1,
+   "modelos_padrao": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina"
+   ],
+   "rotas_que_cobram": 8,
+   "pontos_de_servico": 0,
+   "pontos_de_tela": 2,
+   "origem": "catalogo.json"
+  },
+  {
+   "code": "products.catalog.admin",
+   "area": "Produtos",
+   "pagina": "/sistema/produtos/categorias",
+   "label": "Catálogo (excluir/mesclar, confirmar importação)",
+   "descricao": "Excluir e mesclar categorias e marcas, confirmar lote de importação de planilha.",
+   "escopo": "empresa",
+   "leitura_ou_escrita": "gerir",
+   "perfis_de_hoje": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina"
+   ],
+   "desde": 1,
+   "modelos_padrao": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina"
+   ],
+   "rotas_que_cobram": 5,
+   "pontos_de_servico": 0,
+   "pontos_de_tela": 1,
+   "origem": "catalogo.json"
+  },
+  {
+   "code": "labels.products.print",
+   "area": "Produtos",
+   "pagina": "/sistema/etiquetas",
+   "label": "Etiquetas de produto",
+   "descricao": "Imprimir e reimprimir etiquetas de produto (POST /labels/products, /labels/sheet). Gerar ou gravar código de barras no cadastro — inclusive pela folha — exige products.manage (POST /products/:id/barcode).",
+   "escopo": "empresa",
+   "leitura_ou_escrita": "operar",
+   "perfis_de_hoje": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina",
+    "estoquista",
+    "operador_caixa_loja"
+   ],
+   "desde": 1,
+   "modelos_padrao": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina",
+    "estoquista",
+    "operador_caixa_loja"
+   ],
+   "rotas_que_cobram": 3,
+   "pontos_de_servico": 0,
+   "pontos_de_tela": 0,
+   "origem": "catalogo.json"
+  },
+  {
+   "code": "labels.equipment.print",
+   "area": "Oficina",
+   "pagina": "/sistema/etiquetas",
+   "label": "Etiquetas de equipamento (folha)",
+   "descricao": "Formatos e folha de etiquetas de equipamento (GET /labels/equipment/formats, POST /labels/equipment/sheet).",
+   "escopo": "empresa",
+   "leitura_ou_escrita": "operar",
+   "perfis_de_hoje": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina",
+    "estoquista",
+    "atendente",
+    "mecanico"
+   ],
+   "desde": 1,
+   "modelos_padrao": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina",
+    "estoquista",
+    "atendente",
+    "mecanico"
+   ],
+   "rotas_que_cobram": 2,
+   "pontos_de_servico": 0,
+   "pontos_de_tela": 1,
+   "origem": "catalogo.json"
+  },
+  {
+   "code": "workshop.equipment.label",
+   "area": "Oficina",
+   "pagina": "/sistema/oficina/os/:id",
+   "label": "Etiqueta do equipamento da OS",
+   "descricao": "Imprimir a etiqueta de um equipamento a partir da OS (POST /labels/equipment).",
+   "escopo": "bancada",
+   "leitura_ou_escrita": "operar",
+   "perfis_de_hoje": [
+    "admin_geral",
+    "gestor",
+    "gerente_oficina",
+    "operador_caixa_oficina",
+    "mecanico"
+   ],
+   "desde": 1,
+   "modelos_padrao": [
+    "admin_geral",
+    "gestor",
+    "gerente_oficina",
+    "operador_caixa_oficina",
+    "mecanico"
+   ],
+   "rotas_que_cobram": 1,
+   "pontos_de_servico": 0,
+   "pontos_de_tela": 0,
+   "origem": "catalogo.json"
+  },
+  {
+   "code": "inventory.view",
+   "area": "Estoque",
+   "pagina": "/sistema/estoque",
+   "label": "Estoque (ver)",
+   "descricao": "Posição, valorização, conferência, lotes e validade, saldos por local.",
+   "escopo": "empresa",
+   "leitura_ou_escrita": "ler",
+   "perfis_de_hoje": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina",
+    "estoquista",
+    "atendente"
+   ],
+   "desde": 1,
+   "modelos_padrao": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina",
+    "estoquista",
+    "atendente",
+    "estoque",
+    "gerente_operacao_loja"
+   ],
+   "rotas_que_cobram": 11,
+   "pontos_de_servico": 2,
+   "pontos_de_tela": 9,
+   "origem": "catalogo.json"
+  },
+  {
+   "code": "inventory.manage",
+   "area": "Estoque",
+   "pagina": "/sistema/estoque/*",
+   "label": "Estoque (movimentar)",
+   "descricao": "Movimentar, lotes, locais, transferências, contagem de inventário.",
+   "escopo": "empresa",
+   "leitura_ou_escrita": "gerir",
+   "perfis_de_hoje": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina",
+    "estoquista"
+   ],
+   "desde": 1,
+   "modelos_padrao": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina",
+    "estoquista",
+    "estoque",
+    "gerente_operacao_loja"
+   ],
+   "rotas_que_cobram": 13,
+   "pontos_de_servico": 0,
+   "pontos_de_tela": 6,
+   "origem": "catalogo.json"
+  },
+  {
+   "code": "inventory.adjust.approve",
+   "area": "Estoque",
+   "pagina": "/sistema/estoque/inventario",
+   "label": "Aplicar ajuste de inventário",
+   "descricao": "Aplicar e cancelar contagem, liberar reserva sem origem.",
+   "escopo": "empresa",
+   "leitura_ou_escrita": "gerir",
+   "perfis_de_hoje": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina"
+   ],
+   "desde": 1,
+   "modelos_padrao": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina",
+    "estoque",
+    "gerente_operacao_loja"
+   ],
+   "rotas_que_cobram": 3,
+   "pontos_de_servico": 0,
+   "pontos_de_tela": 2,
+   "origem": "catalogo.json"
+  },
+  {
+   "code": "inventory.cost.view",
+   "area": "Estoque",
+   "pagina": "/sistema/estoque",
+   "label": "Custo do estoque",
+   "descricao": "Ver custo e valorização mesmo com a política de gestão desligada (veCustoDoEstoque).",
+   "escopo": "empresa",
+   "leitura_ou_escrita": "ler",
+   "perfis_de_hoje": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina"
+   ],
+   "desde": 1,
+   "modelos_padrao": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina",
+    "gerente_operacao_loja"
+   ],
+   "rotas_que_cobram": 0,
+   "pontos_de_servico": 4,
+   "pontos_de_tela": 0,
+   "origem": "catalogo.json"
+  },
+  {
+   "code": "inventory.units.view",
+   "area": "Estoque",
+   "pagina": "/sistema/estoque/unidades",
+   "label": "Unidades serializadas (PJ Motors: chassi)",
+   "descricao": "Resumo e busca de unidades por número de série/chassi.",
+   "escopo": "empresa",
+   "leitura_ou_escrita": "ler",
+   "perfis_de_hoje": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina",
+    "estoquista",
+    "atendente"
+   ],
+   "desde": 1,
+   "modelos_padrao": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina",
+    "estoquista",
+    "atendente",
+    "estoque"
+   ],
+   "rotas_que_cobram": 3,
+   "pontos_de_servico": 0,
+   "pontos_de_tela": 3,
+   "origem": "catalogo.json"
+  },
+  {
+   "code": "inventory.units.manage",
+   "area": "Estoque",
+   "pagina": "/sistema/estoque/unidades",
+   "label": "Unidades serializadas (editar, baixar, ligar equipamento)",
+   "descricao": "PATCH/write-off de unidade, ligar a unidade a equipamento com plaquinha (/units/:id*).",
+   "escopo": "empresa",
+   "leitura_ou_escrita": "gerir",
+   "perfis_de_hoje": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina",
+    "estoquista"
+   ],
+   "desde": 1,
+   "modelos_padrao": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina",
+    "estoquista",
+    "estoque"
+   ],
+   "rotas_que_cobram": 6,
+   "pontos_de_servico": 0,
+   "pontos_de_tela": 1,
+   "origem": "catalogo.json"
+  },
+  {
+   "code": "purchases.view",
+   "area": "Compras",
+   "pagina": "/sistema/compras/*",
+   "label": "Compras (ver)",
+   "descricao": "Pedidos de compra, fornecedores, transportadoras, DF-e, devoluções, caixa de e-mail de NF-e, configuração da entrada (leitura).",
+   "escopo": "empresa",
+   "leitura_ou_escrita": "ler",
+   "perfis_de_hoje": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina",
+    "estoquista"
+   ],
+   "desde": 1,
+   "modelos_padrao": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina",
+    "estoquista"
+   ],
+   "rotas_que_cobram": 16,
+   "pontos_de_servico": 0,
+   "pontos_de_tela": 20,
+   "origem": "catalogo.json"
+  },
+  {
+   "code": "purchases.receive",
+   "area": "Compras",
+   "pagina": "/sistema/compras/entrada-notas",
+   "label": "Entrada de notas",
+   "descricao": "Importar XML/DF-e, conferir, vincular e confirmar a nota, amarrar a pedido, entrada manual.",
+   "escopo": "empresa",
+   "leitura_ou_escrita": "operar",
+   "perfis_de_hoje": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina",
+    "estoquista"
+   ],
+   "desde": 1,
+   "modelos_padrao": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina",
+    "estoquista"
+   ],
+   "rotas_que_cobram": 15,
+   "pontos_de_servico": 0,
+   "pontos_de_tela": 7,
+   "origem": "catalogo.json"
+  },
+  {
+   "code": "purchases.manage",
+   "area": "Compras",
+   "pagina": "/sistema/compras/*",
+   "label": "Compras (gerir)",
+   "descricao": "Pedidos de compra, fornecedores, transportadoras, manifestação, conta a pagar da nota, estorno, devolução ao fornecedor, caixa de e-mail.",
+   "escopo": "empresa",
+   "leitura_ou_escrita": "gerir",
+   "perfis_de_hoje": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina"
+   ],
+   "desde": 1,
+   "modelos_padrao": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina"
+   ],
+   "rotas_que_cobram": 22,
+   "pontos_de_servico": 0,
+   "pontos_de_tela": 5,
+   "origem": "catalogo.json"
+  },
+  {
+   "code": "finance.view",
+   "area": "Financeiro",
+   "pagina": "/sistema/financeiro",
+   "label": "Financeiro (ver)",
+   "descricao": "Lançamentos, contas a pagar/receber, DRE, categorias, centros de custo, cobranças do título.",
+   "escopo": "empresa",
+   "leitura_ou_escrita": "ler",
+   "perfis_de_hoje": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina",
+    "estoquista",
+    "atendente"
+   ],
+   "desde": 1,
+   "modelos_padrao": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina",
+    "estoquista",
+    "atendente",
+    "financeiro_relatorios",
+    "gerente_operacao_loja"
+   ],
+   "rotas_que_cobram": 8,
+   "pontos_de_servico": 0,
+   "pontos_de_tela": 9,
+   "origem": "catalogo.json"
+  },
+  {
+   "code": "finance.advanced.view",
+   "area": "Financeiro",
+   "pagina": "/sistema/financeiro/fluxo-de-caixa",
+   "label": "Fluxo de caixa e saldos",
+   "descricao": "Fluxo de caixa projetado, saldos das contas, passivo de crédito de cliente, baixas legadas.",
+   "escopo": "empresa",
+   "leitura_ou_escrita": "ler",
+   "perfis_de_hoje": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina"
+   ],
+   "desde": 1,
+   "modelos_padrao": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina",
+    "financeiro_relatorios",
+    "gerente_operacao_loja"
+   ],
+   "rotas_que_cobram": 4,
+   "pontos_de_servico": 0,
+   "pontos_de_tela": 6,
+   "origem": "catalogo.json"
+  },
+  {
+   "code": "finance.manage",
+   "area": "Financeiro",
+   "pagina": "/sistema/financeiro",
+   "label": "Financeiro (lançar e baixar)",
+   "descricao": "Lançar, baixar, estornar, estornar cobrança, contas bancárias, categorias e centros de custo.",
+   "escopo": "empresa",
+   "leitura_ou_escrita": "gerir",
+   "perfis_de_hoje": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina"
+   ],
+   "desde": 1,
+   "modelos_padrao": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina",
+    "financeiro_relatorios",
+    "gerente_operacao_loja"
+   ],
+   "rotas_que_cobram": 14,
+   "pontos_de_servico": 0,
+   "pontos_de_tela": 3,
+   "origem": "catalogo.json"
+  },
+  {
+   "code": "finance.commissions.manage",
+   "area": "Financeiro",
+   "pagina": "/sistema/financeiro/comissoes",
+   "label": "Comissões",
+   "descricao": "Grupos, faixas e apuração de comissão por vendedor.",
+   "escopo": "empresa",
+   "leitura_ou_escrita": "gerir",
+   "perfis_de_hoje": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina"
+   ],
+   "desde": 1,
+   "modelos_padrao": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina",
+    "financeiro_relatorios"
+   ],
+   "rotas_que_cobram": 10,
+   "pontos_de_servico": 0,
+   "pontos_de_tela": 4,
+   "origem": "catalogo.json"
+  },
+  {
+   "code": "finance.acquirers.manage",
+   "area": "Financeiro",
+   "pagina": "/sistema/financeiro/operadoras",
+   "label": "Operadoras de cartão",
+   "descricao": "Taxas e prazos das operadoras.",
+   "escopo": "empresa",
+   "leitura_ou_escrita": "gerir",
+   "perfis_de_hoje": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina"
+   ],
+   "desde": 1,
+   "modelos_padrao": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina",
+    "financeiro_relatorios"
+   ],
+   "rotas_que_cobram": 6,
+   "pontos_de_servico": 0,
+   "pontos_de_tela": 4,
+   "origem": "catalogo.json"
+  },
+  {
+   "code": "finance.bank_reconciliation.manage",
+   "area": "Financeiro",
+   "pagina": "/sistema/financeiro/conciliacao",
+   "label": "Conciliação bancária",
+   "descricao": "Extrato do banco × financeiro.",
+   "escopo": "empresa",
+   "leitura_ou_escrita": "gerir",
+   "perfis_de_hoje": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina"
+   ],
+   "desde": 1,
+   "modelos_padrao": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina",
+    "financeiro_relatorios"
+   ],
+   "rotas_que_cobram": 7,
+   "pontos_de_servico": 0,
+   "pontos_de_tela": 4,
+   "origem": "catalogo.json"
+  },
+  {
+   "code": "reports.central.view",
+   "area": "Relatórios",
+   "pagina": "/sistema/relatorios/central",
+   "label": "Central de relatórios",
+   "descricao": "Relatórios que juntam custo, comissão e margem (GET /core/reports*).",
+   "escopo": "empresa",
+   "leitura_ou_escrita": "ler",
+   "perfis_de_hoje": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina"
+   ],
+   "desde": 1,
+   "modelos_padrao": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina",
+    "financeiro_relatorios"
+   ],
+   "rotas_que_cobram": 2,
+   "pontos_de_servico": 0,
+   "pontos_de_tela": 5,
+   "origem": "catalogo.json"
+  },
+  {
+   "code": "reports.bi.view",
+   "area": "Relatórios",
+   "pagina": "/sistema/relatorios/bi",
+   "label": "BI",
+   "descricao": "Comparativos por operação, produto, marca e margem (GET /core/insights/*). Compara só empresas em que a pessoa também tem esta capability.",
+   "escopo": "empresa",
+   "leitura_ou_escrita": "ler",
+   "perfis_de_hoje": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina"
+   ],
+   "desde": 1,
+   "modelos_padrao": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina",
+    "financeiro_relatorios"
+   ],
+   "rotas_que_cobram": 4,
+   "pontos_de_servico": 7,
+   "pontos_de_tela": 4,
+   "origem": "catalogo.json"
+  },
+  {
+   "code": "fiscal.view",
+   "area": "Fiscal",
+   "pagina": "/sistema/fiscal/*",
+   "label": "Fiscal (ver)",
+   "descricao": "Configuração, prontidão, fila, séries, inutilizações, contingência, conciliação, XML, NFS-e (leitura).",
+   "escopo": "empresa",
+   "leitura_ou_escrita": "ler",
+   "perfis_de_hoje": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina"
+   ],
+   "desde": 1,
+   "modelos_padrao": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina"
+   ],
+   "rotas_que_cobram": 19,
+   "pontos_de_servico": 2,
+   "pontos_de_tela": 9,
+   "origem": "catalogo.json"
+  },
+  {
+   "code": "fiscal.manage",
+   "area": "Fiscal",
+   "pagina": "/sistema/fiscal/documentos",
+   "label": "Fiscal (operar documentos)",
+   "descricao": "Transmitir, reenfileirar, drenar fila, entrar/sair de contingência, reler notas para classificação.",
+   "escopo": "empresa",
+   "leitura_ou_escrita": "gerir",
+   "perfis_de_hoje": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina"
+   ],
+   "desde": 1,
+   "modelos_padrao": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina"
+   ],
+   "rotas_que_cobram": 6,
+   "pontos_de_servico": 0,
+   "pontos_de_tela": 0,
+   "origem": "catalogo.json"
+  },
+  {
+   "code": "fiscal.config.manage",
+   "area": "Fiscal",
+   "pagina": "/sistema/fiscal/configuracao",
+   "label": "Configuração fiscal",
+   "descricao": "Dados fiscais da empresa, séries, configuração de NFS-e.",
+   "escopo": "empresa",
+   "leitura_ou_escrita": "gerir",
+   "perfis_de_hoje": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina"
+   ],
+   "desde": 1,
+   "modelos_padrao": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina"
+   ],
+   "rotas_que_cobram": 4,
+   "pontos_de_servico": 1,
+   "pontos_de_tela": 0,
+   "origem": "catalogo.json"
+  },
+  {
+   "code": "fiscal.csc.manage",
+   "area": "Fiscal",
+   "pagina": "/sistema/fiscal/configuracao",
+   "label": "CSC da NFC-e",
+   "descricao": "Ver e gravar o CSC (GET/POST /core/fiscal/nfce/csc).",
+   "escopo": "empresa",
+   "leitura_ou_escrita": "gerir",
+   "perfis_de_hoje": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja"
+   ],
+   "desde": 1,
+   "modelos_padrao": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja"
+   ],
+   "rotas_que_cobram": 2,
+   "pontos_de_servico": 0,
+   "pontos_de_tela": 0,
+   "origem": "catalogo.json"
+  },
+  {
+   "code": "fiscal.documents.cancel",
+   "area": "Fiscal",
+   "pagina": "/sistema/fiscal/documentos",
+   "label": "Cancelar nota, CC-e e inutilizar",
+   "descricao": "Cancelar documento, carta de correção, inutilizar numeração, registrar cancelamento de NFS-e.",
+   "escopo": "empresa",
+   "leitura_ou_escrita": "gerir",
+   "perfis_de_hoje": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina"
+   ],
+   "desde": 1,
+   "modelos_padrao": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina"
+   ],
+   "rotas_que_cobram": 4,
+   "pontos_de_servico": 1,
+   "pontos_de_tela": 0,
+   "origem": "catalogo.json"
+  },
+  {
+   "code": "fiscal.sale.emit",
+   "area": "Fiscal",
+   "pagina": "/pdv, /sistema/fiscal/documentos",
+   "label": "Emitir a nota da venda",
+   "descricao": "Emitir NFC-e/NF-e/NFS-e da venda, ver DANFE/DANFCE e o resumo fiscal do PDV.",
+   "escopo": "empresa",
+   "leitura_ou_escrita": "operar",
+   "perfis_de_hoje": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina",
+    "operador_caixa",
+    "operador_caixa_loja",
+    "operador_caixa_oficina"
+   ],
+   "desde": 1,
+   "modelos_padrao": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina",
+    "operador_caixa",
+    "operador_caixa_loja",
+    "operador_caixa_oficina",
+    "somente_pdv",
+    "pdv_painel",
+    "gerente_operacao_loja"
+   ],
+   "rotas_que_cobram": 11,
+   "pontos_de_servico": 1,
+   "pontos_de_tela": 4,
+   "origem": "catalogo.json"
+  },
+  {
+   "code": "fiscal.products.classify",
+   "area": "Fiscal",
+   "pagina": "/sistema/fiscal/configuracao",
+   "label": "Classificação fiscal de produtos",
+   "descricao": "Pendências fiscais de produto e confirmação de classificação.",
+   "escopo": "empresa",
+   "leitura_ou_escrita": "operar",
+   "perfis_de_hoje": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina",
+    "estoquista"
+   ],
+   "desde": 1,
+   "modelos_padrao": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina",
+    "estoquista"
+   ],
+   "rotas_que_cobram": 8,
+   "pontos_de_servico": 0,
+   "pontos_de_tela": 0,
+   "origem": "catalogo.json"
+  },
+  {
+   "code": "accounting.closing.view",
+   "area": "Contabilidade",
+   "pagina": "/sistema/fiscal/fechamento",
+   "label": "Fechamento do mês (ver e baixar)",
+   "descricao": "Prévia, conferência e pacote do mês com os XML (GET /core/fiscal/closings/*). É o que o contador recebe.",
+   "escopo": "empresa",
+   "leitura_ou_escrita": "ler",
+   "perfis_de_hoje": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina",
+    "contador"
+   ],
+   "desde": 1,
+   "modelos_padrao": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina",
+    "contador"
+   ],
+   "rotas_que_cobram": 4,
+   "pontos_de_servico": 1,
+   "pontos_de_tela": 5,
+   "origem": "catalogo.json"
+  },
+  {
+   "code": "accounting.closing.send",
+   "area": "Contabilidade",
+   "pagina": "/sistema/fiscal/fechamento",
+   "label": "Enviar ao contador",
+   "descricao": "Enviar o pacote, destinatários e agenda do envio.",
+   "escopo": "empresa",
+   "leitura_ou_escrita": "gerir",
+   "perfis_de_hoje": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina"
+   ],
+   "desde": 1,
+   "modelos_padrao": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina"
+   ],
+   "rotas_que_cobram": 7,
+   "pontos_de_servico": 0,
+   "pontos_de_tela": 1,
+   "origem": "catalogo.json"
+  },
+  {
+   "code": "workshop.kanban.view",
+   "area": "Oficina",
+   "pagina": "/sistema/oficina",
+   "label": "Oficina: ver kanban e OS",
+   "descricao": "Kanban, OS, avisos, checklist, fotos e impressão da OS. Mecânico: só nas bancadas em que é membro.",
+   "escopo": "bancada",
+   "leitura_ou_escrita": "ler",
+   "perfis_de_hoje": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina",
+    "estoquista",
+    "atendente",
+    "operador_caixa",
+    "operador_caixa_loja",
+    "operador_caixa_oficina",
+    "mecanico"
+   ],
+   "desde": 1,
+   "modelos_padrao": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina",
+    "estoquista",
+    "atendente",
+    "operador_caixa",
+    "operador_caixa_loja",
+    "operador_caixa_oficina",
+    "mecanico",
+    "tecnico_oficina",
+    "oficina_consulta"
+   ],
+   "rotas_que_cobram": 10,
+   "pontos_de_servico": 8,
+   "pontos_de_tela": 5,
+   "origem": "catalogo.json"
+  },
+  {
+   "code": "workshop.orders.open",
+   "area": "Oficina",
+   "pagina": "/sistema/oficina",
+   "label": "Abrir OS e atender",
+   "descricao": "Abrir OS, cadastrar equipamento, comentar, fotos, checklist (POST /core/workshop/orders, /equipment, /comments, /photos, /checklist).",
+   "escopo": "bancada",
+   "leitura_ou_escrita": "operar",
+   "perfis_de_hoje": [
+    "admin_geral",
+    "gestor",
+    "gerente_oficina",
+    "atendente",
+    "operador_caixa_oficina",
+    "mecanico"
+   ],
+   "desde": 1,
+   "modelos_padrao": [
+    "admin_geral",
+    "gestor",
+    "gerente_oficina",
+    "atendente",
+    "operador_caixa_oficina",
+    "mecanico",
+    "tecnico_oficina"
+   ],
+   "rotas_que_cobram": 9,
+   "pontos_de_servico": 11,
+   "pontos_de_tela": 4,
+   "origem": "catalogo.json"
+  },
+  {
+   "code": "workshop.orders.move",
+   "area": "Oficina",
+   "pagina": "/sistema/oficina",
+   "label": "Mover OS no kanban",
+   "descricao": "POST /core/workshop/orders/:id/move.",
+   "escopo": "bancada",
+   "leitura_ou_escrita": "operar",
+   "perfis_de_hoje": [
+    "admin_geral",
+    "gestor",
+    "gerente_oficina",
+    "operador_caixa_oficina",
+    "mecanico"
+   ],
+   "desde": 1,
+   "modelos_padrao": [
+    "admin_geral",
+    "gestor",
+    "gerente_oficina",
+    "operador_caixa_oficina",
+    "mecanico",
+    "tecnico_oficina"
+   ],
+   "rotas_que_cobram": 1,
+   "pontos_de_servico": 7,
+   "pontos_de_tela": 0,
+   "origem": "catalogo.json"
+  },
+  {
+   "code": "workshop.orders.assume",
+   "area": "Oficina",
+   "pagina": "/sistema/oficina/os/:id",
+   "label": "Assumir e liberar OS",
+   "descricao": "POST /core/workshop/orders/:id/assume e /release.",
+   "escopo": "bancada",
+   "leitura_ou_escrita": "operar",
+   "perfis_de_hoje": [
+    "admin_geral",
+    "gestor",
+    "gerente_oficina",
+    "mecanico"
+   ],
+   "desde": 1,
+   "modelos_padrao": [
+    "admin_geral",
+    "gestor",
+    "gerente_oficina",
+    "mecanico",
+    "tecnico_oficina"
+   ],
+   "rotas_que_cobram": 2,
+   "pontos_de_servico": 7,
+   "pontos_de_tela": 2,
+   "origem": "catalogo.json"
+  },
+  {
+   "code": "workshop.orders.plan",
+   "area": "Oficina",
+   "pagina": "/sistema/oficina/os/:id",
+   "label": "Planejar OS",
+   "descricao": "Plano de serviço e remoção de foto (PATCH /plan, DELETE /photos/:id).",
+   "escopo": "bancada",
+   "leitura_ou_escrita": "operar",
+   "perfis_de_hoje": [
+    "admin_geral",
+    "gestor",
+    "gerente_oficina",
+    "mecanico"
+   ],
+   "desde": 1,
+   "modelos_padrao": [
+    "admin_geral",
+    "gestor",
+    "gerente_oficina",
+    "mecanico",
+    "tecnico_oficina"
+   ],
+   "rotas_que_cobram": 2,
+   "pontos_de_servico": 2,
+   "pontos_de_tela": 0,
+   "origem": "catalogo.json"
+  },
+  {
+   "code": "workshop.parts.use",
+   "area": "Oficina",
+   "pagina": "/sistema/oficina/os/:id",
+   "label": "Peças na OS",
+   "descricao": "Lançar e devolver peça na OS.",
+   "escopo": "bancada",
+   "leitura_ou_escrita": "operar",
+   "perfis_de_hoje": [
+    "admin_geral",
+    "gestor",
+    "gerente_oficina",
+    "mecanico"
+   ],
+   "desde": 1,
+   "modelos_padrao": [
+    "admin_geral",
+    "gestor",
+    "gerente_oficina",
+    "mecanico",
+    "tecnico_oficina"
+   ],
+   "rotas_que_cobram": 4,
+   "pontos_de_servico": 5,
+   "pontos_de_tela": 1,
+   "origem": "catalogo.json"
+  },
+  {
+   "code": "workshop.labor.manage",
+   "area": "Oficina",
+   "pagina": "/sistema/oficina/os/:id",
+   "label": "Mão de obra na OS",
+   "descricao": "POST /core/workshop/orders/:id/labor.",
+   "escopo": "bancada",
+   "leitura_ou_escrita": "operar",
+   "perfis_de_hoje": [
+    "admin_geral",
+    "gestor",
+    "gerente_oficina",
+    "mecanico"
+   ],
+   "desde": 1,
+   "modelos_padrao": [
+    "admin_geral",
+    "gestor",
+    "gerente_oficina",
+    "mecanico",
+    "tecnico_oficina"
+   ],
+   "rotas_que_cobram": 1,
+   "pontos_de_servico": 2,
+   "pontos_de_tela": 0,
+   "origem": "catalogo.json"
+  },
+  {
+   "code": "workshop.orders.complete",
+   "area": "Oficina",
+   "pagina": "/sistema/oficina/os/:id",
+   "label": "Concluir OS",
+   "descricao": "POST /core/workshop/orders/:id/complete.",
+   "escopo": "bancada",
+   "leitura_ou_escrita": "operar",
+   "perfis_de_hoje": [
+    "admin_geral",
+    "gestor",
+    "gerente_oficina",
+    "mecanico"
+   ],
+   "desde": 1,
+   "modelos_padrao": [
+    "admin_geral",
+    "gestor",
+    "gerente_oficina",
+    "mecanico",
+    "tecnico_oficina"
+   ],
+   "rotas_que_cobram": 1,
+   "pontos_de_servico": 2,
+   "pontos_de_tela": 0,
+   "origem": "catalogo.json"
+  },
+  {
+   "code": "workshop.quote.request",
+   "area": "Oficina",
+   "pagina": "/sistema/oficina/os/:id",
+   "label": "Orçamento da OS",
+   "descricao": "Pedir aprovação e registrar a decisão do cliente.",
+   "escopo": "bancada",
+   "leitura_ou_escrita": "operar",
+   "perfis_de_hoje": [
+    "admin_geral",
+    "gestor",
+    "gerente_oficina",
+    "atendente",
+    "mecanico"
+   ],
+   "desde": 1,
+   "modelos_padrao": [
+    "admin_geral",
+    "gestor",
+    "gerente_oficina",
+    "atendente",
+    "mecanico",
+    "tecnico_oficina"
+   ],
+   "rotas_que_cobram": 2,
+   "pontos_de_servico": 2,
+   "pontos_de_tela": 1,
+   "origem": "catalogo.json"
+  },
+  {
+   "code": "workshop.checkout",
+   "area": "Oficina",
+   "pagina": "/sistema/oficina, /pdv",
+   "label": "Checkout da OS",
+   "descricao": "Cobrar a OS pronta, fila de pagamento, pedir estorno (POST /checkout, GET /pending-payment, POST /estorno).",
+   "escopo": "bancada",
+   "leitura_ou_escrita": "operar",
+   "perfis_de_hoje": [
+    "admin_geral",
+    "gestor",
+    "gerente_oficina",
+    "operador_caixa_oficina"
+   ],
+   "desde": 1,
+   "modelos_padrao": [
+    "admin_geral",
+    "gestor",
+    "gerente_oficina",
+    "operador_caixa_oficina"
+   ],
+   "rotas_que_cobram": 3,
+   "pontos_de_servico": 1,
+   "pontos_de_tela": 2,
+   "origem": "catalogo.json"
+  },
+  {
+   "code": "workshop.checkout.refund",
+   "area": "Oficina",
+   "pagina": "/sistema/oficina",
+   "label": "Estornar OS sem liberação",
+   "descricao": "Estorno direto do pagamento da OS, sem pedir senha de gestor (comLiberacaoPontual de /estorno).",
+   "escopo": "bancada",
+   "leitura_ou_escrita": "gerir",
+   "perfis_de_hoje": [
+    "admin_geral",
+    "gestor",
+    "gerente_oficina"
+   ],
+   "desde": 1,
+   "modelos_padrao": [
+    "admin_geral",
+    "gestor",
+    "gerente_oficina"
+   ],
+   "rotas_que_cobram": 0,
+   "pontos_de_servico": 1,
+   "pontos_de_tela": 0,
+   "origem": "catalogo.json"
+  },
+  {
+   "code": "workshop.admin",
+   "area": "Oficina",
+   "pagina": "/sistema/oficina",
+   "label": "Gerência da oficina",
+   "descricao": "SLA, regularizar OS, desfazer troca de dono do equipamento.",
+   "escopo": "bancada",
+   "leitura_ou_escrita": "gerir",
+   "perfis_de_hoje": [
+    "admin_geral",
+    "gestor",
+    "gerente_oficina"
+   ],
+   "desde": 1,
+   "modelos_padrao": [
+    "admin_geral",
+    "gestor",
+    "gerente_oficina"
+   ],
+   "rotas_que_cobram": 4,
+   "pontos_de_servico": 21,
+   "pontos_de_tela": 3,
+   "origem": "catalogo.json"
+  },
+  {
+   "code": "workshop.tickets.manage",
+   "area": "Oficina",
+   "pagina": "/sistema/oficina",
+   "label": "Chamados",
+   "descricao": "Chamados abertos pelo cliente: ver, converter em OS, encerrar.",
+   "escopo": "bancada",
+   "leitura_ou_escrita": "operar",
+   "perfis_de_hoje": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina",
+    "atendente",
+    "mecanico"
+   ],
+   "desde": 1,
+   "modelos_padrao": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina",
+    "atendente",
+    "mecanico"
+   ],
+   "rotas_que_cobram": 3,
+   "pontos_de_servico": 1,
+   "pontos_de_tela": 0,
+   "origem": "catalogo.json"
+  },
+  {
+   "code": "workshop.parts.view",
+   "area": "Oficina",
+   "pagina": "/sistema/oficina/pecas",
+   "label": "Peças (ver)",
+   "descricao": "Estoque da bancada e movimentações de peça.",
+   "escopo": "bancada",
+   "leitura_ou_escrita": "ler",
+   "perfis_de_hoje": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina",
+    "estoquista",
+    "atendente",
+    "mecanico"
+   ],
+   "desde": 1,
+   "modelos_padrao": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina",
+    "estoquista",
+    "atendente",
+    "mecanico"
+   ],
+   "rotas_que_cobram": 3,
+   "pontos_de_servico": 1,
+   "pontos_de_tela": 4,
+   "origem": "catalogo.json"
+  },
+  {
+   "code": "workshop.parts.manage",
+   "area": "Oficina",
+   "pagina": "/sistema/oficina/pecas",
+   "label": "Peças (cadastrar, repor)",
+   "descricao": "POST/PATCH /core/workshop/parts, reposição.",
+   "escopo": "bancada",
+   "leitura_ou_escrita": "gerir",
+   "perfis_de_hoje": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina",
+    "estoquista"
+   ],
+   "desde": 1,
+   "modelos_padrao": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina",
+    "estoquista"
+   ],
+   "rotas_que_cobram": 4,
+   "pontos_de_servico": 1,
+   "pontos_de_tela": 1,
+   "origem": "catalogo.json"
+  },
+  {
+   "code": "workshop.parts.cost.view",
+   "area": "Oficina",
+   "pagina": "/sistema/oficina/pecas",
+   "label": "Custo da peça",
+   "descricao": "Sem ela o custo não sai do servidor (podeVerCusto).",
+   "escopo": "bancada",
+   "leitura_ou_escrita": "ler",
+   "perfis_de_hoje": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina",
+    "estoquista"
+   ],
+   "desde": 1,
+   "modelos_padrao": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina",
+    "estoquista"
+   ],
+   "rotas_que_cobram": 0,
+   "pontos_de_servico": 5,
+   "pontos_de_tela": 0,
+   "origem": "catalogo.json"
+  },
+  {
+   "code": "workshop.equipment.view",
+   "area": "Oficina",
+   "pagina": "/sistema/equipamentos",
+   "label": "Equipamentos (ver)",
+   "descricao": "Lista e ficha de equipamento, fotos.",
+   "escopo": "bancada",
+   "leitura_ou_escrita": "ler",
+   "perfis_de_hoje": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina",
+    "estoquista",
+    "atendente",
+    "operador_caixa",
+    "operador_caixa_loja",
+    "operador_caixa_oficina",
+    "mecanico"
+   ],
+   "desde": 1,
+   "modelos_padrao": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina",
+    "estoquista",
+    "atendente",
+    "operador_caixa",
+    "operador_caixa_loja",
+    "operador_caixa_oficina",
+    "mecanico",
+    "tecnico_oficina",
+    "oficina_consulta"
+   ],
+   "rotas_que_cobram": 3,
+   "pontos_de_servico": 1,
+   "pontos_de_tela": 5,
+   "origem": "catalogo.json"
+  },
+  {
+   "code": "workshop.equipment.manage",
+   "area": "Oficina",
+   "pagina": "/sistema/equipamentos/:id",
+   "label": "Equipamentos (editar)",
+   "descricao": "Editar ficha e identidade, remover foto, trocar plaquinha.",
+   "escopo": "bancada",
+   "leitura_ou_escrita": "operar",
+   "perfis_de_hoje": [
+    "admin_geral",
+    "gestor",
+    "gerente_oficina",
+    "mecanico"
+   ],
+   "desde": 1,
+   "modelos_padrao": [
+    "admin_geral",
+    "gestor",
+    "gerente_oficina",
+    "mecanico"
+   ],
+   "rotas_que_cobram": 4,
+   "pontos_de_servico": 0,
+   "pontos_de_tela": 3,
+   "origem": "catalogo.json"
+  },
+  {
+   "code": "workshop.equipment.owner",
+   "area": "Oficina",
+   "pagina": "/sistema/equipamentos/:id",
+   "label": "Dono do equipamento",
+   "descricao": "Registrar o comprador como dono (PJ Motors vende a moto).",
+   "escopo": "empresa",
+   "leitura_ou_escrita": "operar",
+   "perfis_de_hoje": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina",
+    "operador_caixa_loja"
+   ],
+   "desde": 1,
+   "modelos_padrao": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina",
+    "operador_caixa_loja"
+   ],
+   "rotas_que_cobram": 1,
+   "pontos_de_servico": 0,
+   "pontos_de_tela": 0,
+   "origem": "catalogo.json"
+  },
+  {
+   "code": "workshop.tags.view",
+   "area": "Oficina",
+   "pagina": "/sistema/equipamentos/plaquinhas",
+   "label": "Plaquinhas (ver)",
+   "descricao": "Pool e lotes de plaquinhas.",
+   "escopo": "empresa",
+   "leitura_ou_escrita": "ler",
+   "perfis_de_hoje": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina",
+    "estoquista",
+    "atendente",
+    "operador_caixa_oficina",
+    "mecanico"
+   ],
+   "desde": 1,
+   "modelos_padrao": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina",
+    "estoquista",
+    "atendente",
+    "operador_caixa_oficina",
+    "mecanico"
+   ],
+   "rotas_que_cobram": 2,
+   "pontos_de_servico": 0,
+   "pontos_de_tela": 4,
+   "origem": "catalogo.json"
+  },
+  {
+   "code": "workshop.tags.print",
+   "area": "Oficina",
+   "pagina": "/sistema/equipamentos/plaquinhas",
+   "label": "Plaquinhas (gerar e imprimir)",
+   "descricao": "Gerar lote, folha, avaria.",
+   "escopo": "empresa",
+   "leitura_ou_escrita": "operar",
+   "perfis_de_hoje": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina",
+    "estoquista",
+    "mecanico"
+   ],
+   "desde": 1,
+   "modelos_padrao": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina",
+    "estoquista",
+    "mecanico"
+   ],
+   "rotas_que_cobram": 4,
+   "pontos_de_servico": 0,
+   "pontos_de_tela": 1,
+   "origem": "catalogo.json"
+  },
+  {
+   "code": "workshop.tags.release",
+   "area": "Oficina",
+   "pagina": "/sistema/equipamentos/plaquinhas",
+   "label": "Plaquinhas (liberar para uso)",
+   "descricao": "POST /core/equipment-tags/release.",
+   "escopo": "empresa",
+   "leitura_ou_escrita": "gerir",
+   "perfis_de_hoje": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina",
+    "estoquista"
+   ],
+   "desde": 1,
+   "modelos_padrao": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina",
+    "estoquista"
+   ],
+   "rotas_que_cobram": 1,
+   "pontos_de_servico": 0,
+   "pontos_de_tela": 1,
+   "origem": "catalogo.json"
+  },
+  {
+   "code": "workshop.tags.layout",
+   "area": "Oficina",
+   "pagina": "/sistema/equipamentos/plaquinhas",
+   "label": "Plaquinhas (layout)",
+   "descricao": "PUT /core/equipment-tags/layout.",
+   "escopo": "empresa",
+   "leitura_ou_escrita": "gerir",
+   "perfis_de_hoje": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina"
+   ],
+   "desde": 1,
+   "modelos_padrao": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina"
+   ],
+   "rotas_que_cobram": 1,
+   "pontos_de_servico": 0,
+   "pontos_de_tela": 1,
+   "origem": "catalogo.json"
+  },
+  {
+   "code": "workshop.benches.view",
+   "area": "Oficina",
+   "pagina": "/sistema/oficina/oficinas",
+   "label": "Oficinas e bancadas (ver)",
+   "descricao": "GET /core/workshops, /workshops/brands.",
+   "escopo": "empresa",
+   "leitura_ou_escrita": "ler",
+   "perfis_de_hoje": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina",
+    "estoquista",
+    "atendente"
+   ],
+   "desde": 1,
+   "modelos_padrao": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina",
+    "estoquista",
+    "atendente"
+   ],
+   "rotas_que_cobram": 2,
+   "pontos_de_servico": 0,
+   "pontos_de_tela": 3,
+   "origem": "catalogo.json"
+  },
+  {
+   "code": "workshop.benches.manage",
+   "area": "Oficina",
+   "pagina": "/sistema/oficina/oficinas",
+   "label": "Oficinas e bancadas (membros, marca)",
+   "descricao": "Quem trabalha em cada bancada e quem assina o papel.",
+   "escopo": "empresa",
+   "leitura_ou_escrita": "gerir",
+   "perfis_de_hoje": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina"
+   ],
+   "desde": 1,
+   "modelos_padrao": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina"
+   ],
+   "rotas_que_cobram": 4,
+   "pontos_de_servico": 0,
+   "pontos_de_tela": 0,
+   "origem": "catalogo.json"
+  },
+  {
+   "code": "rentals.view",
+   "area": "Locação",
+   "pagina": "/sistema/locacao/contratos",
+   "label": "Locação (ver)",
+   "descricao": "Contratos de locação.",
+   "escopo": "empresa",
+   "leitura_ou_escrita": "ler",
+   "perfis_de_hoje": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina",
+    "atendente",
+    "operador_caixa_loja"
+   ],
+   "desde": 1,
+   "modelos_padrao": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina",
+    "atendente",
+    "operador_caixa_loja"
+   ],
+   "rotas_que_cobram": 2,
+   "pontos_de_servico": 0,
+   "pontos_de_tela": 4,
+   "origem": "catalogo.json"
+  },
+  {
+   "code": "rentals.manage",
+   "area": "Locação",
+   "pagina": "/sistema/locacao/contratos",
+   "label": "Locação (contratar, devolver)",
+   "descricao": "POST /rentals, /rentals/:id/return.",
+   "escopo": "empresa",
+   "leitura_ou_escrita": "operar",
+   "perfis_de_hoje": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina",
+    "atendente"
+   ],
+   "desde": 1,
+   "modelos_padrao": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina",
+    "atendente"
+   ],
+   "rotas_que_cobram": 2,
+   "pontos_de_servico": 0,
+   "pontos_de_tela": 0,
+   "origem": "catalogo.json"
+  },
+  {
+   "code": "rentals.cancel",
+   "area": "Locação",
+   "pagina": "/sistema/locacao/contratos",
+   "label": "Cancelar locação",
+   "descricao": "POST /rentals/:id/cancel.",
+   "escopo": "empresa",
+   "leitura_ou_escrita": "gerir",
+   "perfis_de_hoje": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina"
+   ],
+   "desde": 1,
+   "modelos_padrao": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina"
+   ],
+   "rotas_que_cobram": 1,
+   "pontos_de_servico": 0,
+   "pontos_de_tela": 0,
+   "origem": "catalogo.json"
+  },
+  {
+   "code": "crm.view",
+   "area": "CRM",
+   "pagina": "/sistema/crm/*",
+   "label": "CRM (ver)",
+   "descricao": "Leads, oportunidades, resumo, programa de fidelidade.",
+   "escopo": "empresa",
+   "leitura_ou_escrita": "ler",
+   "perfis_de_hoje": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina",
+    "atendente",
+    "operador_caixa_loja"
+   ],
+   "desde": 1,
+   "modelos_padrao": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina",
+    "atendente",
+    "operador_caixa_loja"
+   ],
+   "rotas_que_cobram": 5,
+   "pontos_de_servico": 1,
+   "pontos_de_tela": 6,
+   "origem": "catalogo.json"
+  },
+  {
+   "code": "crm.leads.manage",
+   "area": "CRM",
+   "pagina": "/sistema/crm/leads",
+   "label": "Leads e oportunidades",
+   "descricao": "Registrar lead, mudar status, abrir oportunidade.",
+   "escopo": "empresa",
+   "leitura_ou_escrita": "operar",
+   "perfis_de_hoje": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina",
+    "atendente",
+    "operador_caixa_loja"
+   ],
+   "desde": 1,
+   "modelos_padrao": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina",
+    "atendente",
+    "operador_caixa_loja"
+   ],
+   "rotas_que_cobram": 3,
+   "pontos_de_servico": 0,
+   "pontos_de_tela": 0,
+   "origem": "catalogo.json"
+  },
+  {
+   "code": "crm.opportunities.close",
+   "area": "CRM",
+   "pagina": "/sistema/crm/leads",
+   "label": "Converter lead e fechar oportunidade",
+   "descricao": "POST /leads/:id/convert, /opportunities/:id/close.",
+   "escopo": "empresa",
+   "leitura_ou_escrita": "operar",
+   "perfis_de_hoje": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina",
+    "atendente"
+   ],
+   "desde": 1,
+   "modelos_padrao": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina",
+    "atendente"
+   ],
+   "rotas_que_cobram": 2,
+   "pontos_de_servico": 0,
+   "pontos_de_tela": 0,
+   "origem": "catalogo.json"
+  },
+  {
+   "code": "crm.loyalty.config",
+   "area": "CRM",
+   "pagina": "/sistema/crm/fidelidade",
+   "label": "Programa de fidelidade",
+   "descricao": "PUT /core/loyalty/program.",
+   "escopo": "empresa",
+   "leitura_ou_escrita": "gerir",
+   "perfis_de_hoje": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina"
+   ],
+   "desde": 1,
+   "modelos_padrao": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina"
+   ],
+   "rotas_que_cobram": 1,
+   "pontos_de_servico": 0,
+   "pontos_de_tela": 0,
+   "origem": "catalogo.json"
+  },
+  {
+   "code": "crm.loyalty.redeem",
+   "area": "CRM",
+   "pagina": "/pdv, /sistema/crm/fidelidade",
+   "label": "Resgatar pontos",
+   "descricao": "POST /core/loyalty/redeem.",
+   "escopo": "empresa",
+   "leitura_ou_escrita": "operar",
+   "perfis_de_hoje": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina",
+    "operador_caixa_loja"
+   ],
+   "desde": 1,
+   "modelos_padrao": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina",
+    "operador_caixa_loja"
+   ],
+   "rotas_que_cobram": 1,
+   "pontos_de_servico": 0,
+   "pontos_de_tela": 0,
+   "origem": "catalogo.json"
+  },
+  {
+   "code": "ecommerce.orders.view",
+   "area": "E-commerce",
+   "pagina": "/sistema/pedidos",
+   "label": "Pedidos online (ver)",
+   "descricao": "GET /core/orders*.",
+   "escopo": "empresa",
+   "leitura_ou_escrita": "ler",
+   "perfis_de_hoje": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina",
+    "estoquista",
+    "atendente"
+   ],
+   "desde": 1,
+   "modelos_padrao": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina",
+    "estoquista",
+    "atendente"
+   ],
+   "rotas_que_cobram": 2,
+   "pontos_de_servico": 0,
+   "pontos_de_tela": 3,
+   "origem": "catalogo.json"
+  },
+  {
+   "code": "ecommerce.orders.fulfill",
+   "area": "E-commerce",
+   "pagina": "/sistema/pedidos",
+   "label": "Separar e expedir pedido",
+   "descricao": "POST /core/orders/:id/fulfillment.",
+   "escopo": "empresa",
+   "leitura_ou_escrita": "operar",
+   "perfis_de_hoje": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "estoquista",
+    "atendente"
+   ],
+   "desde": 1,
+   "modelos_padrao": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "estoquista",
+    "atendente"
+   ],
+   "rotas_que_cobram": 1,
+   "pontos_de_servico": 0,
+   "pontos_de_tela": 0,
+   "origem": "catalogo.json"
+  },
+  {
+   "code": "ecommerce.orders.service",
+   "area": "E-commerce",
+   "pagina": "/sistema/pedidos",
+   "label": "Atender pedido (cancelar, decidir devolução)",
+   "descricao": "POST /orders/:id/cancel, /devolucao/solicitacoes/:id/decidir.",
+   "escopo": "empresa",
+   "leitura_ou_escrita": "operar",
+   "perfis_de_hoje": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "atendente"
+   ],
+   "desde": 1,
+   "modelos_padrao": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "atendente"
+   ],
+   "rotas_que_cobram": 2,
+   "pontos_de_servico": 0,
+   "pontos_de_tela": 0,
+   "origem": "catalogo.json"
+  },
+  {
+   "code": "ecommerce.orders.receive_return",
+   "area": "E-commerce",
+   "pagina": "/sistema/pedidos",
+   "label": "Receber devolução do pedido",
+   "descricao": "POST /orders/:id/devolucao/receber.",
+   "escopo": "empresa",
+   "leitura_ou_escrita": "operar",
+   "perfis_de_hoje": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "estoquista"
+   ],
+   "desde": 1,
+   "modelos_padrao": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "estoquista"
+   ],
+   "rotas_que_cobram": 1,
+   "pontos_de_servico": 0,
+   "pontos_de_tela": 0,
+   "origem": "catalogo.json"
+  },
+  {
+   "code": "ecommerce.orders.manage",
+   "area": "E-commerce",
+   "pagina": "/sistema/pedidos",
+   "label": "Pedidos online (gerir)",
+   "descricao": "Pagar, devolver, voltar a expedição, NF-e do pedido.",
+   "escopo": "empresa",
+   "leitura_ou_escrita": "gerir",
+   "perfis_de_hoje": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja"
+   ],
+   "desde": 1,
+   "modelos_padrao": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja"
+   ],
+   "rotas_que_cobram": 6,
+   "pontos_de_servico": 0,
+   "pontos_de_tela": 0,
+   "origem": "catalogo.json"
+  },
+  {
+   "code": "ecommerce.store.manage",
+   "area": "E-commerce",
+   "pagina": "/sistema/loja/*",
+   "label": "Administração da loja",
+   "descricao": "Vitrine, imagens, destaques, política de checkout, prontidão do dia 1.",
+   "escopo": "empresa",
+   "leitura_ou_escrita": "gerir",
+   "perfis_de_hoje": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina"
+   ],
+   "desde": 1,
+   "modelos_padrao": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina"
+   ],
+   "rotas_que_cobram": 8,
+   "pontos_de_servico": 0,
+   "pontos_de_tela": 6,
+   "origem": "catalogo.json"
+  },
+  {
+   "code": "ecommerce.shipping.manage",
+   "area": "E-commerce",
+   "pagina": "/sistema/loja/entrega",
+   "label": "Entrega da loja",
+   "descricao": "Se a loja entrega e por quanto (GET/PUT /core/shipping-settings).",
+   "escopo": "empresa",
+   "leitura_ou_escrita": "gerir",
+   "perfis_de_hoje": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina"
+   ],
+   "desde": 1,
+   "modelos_padrao": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina"
+   ],
+   "rotas_que_cobram": 2,
+   "pontos_de_servico": 0,
+   "pontos_de_tela": 4,
+   "origem": "catalogo.json"
+  },
+  {
+   "code": "ecommerce.emails.manage",
+   "area": "E-commerce",
+   "pagina": "/sistema/loja/emails",
+   "label": "E-mails da loja",
+   "descricao": "Fila, reenvio, envio e identidade de e-mail; prontidão de comunicações.",
+   "escopo": "empresa",
+   "leitura_ou_escrita": "gerir",
+   "perfis_de_hoje": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina"
+   ],
+   "desde": 1,
+   "modelos_padrao": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina"
+   ],
+   "rotas_que_cobram": 6,
+   "pontos_de_servico": 0,
+   "pontos_de_tela": 4,
+   "origem": "catalogo.json"
+  },
+  {
+   "code": "ecommerce.publish",
+   "area": "E-commerce",
+   "pagina": "/sistema/produtos/prontidao-online",
+   "label": "Publicar produtos prontos",
+   "descricao": "POST /core/products/publicar-prontos.",
+   "escopo": "empresa",
+   "leitura_ou_escrita": "gerir",
+   "perfis_de_hoje": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja"
+   ],
+   "desde": 1,
+   "modelos_padrao": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja"
+   ],
+   "rotas_que_cobram": 1,
+   "pontos_de_servico": 0,
+   "pontos_de_tela": 0,
+   "origem": "catalogo.json"
+  },
+  {
+   "code": "ecommerce.promotions.manage",
+   "area": "E-commerce",
+   "pagina": "/sistema/promocoes, /sistema/cupons",
+   "label": "Promoções e cupons",
+   "descricao": "Criar, editar e excluir promoção e cupom.",
+   "escopo": "empresa",
+   "leitura_ou_escrita": "gerir",
+   "perfis_de_hoje": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja"
+   ],
+   "desde": 1,
+   "modelos_padrao": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja"
+   ],
+   "rotas_que_cobram": 5,
+   "pontos_de_servico": 0,
+   "pontos_de_tela": 0,
+   "origem": "catalogo.json"
+  },
+  {
+   "code": "logistics.view",
+   "area": "Logística",
+   "pagina": "/sistema/loja/logistica",
+   "label": "Logística (ver)",
+   "descricao": "Envios, etiquetas, rastreio, transportadoras (leitura) — módulo logistics.",
+   "escopo": "empresa",
+   "leitura_ou_escrita": "ler",
+   "perfis_de_hoje": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "estoquista",
+    "atendente"
+   ],
+   "desde": 1,
+   "modelos_padrao": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "estoquista",
+    "atendente"
+   ],
+   "rotas_que_cobram": 8,
+   "pontos_de_servico": 2,
+   "pontos_de_tela": 0,
+   "origem": "catalogo.json"
+  },
+  {
+   "code": "logistics.manage",
+   "area": "Logística",
+   "pagina": "/sistema/loja/logistica",
+   "label": "Logística (cotar, etiquetar)",
+   "descricao": "Cotar frete, gerar etiqueta, cancelar envio, credencial de transportadora, homologação.",
+   "escopo": "empresa",
+   "leitura_ou_escrita": "gerir",
+   "perfis_de_hoje": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "estoquista"
+   ],
+   "desde": 1,
+   "modelos_padrao": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "estoquista"
+   ],
+   "rotas_que_cobram": 18,
+   "pontos_de_servico": 1,
+   "pontos_de_tela": 4,
+   "origem": "catalogo.json"
+  },
+  {
+   "code": "integrations.status.view",
+   "area": "Integrações",
+   "pagina": "/sistema/integracoes",
+   "label": "Integrações (estado)",
+   "descricao": "GET /core/integrations/status.",
+   "escopo": "empresa",
+   "leitura_ou_escrita": "ler",
+   "perfis_de_hoje": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina"
+   ],
+   "desde": 1,
+   "modelos_padrao": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina"
+   ],
+   "rotas_que_cobram": 1,
+   "pontos_de_servico": 0,
+   "pontos_de_tela": 3,
+   "origem": "catalogo.json"
+  },
+  {
+   "code": "integrations.asaas.view",
+   "area": "Integrações",
+   "pagina": "/sistema/integracoes/asaas",
+   "label": "Asaas (ver)",
+   "descricao": "Estado da conexão, cobranças e fila (módulo asaas, leitura).",
+   "escopo": "empresa",
+   "leitura_ou_escrita": "ler",
+   "perfis_de_hoje": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "atendente"
+   ],
+   "desde": 1,
+   "modelos_padrao": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "atendente"
+   ],
+   "rotas_que_cobram": 3,
+   "pontos_de_servico": 2,
+   "pontos_de_tela": 0,
+   "origem": "catalogo.json"
+  },
+  {
+   "code": "integrations.asaas.manage",
+   "area": "Integrações",
+   "pagina": "/sistema/integracoes/asaas",
+   "label": "Asaas (credencial, homologar, produção)",
+   "descricao": "Credenciais, webhook, homologação, ativar produção, cobrar e cancelar cobrança.",
+   "escopo": "empresa",
+   "leitura_ou_escrita": "gerir",
+   "perfis_de_hoje": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja"
+   ],
+   "desde": 1,
+   "modelos_padrao": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja"
+   ],
+   "rotas_que_cobram": 15,
+   "pontos_de_servico": 1,
+   "pontos_de_tela": 3,
+   "origem": "catalogo.json"
+  },
+  {
+   "code": "integrations.asaas.reconcile",
+   "area": "Integrações",
+   "pagina": "/sistema/integracoes/asaas/conciliacao",
+   "label": "Conciliação Asaas",
+   "descricao": "Extrato do provedor × financeiro.",
+   "escopo": "empresa",
+   "leitura_ou_escrita": "gerir",
+   "perfis_de_hoje": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina"
+   ],
+   "desde": 1,
+   "modelos_padrao": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina"
+   ],
+   "rotas_que_cobram": 3,
+   "pontos_de_servico": 0,
+   "pontos_de_tela": 4,
+   "origem": "catalogo.json"
+  },
+  {
+   "code": "integrations.card_terminal.view",
+   "area": "Integrações",
+   "pagina": "/sistema/configuracoes/maquininhas",
+   "label": "Maquininha (ver)",
+   "descricao": "Provedores, configurações, terminais, transações e comprovantes (módulo payment-terminal, leitura).",
+   "escopo": "empresa",
+   "leitura_ou_escrita": "ler",
+   "perfis_de_hoje": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "atendente",
+    "operador_caixa",
+    "operador_caixa_loja",
+    "operador_caixa_oficina"
+   ],
+   "desde": 1,
+   "modelos_padrao": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "atendente",
+    "operador_caixa",
+    "operador_caixa_loja",
+    "operador_caixa_oficina",
+    "somente_pdv",
+    "pdv_painel",
+    "gerente_operacao_loja"
+   ],
+   "rotas_que_cobram": 10,
+   "pontos_de_servico": 2,
+   "pontos_de_tela": 0,
+   "origem": "catalogo.json"
+  },
+  {
+   "code": "integrations.card_terminal.operate",
+   "area": "Integrações",
+   "pagina": "/pdv",
+   "label": "Maquininha (operar)",
+   "descricao": "Transação, cancelamento, estorno, reimpressão, recuperação (módulo payment-terminal, escrita).",
+   "escopo": "empresa",
+   "leitura_ou_escrita": "operar",
+   "perfis_de_hoje": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "operador_caixa",
+    "operador_caixa_loja",
+    "operador_caixa_oficina"
+   ],
+   "desde": 1,
+   "modelos_padrao": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "operador_caixa",
+    "operador_caixa_loja",
+    "operador_caixa_oficina",
+    "somente_pdv",
+    "pdv_painel",
+    "gerente_operacao_loja"
+   ],
+   "rotas_que_cobram": 10,
+   "pontos_de_servico": 2,
+   "pontos_de_tela": 0,
+   "origem": "catalogo.json"
+  },
+  {
+   "code": "integrations.card_terminal.manage",
+   "area": "Integrações",
+   "pagina": "/sistema/configuracoes/maquininhas",
+   "label": "Maquininha (configurar)",
+   "descricao": "Cadastrar, credencial, parear e revogar agente, homologar, consultar desfecho.",
+   "escopo": "empresa",
+   "leitura_ou_escrita": "gerir",
+   "perfis_de_hoje": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja"
+   ],
+   "desde": 1,
+   "modelos_padrao": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja"
+   ],
+   "rotas_que_cobram": 11,
+   "pontos_de_servico": 2,
+   "pontos_de_tela": 0,
+   "origem": "catalogo.json"
+  },
+  {
+   "code": "integrations.sync.operate",
+   "area": "Integrações",
+   "pagina": "/sistema/integracoes/central",
+   "label": "Banco central (sincronizar)",
+   "descricao": "Estado e rodada da sincronização com a central.",
+   "escopo": "empresa",
+   "leitura_ou_escrita": "operar",
+   "perfis_de_hoje": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina"
+   ],
+   "desde": 1,
+   "modelos_padrao": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina"
+   ],
+   "rotas_que_cobram": 2,
+   "pontos_de_servico": 0,
+   "pontos_de_tela": 4,
+   "origem": "catalogo.json"
+  },
+  {
+   "code": "integrations.sync.admin",
+   "area": "Integrações",
+   "pagina": "/sistema/integracoes/central",
+   "label": "Banco central (carga, sonda, reviver)",
+   "descricao": "POST /core/sync/probe|bootstrap|revive; conferir esquema.",
+   "escopo": "empresa",
+   "leitura_ou_escrita": "gerir",
+   "perfis_de_hoje": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja"
+   ],
+   "desde": 1,
+   "modelos_padrao": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja"
+   ],
+   "rotas_que_cobram": 3,
+   "pontos_de_servico": 1,
+   "pontos_de_tela": 0,
+   "origem": "catalogo.json"
+  },
+  {
+   "code": "settings.printers.view",
+   "area": "Configurações",
+   "pagina": "/sistema/configuracoes/impressoras",
+   "label": "Impressoras (ver)",
+   "descricao": "GET /core/print/printers, /print/readiness.",
+   "escopo": "empresa",
+   "leitura_ou_escrita": "ler",
+   "perfis_de_hoje": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina",
+    "estoquista",
+    "atendente"
+   ],
+   "desde": 1,
+   "modelos_padrao": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina",
+    "estoquista",
+    "atendente"
+   ],
+   "rotas_que_cobram": 2,
+   "pontos_de_servico": 0,
+   "pontos_de_tela": 3,
+   "origem": "catalogo.json"
+  },
+  {
+   "code": "settings.printers.manage",
+   "area": "Configurações",
+   "pagina": "/sistema/configuracoes/impressoras",
+   "label": "Impressoras (cadastrar, testar)",
+   "descricao": "POST /core/print/printers, /test.",
+   "escopo": "empresa",
+   "leitura_ou_escrita": "gerir",
+   "perfis_de_hoje": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina"
+   ],
+   "desde": 1,
+   "modelos_padrao": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina"
+   ],
+   "rotas_que_cobram": 2,
+   "pontos_de_servico": 0,
+   "pontos_de_tela": 1,
+   "origem": "catalogo.json"
+  },
+  {
+   "code": "settings.terminals.manage",
+   "area": "Configurações",
+   "pagina": "/sistema/configuracoes/terminais",
+   "label": "Caixas e terminais",
+   "descricao": "Cadastrar, editar, ativar e desativar caixa (PDV/local).",
+   "escopo": "empresa",
+   "leitura_ou_escrita": "gerir",
+   "perfis_de_hoje": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina"
+   ],
+   "desde": 1,
+   "modelos_padrao": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina"
+   ],
+   "rotas_que_cobram": 5,
+   "pontos_de_servico": 0,
+   "pontos_de_tela": 4,
+   "origem": "catalogo.json"
+  },
+  {
+   "code": "pdv.device_login",
+   "area": "PDV",
+   "pagina": "/sistema/configuracoes/terminais (quem recebe o token) · POST /auth/device/enroll · POST /auth/device/login",
+   "label": "Entrar por token de computador do caixa",
+   "descricao": "Pode ser o titular de um token de dispositivo (computador do caixa) e abrir sessão por ele, sem senha, no caixa do token. Conferida no ALVO do cadastro (POST /auth/device/enroll, auth.ts:457) e no login do dispositivo (POST /auth/device/login, auth.ts:401), sempre com o caixa do token no escopo do vínculo (requireTerminalNoEscopo). Conta cujo modelo no vínculo é assignable_by=grupo (conta de dono) nunca recebe token, pela mesma régua que já a impede de recuperar senha por e-mail (RecuperacaoDeSenhaDaEquipe.ts:204). Substitui o filtro por prefixo de código de TerminaisPage.tsx:440.",
+   "escopo": "pdv",
+   "leitura_ou_escrita": "operar",
+   "perfis_de_hoje": [
+    "admin_geral",
+    "gestor",
+    "operador_caixa",
+    "operador_caixa_loja",
+    "operador_caixa_oficina"
+   ],
+   "desde": 1,
+   "modelos_padrao": [
+    "admin_geral",
+    "gestor",
+    "operador_caixa",
+    "operador_caixa_loja",
+    "operador_caixa_oficina",
+    "somente_pdv",
+    "pdv_painel"
+   ],
+   "rotas_que_cobram": 0,
+   "pontos_de_servico": 1,
+   "pontos_de_tela": 1,
+   "origem": "resolve FALTA:pdv.device_login (tela-botoes, src/pages/gs/TerminaisPage.tsx:440) e a nota de auth.ts:401"
+  },
+  {
+   "code": "sales.quotes.cancel",
+   "area": "Vendas",
+   "pagina": "/sistema/orcamentos",
+   "label": "Cancelar orçamento",
+   "descricao": "POST /core/quotes/:id/cancel (core.ts:5245-5260). Separada de todas(sales.quotes.manage, pdv.cash.operate): cancelar não toca gaveta nem caixa, e a capability de escopo pdv nesta rota levaria 409 CORE_TERMINAL_REQUIRED a quem tem lista de caixas e cancela no escritório.",
+   "escopo": "empresa",
+   "leitura_ou_escrita": "operar",
+   "perfis_de_hoje": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina",
+    "operador_caixa",
+    "operador_caixa_loja",
+    "operador_caixa_oficina"
+   ],
+   "desde": 1,
+   "modelos_padrao": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina",
+    "operador_caixa",
+    "operador_caixa_loja",
+    "operador_caixa_oficina",
+    "gerente_operacao_loja"
+   ],
+   "rotas_que_cobram": 1,
+   "pontos_de_servico": 0,
+   "pontos_de_tela": 0,
+   "origem": "resolve a sugestão FALTA:sales.quotes.close da fatia core-3"
+  },
+  {
+   "code": "sales.consignment.close",
+   "area": "Vendas",
+   "pagina": "/sistema/consignacoes",
+   "label": "Fechar consignação",
+   "descricao": "POST /core/consignments/:id/fechar (core.ts:5507-5515): encerra a custódia, sem gaveta. Mesmo motivo de sales.quotes.cancel.",
+   "escopo": "empresa",
+   "leitura_ou_escrita": "operar",
+   "perfis_de_hoje": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina",
+    "operador_caixa",
+    "operador_caixa_loja",
+    "operador_caixa_oficina"
+   ],
+   "desde": 1,
+   "modelos_padrao": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina",
+    "operador_caixa",
+    "operador_caixa_loja",
+    "operador_caixa_oficina"
+   ],
+   "rotas_que_cobram": 1,
+   "pontos_de_servico": 0,
+   "pontos_de_tela": 0,
+   "origem": "resolve a sugestão FALTA:sales.consignment.close da fatia core-3"
+  }
+ ]
+}

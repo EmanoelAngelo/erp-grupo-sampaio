@@ -1,0 +1,14 @@
+# Loja e painel administrativo são servidos pelo mesmo index.html, então a
+# separação entre "indexa" e "não indexa" precisa ser feita por caminho, aqui.
+# Fora o catálogo, nada aqui é página pública: é ferramenta de trabalho.
+User-agent: *
+Disallow: /sistema/
+Disallow: /pdv
+Disallow: /login
+Disallow: /oficina/
+Disallow: /minha-conta
+Allow: /
+
+# Sem linha Sitemap por enquanto: o formato exige URL absoluta, e o domínio
+# público ainda não está fechado. A rota do servidor vai gerar o sitemap com
+# GRUPO_SAMPAIO_PUBLIC_URL e incluir os produtos — aí a linha entra aqui.

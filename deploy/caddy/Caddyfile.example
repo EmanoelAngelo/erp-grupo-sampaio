@@ -1,0 +1,63 @@
+# Grupo Sampaio ERP — HTTPS com Caddy (GAP-PRD-013)
+#
+# Copie para `deploy/caddy/Caddyfile`, troque o domínio e rode:
+#
+#     caddy run --config deploy/caddy/Caddyfile
+#
+# (No Windows, `deploy/windows/instalar-servico.ps1 -Caddy C:\caddy\caddy.exe`
+# registra isto como tarefa que sobe com a máquina.)
+#
+# O Caddy tira e renova o certificado sozinho (Let's Encrypt). Precisa de:
+#   - o domínio apontando (DNS, registro A) para o IP público desta máquina;
+#   - as portas 80 e 443 livres e liberadas no roteador/firewall.
+#
+# Na API: DEVORA_TRUST_PROXY=1 (um proxy na frente) e
+# DEVORA_FRONTEND_ORIGIN=https://erp.seudominio.com.br.
+
+erp.seudominio.com.br {
+	encode zstd gzip
+
+	header {
+		# O navegador passa a recusar HTTP para este domínio por um ano.
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		-Server
+	}
+
+	# ── MODO A (recomendado): a API serve as telas ─────────────────────────
+	# API com DEVORA_SERVIR_FRONTEND=true e o frontend buildado com
+	# VITE_API_BASE_URL=/ . Tudo vai para ela: telas, /api/v1 e /uploads.
+	reverse_proxy 127.0.0.1:8787
+
+	# ── MODO B: o Caddy serve as telas, a API só responde /api e /uploads ──
+	# Apague o `reverse_proxy` acima e descomente o bloco abaixo. O
+	# `try_files` é o fallback de SPA: sem ele, abrir /sistema/pdv direto
+	# (favorito, F5) responde 404.
+	#
+	# handle /api/* {
+	# 	reverse_proxy 127.0.0.1:8787
+	# }
+	# handle /uploads/* {
+	# 	reverse_proxy 127.0.0.1:8787
+	# }
+	# handle {
+	# 	# Mapa de fonte (.map) nunca sai (GAP-PRD-210). Em qualquer caixa e em
+	# 	# toda grafia que o disco do Windows abre como o mesmo arquivo:
+	# 	# `x.map.`, `x.map%20`, `x.map::$DATA`, `x.map/` e `x.map%5C.`.
+	# 	@mapas path_regexp (?i)\.map([.\s:/\\]|$)
+	# 	respond @mapas 404
+	# 	root * C:/grupo-sampaio/out
+	# 	try_files {path} /index.html
+	# 	file_server
+	# }
+}
+
+# ── SÓ REDE LOCAL, SEM DOMÍNIO ──────────────────────────────────────────────
+# Para o balcão acessar por https://<ip-do-servidor> sem domínio público: o
+# Caddy usa uma autoridade própria (`tls internal`), e o certificado raiz dele
+# precisa ser instalado em cada máquina do balcão (`caddy trust`). Sem isso,
+# o navegador avisa "conexão não segura".
+#
+# https://192.168.0.10 {
+# 	tls internal
+# 	reverse_proxy 127.0.0.1:8787
+# }

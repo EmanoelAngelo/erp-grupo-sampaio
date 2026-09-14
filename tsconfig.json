@@ -1,0 +1,8 @@
+{
+  "//": "Raiz de REFERÊNCIAS. `tsc --noEmit -p tsconfig.json` aqui não checa nada: com 'files: []' e referências, sem --build o compilador não entra nos projetos. Foi assim que 45 erros de tipo passaram meses despercebidos e a propriedade `subtitle` sumiu de 45 telas sem ninguém ver. Para checar de verdade: npm run type-check.",
+  "files": [],
+  "references": [
+    { "path": "./tsconfig.app.json" },
+    { "path": "./tsconfig.node.json" }
+  ]
+}

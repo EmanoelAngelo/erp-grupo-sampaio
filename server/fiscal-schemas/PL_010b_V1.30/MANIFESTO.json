@@ -1,0 +1,18 @@
+{
+  "pacote": "PL_010b_V1.30",
+  "descricao": "Esquemas XSD do leiaute 4.00 da NF-e/NFC-e (Pacote de Liberacao PL_010b, NT 2025.002 v1.30 — Reforma Tributaria do Consumo), subconjunto usado por este sistema: a nota (nfe), o lote de envio (enviNFe), a nota com protocolo (procNFe) e a inutilizacao (inutNFe), com os tipos basicos e o XSD de assinatura XMLDSig restrito pela SEFAZ.",
+  "origem": "Arquivos oficiais publicados pelo Portal Nacional da NF-e (ENCAT). Copiados sem alteracao do pacote npm node-sped-nfe@1.2.52 (schemas/PL_010b_V1.30) e conferidos, arquivo a arquivo, contra a copia independente do pacote npm node-nfe-nfce@1.0.120 (lib/infra/xsd/nf): conteudo identico (o xmldsig-core-schema_v1.01.xsd difere so pela quebra de linha final).",
+  "hash": "SHA-256 do conteudo em UTF-8 com fim de linha LF (o git pode entregar CRLF no Windows).",
+  "atualizar": "Novo pacote = nova pasta com o nome do pacote, novo MANIFESTO.json, e PACOTE_DE_ESQUEMAS em server/src/services/core/FiscalXsdValidator.ts.",
+  "arquivos": {
+    "DFeTiposBasicos_v1.00.xsd": "c1c1f700de03da50c82f3fbf23db7e98929b5d1ee1bdedb4d546e33efa498ee6",
+    "enviNFe_v4.00.xsd": "2abfc6198ece784e7a6a4bd1093002d1513d3dbecd4b51d9a207d4ae81ffc2ef",
+    "inutNFe_v4.00.xsd": "bdb5b01bc77885756f4660bb14f120ae5f8853f962deb50fbf42c96df65b8f29",
+    "leiauteInutNFe_v4.00.xsd": "0cbd4a8cf24c0a38a1d26d75cef499fd323273e8b914824c6c462e69be6c271c",
+    "leiauteNFe_v4.00.xsd": "160abaa6c7c18e37b8f77a8b4bc1b24ec7ec0654ad27267ad5856d14bc6fb135",
+    "nfe_v4.00.xsd": "87e1564624c60d995a6b7410ace9d9d53a539eeacbb42db6bcc8e1427eb77529",
+    "procNFe_v4.00.xsd": "d61d15303f8ccf77e6e5d77a8153255a6906e0d00385dc5000db19ed3bfa96e0",
+    "tiposBasico_v4.00.xsd": "63d393d69fb63568e39277d9794348fbe107e1c15d2dbce32fb63b6e41472c6d",
+    "xmldsig-core-schema_v1.01.xsd": "78f924e7c9cbeb1e4be900b3b1e7faf2d901972635842980fd43dabb533c512b"
+  }
+}

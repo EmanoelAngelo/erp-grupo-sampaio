@@ -1,0 +1,693 @@
+arquivo	linha	metodo	caminho	guarda_hoje	perfis_hoje(+admin_geral,gestor)	requireCapability	equivalencia_dia1
+core.ts	1077	GET	/products	abertaAo('escritorio')	E,L,O,T	products.view	igual
+core.ts	1119	POST	/products/fotos-em-lote/resolver	requireProfile('gerente_loja', 'gerente_oficina', 'estoquista')	E,L,O	products.manage	igual
+core.ts	1130	GET	/products/prontidao-online	requireProfile('gerente_loja', 'gerente_oficina', 'estoquista')	E,L,O	products.manage	igual
+core.ts	1141	POST	/products/publicar-prontos	requireProfile('gerente_loja')	L	ecommerce.publish	igual
+core.ts	1168	GET	/products/search	abertaAo('balcao', 'escritorio')	C,CL,CO,E,L,O,T	qualquer(products.view, pdv.sell)	igual
+core.ts	1202	GET	/products/:id	abertaAo('balcao', 'escritorio')	C,CL,CO,E,L,O,T	qualquer(products.view, pdv.sell)	igual
+core.ts	1266	POST	/pricing/cart	abertaAo('balcao', 'bancada', 'escritorio')	C,CL,CO,E,L,M,O,T	qualquer(pdv.sell, sales.view, workshop.kanban.view)	igual
+core.ts	1294	GET	/mail/inbox	requireProfile('gerente_loja', 'gerente_oficina', 'estoquista')	E,L,O	purchases.view	igual
+core.ts	1303	POST	/mail/inbox	requireProfile('gerente_loja', 'gerente_oficina')	L,O	purchases.manage	igual
+core.ts	1336	POST	/mail/inbox/test	requireProfile('gerente_loja', 'gerente_oficina')	L,O	purchases.manage	igual
+core.ts	1357	DELETE	/mail/inbox	requireProfile('gerente_loja', 'gerente_oficina')	L,O	purchases.manage	igual
+core.ts	1376	GET	/mail/schedule	requireProfile('gerente_loja', 'gerente_oficina', 'estoquista')	E,L,O	purchases.view	igual
+core.ts	1385	POST	/mail/schedule	requireProfile('gerente_loja', 'gerente_oficina')	L,O	purchases.manage	igual
+core.ts	1404	GET	/mail/messages	requireProfile('gerente_loja', 'gerente_oficina', 'estoquista')	E,L,O	purchases.view	igual
+core.ts	1419	POST	/mail/check	requireProfile('gerente_loja', 'gerente_oficina', 'estoquista')	E,L,O	purchases.view	igual
+core.ts	1446	GET	/print/readiness	abertaAo('escritorio')	E,L,O,T	settings.printers.view	igual
+core.ts	1459	GET	/print/printers	abertaAo('escritorio')	E,L,O,T	settings.printers.view	igual
+core.ts	1472	POST	/print/printers	requireProfile('gerente_loja', 'gerente_oficina')	L,O	settings.printers.manage	igual
+core.ts	1498	GET	/print/jobs	abertaAo('balcao', 'escritorio')	C,CL,CO,E,L,O,T	qualquer(pdv.sell, sales.view)	igual
+core.ts	1523	POST	/print/jobs	requireProfile(req, 'operador_caixa_loja', 'operador_caixa_oficina', 'gerente_loja', 'gerente_oficina', 'atendente', 'estoquista',)	CL,CO,E,L,O,T	qualquer(pdv.sell, sales.view)	DESVIO ganha=[C] perde=[]
+core.ts	1581	GET	/print/jobs/:id	abertaAo('balcao', 'escritorio')	C,CL,CO,E,L,O,T	qualquer(pdv.sell, sales.view)	igual
+core.ts	1594	POST	/print/jobs/:id/reprint	requireProfile(req, 'operador_caixa_loja', 'operador_caixa_oficina', 'gerente_loja', 'gerente_oficina', 'atendente',)	CL,CO,L,O,T	pdv.sell	DESVIO ganha=[C] perde=[]
+core.ts	1620	POST	/print/jobs/:id/status	abertaAo('balcao', 'escritorio')	C,CL,CO,E,L,O,T	qualquer(pdv.sell, sales.view)	igual
+core.ts	1653	GET	/print/drawer	abertaAo('balcao', 'escritorio')	C,CL,CO,E,L,O,T	qualquer(pdv.cash.operate, sales.view)	igual
+core.ts	1675	POST	/print/drawer/open	requireProfile(...BALCAO_E_GERENCIA)	C,CL,CO,L,O	pdv.cash.operate	igual
+core.ts	1724	POST	/print/printers/:id/test	requireProfile('gerente_loja', 'gerente_oficina')	L,O	settings.printers.manage	igual
+core.ts	1774	GET	/print/jobs/:id/escpos	abertaAo('balcao', 'escritorio')	C,CL,CO,E,L,O,T	qualquer(pdv.sell, sales.view)	igual
+core.ts	1801	GET	/print/jobs/:id/document	abertaAo('balcao', 'escritorio')	C,CL,CO,E,L,O,T	qualquer(pdv.sell, sales.view)	igual
+core.ts	1819	GET	/taxonomy	abertaAo('escritorio')	E,L,O,T	products.view	igual
+core.ts	1838	POST	/taxonomy/categories	requireProfile('gerente_loja', 'gerente_oficina', 'estoquista')	E,L,O	products.manage	igual
+core.ts	1858	POST	/taxonomy/categories/merge	requireProfile('gerente_loja', 'gerente_oficina')	L,O	products.catalog.admin	igual
+core.ts	1881	DELETE	/taxonomy/categories/:id	requireProfile('gerente_loja', 'gerente_oficina')	L,O	products.catalog.admin	igual
+core.ts	1899	POST	/taxonomy/brands	requireProfile('gerente_loja', 'gerente_oficina', 'estoquista')	E,L,O	products.manage	igual
+core.ts	1918	POST	/taxonomy/brands/merge	requireProfile('gerente_loja', 'gerente_oficina')	L,O	products.catalog.admin	igual
+core.ts	1941	DELETE	/taxonomy/brands/:id	requireProfile('gerente_loja', 'gerente_oficina')	L,O	products.catalog.admin	igual
+core.ts	1965	GET	/catalog/aux	abertaAo('escritorio')	E,L,O,T	products.view	igual
+core.ts	1986	POST	/catalog/units	requireProfile(...AUX_EDITORES)	E,L,O	products.manage	igual
+core.ts	2005	DELETE	/catalog/units/:id	requireProfile(...AUX_EDITORES)	E,L,O	products.manage	igual
+core.ts	2037	GET	/catalog/tax-groups	abertaAo('escritorio')	E,L,O,T	products.view	igual
+core.ts	2048	POST	/catalog/tax-groups	requireProfile(...AUX_EDITORES)	E,L,O	products.manage	igual
+core.ts	2074	DELETE	/catalog/tax-groups/:id	requireProfile(...AUX_EDITORES)	E,L,O	products.manage	igual
+core.ts	2092	POST	/catalog/tax-rates	requireProfile(...AUX_EDITORES)	E,L,O	products.manage	igual
+core.ts	2102	DELETE	/catalog/tax-rates/:id	requireProfile(...AUX_EDITORES)	E,L,O	products.manage	igual
+core.ts	2120	GET	/catalog/custom-fields	abertaAo('escritorio')	E,L,O,T	products.view	igual
+core.ts	2131	POST	/catalog/custom-fields	requireProfile(...AUX_EDITORES)	E,L,O	products.manage	igual
+core.ts	2150	DELETE	/catalog/custom-fields/:id	requireProfile(...AUX_EDITORES)	E,L,O	products.manage	igual
+core.ts	2168	POST	/catalog/price-tables	requireProfile('gerente_loja', 'gerente_oficina')	L,O	products.price.manage	igual
+core.ts	2178	DELETE	/catalog/price-tables/:id	requireProfile('gerente_loja', 'gerente_oficina')	L,O	products.price.manage	igual
+core.ts	2197	GET	/catalog/price-tables/:id/items	abertaAo('escritorio')	E,L,O,T	products.view	igual
+core.ts	2207	PUT	/catalog/price-tables/:id/items/:productId	requireProfile('gerente_loja', 'gerente_oficina')	L,O	products.price.manage	igual
+core.ts	2226	DELETE	/catalog/price-tables/:id/items/:productId	requireProfile('gerente_loja', 'gerente_oficina')	L,O	products.price.manage	igual
+core.ts	2245	POST	/products/:id/clone	requireProfile(...AUX_EDITORES)	E,L,O	products.manage	igual
+core.ts	2289	POST	/products/:id/tipo	requireProfile(...AUX_EDITORES)	E,L,O	products.manage	igual
+core.ts	2337	GET	/products/:id/barcodes	abertaAo('escritorio')	E,L,O,T	products.view	igual
+core.ts	2351	POST	/products/:id/barcodes	requireProfile(...AUX_EDITORES)	E,L,O	products.manage	igual
+core.ts	2363	DELETE	/products/:id/barcodes/:barcode	requireProfile(...AUX_EDITORES)	E,L,O	products.manage	igual
+core.ts	2379	GET	/products/:id/kit	abertaAo('escritorio')	E,L,O,T	products.view	igual
+core.ts	2397	PUT	/products/:id/kit	requireProfile(...AUX_EDITORES)	E,L,O	products.manage	igual
+core.ts	2431	GET	/products/:id/price-tiers	abertaAo('balcao', 'escritorio')	C,CL,CO,E,L,O,T	qualquer(products.view, pdv.sell)	igual
+core.ts	2446	PUT	/products/:id/price-tiers	requireProfile('gerente_loja', 'gerente_oficina')	L,O	products.price.manage	igual
+core.ts	2474	DELETE	/products/:id/price-tiers/:minQuantity	requireProfile('gerente_loja', 'gerente_oficina')	L,O	products.price.manage	igual
+core.ts	2497	GET	/products/:id/custom-fields	abertaAo('escritorio')	E,L,O,T	products.view	igual
+core.ts	2507	PUT	/products/:id/custom-fields	requireProfile(req, 'gerente_loja', 'gerente_oficina', 'estoquista', 'operador_caixa_loja', 'operador_caixa_oficina',)	CL,CO,E,L,O	qualquer(products.manage, pdv.backoffice)	igual
+core.ts	2553	GET	/products/:id/history	abertaAo('escritorio')	E,L,O,T	products.view	igual
+core.ts	2570	POST	/catalog/pricing/preview	abertaAo('escritorio')	E,L,O,T	products.view	igual
+core.ts	2621	GET	/products/:id/images	abertaAo('escritorio')	E,L,O,T	products.view	igual
+core.ts	2635	POST	/products/:id/images	requireProfile('gerente_loja', 'gerente_oficina', 'estoquista')	E,L,O	products.manage	igual
+core.ts	2660	POST	/products/:id/images/:imageId/primary	requireProfile('gerente_loja', 'gerente_oficina', 'estoquista')	E,L,O	products.manage	igual
+core.ts	2671	DELETE	/products/:id/images/:imageId	requireProfile('gerente_loja', 'gerente_oficina', 'estoquista')	E,L,O	products.manage	igual
+core.ts	2690	POST	/products/:id/images/reorder	requireProfile('gerente_loja', 'gerente_oficina', 'estoquista')	E,L,O	products.manage	igual
+core.ts	2708	GET	/products/:id/variants	abertaAo('escritorio')	E,L,O,T	products.view	igual
+core.ts	2719	POST	/products/:id/variants	requireProfile('gerente_loja', 'gerente_oficina', 'estoquista')	E,L,O	products.manage	igual
+core.ts	2743	POST	/products	requireProfile('gerente_loja', 'gerente_oficina', 'estoquista', 'operador_caixa_loja', 'operador_caixa_oficina')	CL,CO,E,L,O	qualquer(products.manage, pdv.backoffice)	igual
+core.ts	2788	PUT	/products/:id	requireProfile(...AUX_EDITORES)	E,L,O	products.manage	igual
+core.ts	2831	GET	/stock	abertaAo('escritorio')	E,L,O,T	inventory.view	igual
+core.ts	2873	GET	/stock/valuation	abertaAo('escritorio')	E,L,O,T	inventory.view	igual
+core.ts	2912	GET	/stock/reconciliation	abertaAo('escritorio')	E,L,O,T	inventory.view	igual
+core.ts	2932	GET	/management-policy	abertaAo('escritorio')	E,L,O,T	qualquer(dashboard.view, settings.management_policy.manage)	igual
+core.ts	2942	PUT	/management-policy	requireProfile()	DONOS	settings.management_policy.manage	igual
+core.ts	2990	POST	/stock/reservations/:productId/liberar-sem-origem	requireProfile('gerente_loja', 'gerente_oficina')	L,O	inventory.adjust.approve	igual
+core.ts	3024	GET	/stock/movements	abertaAo('bancada', 'escritorio')	E,L,M,O,T	qualquer(inventory.view, workshop.parts.view)	igual
+core.ts	3076	GET	/stock/movement-kinds	abertaAo('bancada', 'escritorio')	E,L,M,O,T	qualquer(inventory.view, workshop.parts.view)	igual
+core.ts	3101	POST	/stock/movements	requireProfile('gerente_loja', 'gerente_oficina', 'estoquista', 'operador_caixa_loja', 'operador_caixa_oficina')	CL,CO,E,L,O	qualquer(inventory.manage, pdv.backoffice)	igual
+core.ts	3288	GET	/stock/locations	abertaAo('balcao', 'bancada', 'escritorio')	C,CL,CO,E,L,M,O,T	qualquer(inventory.view, pdv.sell, workshop.kanban.view)	igual
+core.ts	3306	POST	/stock/locations	requireProfile('gerente_loja', 'gerente_oficina', 'estoquista')	E,L,O	inventory.manage	igual
+core.ts	3329	PATCH	/stock/locations/:id	requireProfile('gerente_loja', 'gerente_oficina', 'estoquista')	E,L,O	inventory.manage	igual
+core.ts	3353	GET	/stock/locations/balance/:productId	abertaAo('escritorio')	E,L,O,T	inventory.view	igual
+core.ts	3367	POST	/stock/transfers	requireProfile('gerente_loja', 'gerente_oficina', 'estoquista')	E,L,O	inventory.manage	igual
+core.ts	3414	GET	/stock/batches	abertaAo('escritorio')	E,L,O,T	inventory.view	igual
+core.ts	3442	GET	/stock/batches/alertas	abertaAo('escritorio')	E,L,O,T	inventory.view	igual
+core.ts	3459	GET	/stock/batches/saldos/:productId	abertaAo('escritorio')	E,L,O,T	inventory.view	igual
+core.ts	3469	GET	/stock/batches/:id	abertaAo('escritorio')	E,L,O,T	inventory.view	igual
+core.ts	3484	POST	/stock/batches	requireProfile('gerente_loja', 'gerente_oficina', 'estoquista')	E,L,O	inventory.manage	igual
+core.ts	3512	PATCH	/stock/batches/:id	requireProfile('gerente_loja', 'gerente_oficina', 'estoquista')	E,L,O	inventory.manage	igual
+core.ts	3551	POST	/stock/batches/:id/conferir	requireProfile('gerente_loja', 'gerente_oficina', 'estoquista')	E,L,O	inventory.manage	igual
+core.ts	3584	POST	/stock/batches/:id/alocar	requireProfile('gerente_loja', 'gerente_oficina', 'estoquista')	E,L,O	inventory.manage	igual
+core.ts	3619	PATCH	/stock/batch-control/:productId	requireProfile('gerente_loja', 'gerente_oficina', 'estoquista')	E,L,O	inventory.manage	igual
+core.ts	3646	GET	/customers	abertaAo('balcao', 'bancada', 'escritorio')	C,CL,CO,E,L,M,O,T	qualquer(customers.view, pdv.sell, workshop.orders.open)	igual
+core.ts	3738	POST	/customers	requireProfile('gerente_loja', 'gerente_oficina', 'atendente', 'operador_caixa_loja', 'operador_caixa_oficina')	CL,CO,L,O,T	customers.manage	igual
+core.ts	3756	GET	/customers/:id	abertaAo('balcao', 'bancada', 'escritorio')	C,CL,CO,E,L,M,O,T	qualquer(customers.view, pdv.sell, workshop.orders.open)	igual
+core.ts	3788	PUT	/customers/:id	requireProfile('gerente_loja', 'gerente_oficina', 'atendente', 'operador_caixa_loja', 'operador_caixa_oficina')	CL,CO,L,O,T	customers.manage	igual
+core.ts	3822	PUT	/customers/:id/price-table	requireProfile('gerente_loja', 'gerente_oficina')	L,O	products.price.manage	igual
+core.ts	3867	GET	/customers/:id/credits	abertaAo('balcao', 'escritorio')	C,CL,CO,E,L,O,T	qualquer(customers.view, pdv.sell)	igual
+core.ts	3891	GET	/customers/:id/dados-do-titular	requireProfile('gerente_loja', 'gerente_oficina')	L,O	customers.privacy.manage	igual
+core.ts	3911	POST	/customers/:id/anonimizar	requireProfile('gerente_loja', 'gerente_oficina')	L,O	customers.privacy.manage	igual
+core.ts	3936	GET	/lgpd/retencao	requireProfile('gerente_loja', 'gerente_oficina')	L,O	customers.privacy.manage	igual
+core.ts	3954	GET	/customer-credits/liability	requireProfile('gerente_loja', 'gerente_oficina')	L,O	finance.advanced.view	igual
+core.ts	3966	GET	/cash/open	abertaAo('balcao', 'escritorio')	C,CL,CO,E,L,O,T	qualquer(pdv.cash.operate, sales.view)	igual
+core.ts	4038	GET	/cash/drawers	abertaAo('balcao', 'escritorio')	C,CL,CO,E,L,O,T	qualquer(pdv.cash.operate, sales.view)	igual
+core.ts	4055	GET	/terminals	abertaAo('balcao', 'escritorio')	C,CL,CO,E,L,O,T	qualquer(pdv.sell, sales.view, settings.terminals.manage)	igual
+core.ts	4065	POST	/terminals	requireProfile('gerente_loja', 'gerente_oficina')	L,O	settings.terminals.manage	igual
+core.ts	4085	PATCH	/terminals/:id	requireProfile('gerente_loja', 'gerente_oficina')	L,O	settings.terminals.manage	igual
+core.ts	4109	POST	/terminals/:id/deactivate	requireProfile('gerente_loja', 'gerente_oficina')	L,O	settings.terminals.manage	igual
+core.ts	4137	POST	/terminals/:id/activate	requireProfile('gerente_loja', 'gerente_oficina')	L,O	settings.terminals.manage	igual
+core.ts	4161	GET	/cash/sessions	abertaAo('balcao', 'escritorio')	C,CL,CO,E,L,O,T	qualquer(pdv.cash.operate, sales.view)	igual
+core.ts	4183	POST	/cash/open	requireProfile(...BALCAO_E_GERENCIA)	C,CL,CO,L,O	pdv.cash.operate	igual
+core.ts	4212	POST	/cash/:sessionId/movements	requireProfile(...BALCAO_E_GERENCIA)	C,CL,CO,L,O	pdv.cash.operate	igual
+core.ts	4245	GET	/cash/:sessionId/summary	abertaAo('balcao', 'escritorio')	C,CL,CO,E,L,O,T	qualquer(pdv.cash.operate, sales.view)	igual
+core.ts	4283	POST	/cash/:sessionId/close	requireProfile(...BALCAO_E_GERENCIA)	C,CL,CO,L,O	pdv.cash.operate	igual
+core.ts	4322	POST	/cash/:sessionId/reopen	requireProfile(...BALCAO_E_GERENCIA)	C,CL,CO,L,O	pdv.cash.operate	igual
+core.ts	4371	GET	/fiscal/certificate	requireProfile()	DONOS	fiscal.certificate.manage	igual
+core.ts	4382	POST	/fiscal/certificate	requireProfile()	DONOS	fiscal.certificate.manage	igual
+core.ts	4455	GET	/fiscal/certificates/group	requireProfile()	DONOS	group.dashboard.view	igual
+core.ts	4469	POST	/fiscal/certificate/revoke	requireProfile()	DONOS	fiscal.certificate.manage	igual
+core.ts	4513	GET	/fiscal/nfce/csc	requireProfile('gerente_loja')	L	fiscal.csc.manage	igual
+core.ts	4523	POST	/fiscal/nfce/csc	requireProfile('gerente_loja')	L	fiscal.csc.manage	igual
+core.ts	4567	GET	/pdv/pix-asaas/status	abertaAo('balcao', 'escritorio')	C,CL,CO,E,L,O,T	qualquer(pdv.sell, sales.view)	igual
+core.ts	4581	POST	/pdv/pix-asaas	requireProfile(...BALCAO_E_GERENCIA, 'atendente')	C,CL,CO,L,O,T	pdv.sell	igual
+core.ts	4611	GET	/pdv/pix-asaas/:id	abertaAo('balcao', 'escritorio')	C,CL,CO,E,L,O,T	qualquer(pdv.sell, sales.view)	igual
+core.ts	4630	POST	/pdv/pix-asaas/:id/cancel	requireProfile(...BALCAO_E_GERENCIA, 'atendente')	C,CL,CO,L,O,T	pdv.sell	igual
+core.ts	4655	GET	/pdv/pix-pendentes	requireProfile('gerente_loja', 'gerente_oficina')	L,O	pdv.supervise	igual
+core.ts	4665	POST	/sales/:id/payments/:paymentId/confirmar	requireProfile('gerente_loja', 'gerente_oficina')	L,O	sales.supervise	igual
+core.ts	4696	GET	/pdv/terminal/status	abertaAo('balcao', 'escritorio')	C,CL,CO,E,L,O,T	qualquer(pdv.payment.charge, sales.view)	igual
+core.ts	4714	POST	/pdv/terminal/charge	requireProfile(...BALCAO_E_GERENCIA)	C,CL,CO,L,O	pdv.payment.charge	igual
+core.ts	4749	GET	/pdv/terminal/uncertain	requireProfile('gerente_loja', 'gerente_oficina')	L,O	pdv.supervise	igual
+core.ts	4768	GET	/pdv/terminal/pendencias	requireProfile('gerente_loja', 'gerente_oficina')	L,O	pdv.supervise	igual
+core.ts	4790	POST	/pdv/terminal/:id/desistir	requireProfile(...BALCAO_E_GERENCIA)	C,CL,CO,L,O	pdv.payment.charge	igual
+core.ts	4810	POST	/pdv/terminal/:id/tratativa	requireProfile('gerente_loja', 'gerente_oficina')	L,O	pdv.supervise	igual
+core.ts	4827	POST	/pdv/terminal/:id/vincular-venda	requireProfile('gerente_loja', 'gerente_oficina')	L,O	pdv.supervise	igual
+core.ts	4850	POST	/pdv/terminal/:id/estorno-manual	requireProfile('gerente_loja', 'gerente_oficina')	L,O	pdv.supervise	igual
+core.ts	4879	GET	/pdv/terminal/configurations	requireProfile('gerente_loja', 'gerente_oficina')	L,O	pdv.terminal.activation	igual
+core.ts	4889	POST	/pdv/terminal/configurations/:id/deactivate	requireProfile('gerente_loja', 'gerente_oficina')	L,O	pdv.terminal.activation	igual
+core.ts	4907	POST	/pdv/terminal/configurations/:id/activate	requireProfile('gerente_loja', 'gerente_oficina')	L,O	pdv.terminal.activation	igual
+core.ts	4925	GET	/pdv/terminal/:id	abertaAo('balcao', 'escritorio')	C,CL,CO,E,L,O,T	qualquer(pdv.payment.charge, sales.view)	igual
+core.ts	4950	POST	/pdv/terminal/:id/confirmar-teste	requireProfile(...BALCAO_E_GERENCIA)	C,CL,CO,L,O	pdv.payment.charge	igual
+core.ts	4962	POST	/pdv/terminal/:id/reconcile	requireProfile('gerente_loja', 'gerente_oficina')	L,O	pdv.supervise	igual
+core.ts	4983	GET	/quotes	abertaAo('balcao', 'escritorio')	C,CL,CO,E,L,O,T	qualquer(sales.quotes.manage, sales.view)	igual
+core.ts	5008	GET	/quotes/:id	abertaAo('balcao', 'escritorio')	C,CL,CO,E,L,O,T	qualquer(sales.quotes.manage, sales.view)	igual
+core.ts	5021	POST	/quotes	requireProfile(...BALCAO_E_GERENCIA, 'atendente')	C,CL,CO,L,O,T	sales.quotes.manage	igual
+core.ts	5071	POST	/quotes/:id/convert	requireProfile(...BALCAO_E_GERENCIA)	C,CL,CO,L,O	todas(sales.quotes.manage, pdv.cash.operate)	igual
+core.ts	5147	PUT	/quotes/:id/unidades	requireProfile(...BALCAO_E_GERENCIA, 'atendente')	C,CL,CO,L,O,T	sales.quotes.manage	igual
+core.ts	5185	POST	/quotes/:id/promote	requireProfile(...BALCAO_E_GERENCIA, 'atendente')	C,CL,CO,L,O,T	sales.quotes.manage	igual
+core.ts	5245	POST	/quotes/:id/cancel	requireProfile(...BALCAO_E_GERENCIA)	C,CL,CO,L,O	todas(sales.quotes.manage, pdv.cash.operate)	igual
+core.ts	5267	POST	/quotes/expire-overdue	requireProfile('gerente_loja', 'gerente_oficina')	L,O	sales.supervise	igual
+core.ts	5289	PATCH	/quotes/:id	requireProfile(...BALCAO_E_GERENCIA, 'atendente')	C,CL,CO,L,O,T	sales.quotes.manage	igual
+core.ts	5337	POST	/quotes/:id/renew	requireProfile(...BALCAO_E_GERENCIA, 'atendente')	C,CL,CO,L,O,T	sales.quotes.manage	igual
+core.ts	5376	GET	/consignments	abertaAo('balcao', 'escritorio')	C,CL,CO,E,L,O,T	qualquer(sales.consignment.manage, sales.view)	igual
+core.ts	5392	GET	/consignments/:id	abertaAo('balcao', 'escritorio')	C,CL,CO,E,L,O,T	qualquer(sales.consignment.manage, sales.view)	igual
+core.ts	5406	POST	/consignments	requireProfile(...BALCAO_E_GERENCIA, 'atendente')	C,CL,CO,L,O,T	sales.consignment.manage	igual
+core.ts	5448	POST	/consignments/:id/retorno	requireProfile(...BALCAO_E_GERENCIA, 'atendente')	C,CL,CO,L,O,T	sales.consignment.manage	igual
+core.ts	5480	POST	/consignments/:id/faturar	requireProfile(...BALCAO_E_GERENCIA)	C,CL,CO,L,O	todas(sales.consignment.manage, pdv.cash.operate)	igual
+core.ts	5505	POST	/consignments/:id/fechar	requireProfile(...BALCAO_E_GERENCIA)	C,CL,CO,L,O	todas(sales.consignment.manage, pdv.cash.operate)	igual
+core.ts	5568	POST	/sales	requireProfile(...BALCAO_E_GERENCIA, 'atendente')	C,CL,CO,L,O,T	pdv.sell	igual
+core.ts	5663	GET	/offline-sales	abertaAo('balcao', 'escritorio')	C,CL,CO,E,L,O,T	qualquer(pdv.sell, sales.view)	igual
+core.ts	5683	POST	/offline-sales	requireProfile(...BALCAO_E_GERENCIA, 'atendente')	C,CL,CO,L,O,T	pdv.sell	igual
+core.ts	5704	POST	/offline-sales/:id/relaunch	requireProfile(...BALCAO_E_GERENCIA, 'atendente')	C,CL,CO,L,O,T	pdv.sell	igual
+core.ts	5766	POST	/offline-sales/:id/relaunch-as-new	requireProfile(...BALCAO_E_GERENCIA, 'atendente')	C,CL,CO,L,O,T	pdv.sell	igual
+core.ts	5827	POST	/offline-sales/:id/discard	requireProfile('gerente_loja', 'gerente_oficina')	L,O	sales.supervise	igual
+core.ts	5869	GET	/authorizations/quem-libera	abertaAo('balcao', 'escritorio')	C,CL,CO,E,L,O,T	qualquer(pdv.sell, sales.view)	igual
+core.ts	5885	POST	/authorizations	abertaAo('balcao', 'escritorio')	C,CL,CO,E,L,O,T	qualquer(pdv.sell, sales.view)	igual
+core.ts	5990	GET	/authorizations	requireProfile()	DONOS	audit.view	igual
+core.ts	6013	GET	/sales/discount-policy	abertaAo('balcao', 'escritorio')	C,CL,CO,E,L,O,T	qualquer(pdv.sell, sales.view)	igual
+core.ts	6047	GET	/sale-policies	requireProfile('gerente_loja', 'gerente_oficina')	L,O	settings.sale_policy.manage	igual
+core.ts	6056	PUT	/sale-policies	requireProfile('gerente_loja', 'gerente_oficina')	L,O	settings.sale_policy.manage	igual
+core.ts	6101	GET	/sales	abertaAo('balcao', 'escritorio')	C,CL,CO,E,L,O,T	qualquer(pdv.sell, sales.view)	igual
+core.ts	6145	GET	/sales/:id	abertaAo('balcao', 'escritorio')	C,CL,CO,E,L,O,T	qualquer(pdv.sell, sales.view)	igual
+core.ts	6259	POST	/sales/:id/cancel	abertaAo('escritorio')	E,L,O,T	sales.returns.operate	igual
+core.ts	6346	GET	/finance/entries	abertaAo('escritorio')	E,L,O,T	finance.view	igual
+core.ts	6419	POST	/finance/entries	requireProfile('gerente_loja', 'gerente_oficina')	L,O	finance.manage	igual
+core.ts	6464	GET	/finance/entries/:id/settlements	abertaAo('escritorio')	E,L,O,T	finance.view	igual
+core.ts	6478	POST	/finance/entries/:id/settle	requireProfile('gerente_loja', 'gerente_oficina', ...CAIXAS)	C,CL,CO,L,O	qualquer(finance.manage, pdv.cash.operate)	igual
+core.ts	6515	POST	/finance/settlements/:id/reverse	requireProfile('gerente_loja', 'gerente_oficina')	L,O	finance.manage	igual
+core.ts	6545	GET	/finance/cash-flow	requireProfile('gerente_loja', 'gerente_oficina')	L,O	finance.advanced.view	igual
+core.ts	6572	GET	/finance/legacy-settlements	requireProfile('gerente_loja', 'gerente_oficina')	L,O	finance.advanced.view	igual
+core.ts	6582	POST	/finance/legacy-settlements/mirror	requireProfile('gerente_loja', 'gerente_oficina')	L,O	finance.manage	igual
+core.ts	6624	POST	/finance/entries/:id/charge	requireProfile('gerente_loja', 'gerente_oficina', ...CAIXAS)	C,CL,CO,L,O	qualquer(finance.manage, pdv.cash.operate)	igual
+core.ts	6678	POST	/finance/entries/:id/charges/cancel	requireProfile('gerente_loja', 'gerente_oficina', ...CAIXAS)	C,CL,CO,L,O	qualquer(finance.manage, pdv.cash.operate)	igual
+core.ts	6714	POST	/finance/entries/:id/charges/refund	requireProfile('gerente_loja', 'gerente_oficina')	L,O	finance.manage	igual
+core.ts	6757	GET	/finance/entries/:id/charges	abertaAo('escritorio')	E,L,O,T	finance.view	igual
+core.ts	6783	GET	/payment-intents	abertaAo('escritorio')	E,L,O,T	finance.view	igual
+core.ts	6806	POST	/payment-intents/:id/retry	requireProfile('gerente_loja', 'gerente_oficina', ...CAIXAS)	C,CL,CO,L,O	qualquer(finance.manage, pdv.cash.operate)	igual
+core.ts	6843	GET	/finance/categories	abertaAo('escritorio')	E,L,O,T	finance.view	igual
+core.ts	6868	GET	/finance/cost-centers	abertaAo('escritorio')	E,L,O,T	finance.view	igual
+core.ts	6897	GET	/finance/income-statement	abertaAo('escritorio')	E,L,O,T	finance.view	igual
+core.ts	6927	GET	/finance/cost-centers/report	abertaAo('escritorio')	E,L,O,T	finance.view	igual
+core.ts	6943	GET	/dashboard	abertaAo('escritorio')	E,L,O,T	dashboard.view	igual
+core.ts	7426	GET	/workshops	abertaAo('escritorio')	E,L,O,T	workshop.benches.view	igual
+core.ts	7458	GET	/workshops/brands	abertaAo('escritorio')	E,L,O,T	workshop.benches.view	igual
+core.ts	7468	PUT	/workshops/:id/brand	requireProfile('gerente_loja', 'gerente_oficina')	L,O	workshop.benches.manage	igual
+core.ts	7493	GET	/fiscal/config	requireProfile('gerente_loja', 'gerente_oficina')	L,O	fiscal.view	igual
+core.ts	7533	POST	/fiscal/sefaz/status	requireProfile('gerente_loja', 'gerente_oficina')	L,O	fiscal.view	igual
+core.ts	7732	PATCH	/fiscal/config	requireProfile('gerente_loja', 'gerente_oficina')	L,O	fiscal.config.manage	igual
+core.ts	7765	GET	/system/secrets-readiness	requireProfile()	DONOS	system.secrets.view	igual
+core.ts	7774	GET	/fiscal/readiness	requireProfile('gerente_loja', 'gerente_oficina')	L,O	fiscal.view	igual
+core.ts	7824	GET	/fiscal/classification	requireProfile('gerente_loja', 'gerente_oficina', 'estoquista')	E,L,O	fiscal.products.classify	igual
+core.ts	7876	POST	/fiscal/classification/reler-notas	requireProfile('gerente_loja', 'gerente_oficina')	L,O	fiscal.manage	igual
+core.ts	7886	POST	/fiscal/classification/confirm	requireProfile('gerente_loja', 'gerente_oficina', 'estoquista')	E,L,O	fiscal.products.classify	igual
+core.ts	7937	POST	/fiscal/production-unlock	requireProfile()	DONOS	fiscal.policy.manage	igual
+core.ts	7972	POST	/fiscal/sales/:saleId/emit	requireProfile('gerente_loja', 'gerente_oficina', ...CAIXAS)	C,CL,CO,L,O	fiscal.sale.emit	igual
+core.ts	8003	GET	/fiscal/sales/:saleId/emission-readiness	requireProfile('gerente_loja', 'gerente_oficina', ...CAIXAS)	C,CL,CO,L,O	fiscal.sale.emit	igual
+core.ts	8013	GET	/fiscal/sales/:saleId/status	abertaAo('balcao', 'escritorio')	C,CL,CO,E,L,O,T	qualquer(fiscal.sale.emit, sales.view)	igual
+core.ts	8027	GET	/fiscal/documents	requireProfile('gerente_loja', 'gerente_oficina', ...CAIXAS)	C,CL,CO,L,O	qualquer(fiscal.sale.emit, fiscal.view)	igual
+core.ts	8037	GET	/fiscal/documents/:id	requireProfile('gerente_loja', 'gerente_oficina', ...CAIXAS)	C,CL,CO,L,O	qualquer(fiscal.sale.emit, fiscal.view)	igual
+core.ts	8057	GET	/fiscal/documents/:id/danfce	requireProfile('gerente_loja', 'gerente_oficina', ...CAIXAS)	C,CL,CO,L,O	qualquer(fiscal.sale.emit, fiscal.view)	igual
+core.ts	8077	GET	/fiscal/pdv-summary	requireProfile('gerente_loja', 'gerente_oficina', ...CAIXAS)	C,CL,CO,L,O	qualquer(fiscal.sale.emit, fiscal.view)	igual
+core.ts	8163	GET	/fiscal/acts/plan	requireProfile('gerente_loja', 'gerente_oficina')	L,O	fiscal.view	igual
+core.ts	8188	GET	/fiscal/emission-policy	requireProfile('gerente_loja', 'gerente_oficina')	L,O	fiscal.view	igual
+core.ts	8198	PUT	/fiscal/emission-policy	requireProfile()	DONOS	fiscal.policy.manage	igual
+core.ts	8208	PUT	/fiscal/acts/policy	requireProfile()	DONOS	fiscal.policy.manage	igual
+core.ts	8231	POST	/fiscal/documents/:id/reenfileirar	requireProfile('gerente_loja', 'gerente_oficina')	L,O	fiscal.manage	igual
+core.ts	8252	GET	/fiscal/queue	requireProfile('gerente_loja', 'gerente_oficina')	L,O	fiscal.view	igual
+core.ts	8262	POST	/fiscal/queue/drain	requireProfile('gerente_loja', 'gerente_oficina')	L,O	fiscal.manage	igual
+core.ts	8275	POST	/fiscal/documents/:id/transmitir	requireProfile('gerente_loja', 'gerente_oficina')	L,O	fiscal.manage	igual
+core.ts	8293	GET	/fiscal/contingency	requireProfile('gerente_loja', 'gerente_oficina')	L,O	fiscal.view	igual
+core.ts	8303	PUT	/fiscal/contingency/policy	requireProfile()	DONOS	fiscal.policy.manage	igual
+core.ts	8320	POST	/fiscal/contingency/enter	requireProfile('gerente_loja', 'gerente_oficina')	L,O	fiscal.manage	igual
+core.ts	8337	POST	/fiscal/contingency/exit	requireProfile('gerente_loja', 'gerente_oficina')	L,O	fiscal.manage	igual
+core.ts	8348	POST	/fiscal/documents/:id/cancel	requireProfile('gerente_loja', 'gerente_oficina')	L,O	fiscal.documents.cancel	igual
+core.ts	8368	POST	/fiscal/documents/:id/correction-letter	requireProfile('gerente_loja', 'gerente_oficina')	L,O	fiscal.documents.cancel	igual
+core.ts	8388	GET	/fiscal/correction-letter/notice	requireProfile('gerente_loja', 'gerente_oficina')	L,O	fiscal.view	igual
+core.ts	8397	GET	/fiscal/void-ranges	requireProfile('gerente_loja', 'gerente_oficina')	L,O	fiscal.view	igual
+core.ts	8407	POST	/fiscal/void-ranges	requireProfile('gerente_loja', 'gerente_oficina')	L,O	fiscal.documents.cancel	igual
+core.ts	8449	GET	/fiscal/documents/:id/xml	requireProfile('gerente_loja', 'gerente_oficina')	L,O	fiscal.view	igual
+core.ts	8472	GET	/fiscal/documents/:id/danfe	requireProfile('gerente_loja', 'gerente_oficina', ...CAIXAS)	C,CL,CO,L,O	qualquer(fiscal.sale.emit, fiscal.view)	igual
+core.ts	8486	GET	/fiscal/reconciliation	requireProfile('gerente_loja', 'gerente_oficina')	L,O	fiscal.view	igual
+core.ts	8519	GET	/fiscal/closings/:period/previa	requireProfile('gerente_loja', 'gerente_oficina', 'contador')	K,L,O	accounting.closing.view	igual
+core.ts	8556	GET	/fiscal/closings/:period/pacote	requireProfile('gerente_loja', 'gerente_oficina', 'contador')	K,L,O	accounting.closing.view	igual
+core.ts	8600	GET	/fiscal/closings/conferir	requireProfile('gerente_loja', 'gerente_oficina', 'contador')	K,L,O	accounting.closing.view	igual
+core.ts	8622	GET	/fiscal/contador/destinatarios	requireProfile('gerente_loja', 'gerente_oficina')	L,O	accounting.closing.send	igual
+core.ts	8632	POST	/fiscal/contador/destinatarios	requireProfile('gerente_loja', 'gerente_oficina')	L,O	accounting.closing.send	igual
+core.ts	8648	PATCH	/fiscal/contador/destinatarios/:id	requireProfile('gerente_loja', 'gerente_oficina')	L,O	accounting.closing.send	igual
+core.ts	8666	GET	/fiscal/contador/agenda	requireProfile('gerente_loja', 'gerente_oficina')	L,O	accounting.closing.send	igual
+core.ts	8678	PUT	/fiscal/contador/agenda	requireProfile('gerente_loja', 'gerente_oficina')	L,O	accounting.closing.send	igual
+core.ts	8702	POST	/fiscal/closings/:period/enviar	requireProfile('gerente_loja', 'gerente_oficina')	L,O	accounting.closing.send	igual
+core.ts	8722	GET	/fiscal/closings/:period/envios	requireProfile('gerente_loja', 'gerente_oficina')	L,O	accounting.closing.send	igual
+core.ts	8732	GET	/fiscal/product-pendencies	requireProfile('gerente_loja', 'gerente_oficina', 'estoquista')	E,L,O	fiscal.products.classify	igual
+core.ts	8742	PATCH	/fiscal/product-pendencies/:id	requireProfile('gerente_loja', 'gerente_oficina', 'estoquista')	E,L,O	fiscal.products.classify	igual
+core.ts	8785	GET	/fiscal/series	requireProfile('gerente_loja', 'gerente_oficina')	L,O	fiscal.view	igual
+core.ts	8800	POST	/fiscal/series	requireProfile('gerente_loja', 'gerente_oficina')	L,O	fiscal.config.manage	igual
+core.ts	8886	GET	/companies	requireProfile()	DONOS	group.companies.manage	igual
+core.ts	8930	PATCH	/companies/:id/equipment-tags	requireProfile()	DONOS	group.companies.manage	igual
+core.ts	8964	POST	/companies	requireProfile()	DONOS	group.companies.manage	igual
+core.ts	9162	GET	/sellers	requireProfile('gerente_loja', 'gerente_oficina', ...BALCAO)	C,CL,CO,L,O	pdv.cash.operate	igual
+core.ts	9178	GET	/team	requireProfile('gerente_loja', 'gerente_oficina')	L,O	users.view	igual
+core.ts	9203	POST	/team	requireProfile('gerente_loja', 'gerente_oficina')	L,O	users.manage	igual
+core.ts	9235	PATCH	/team/:id	requireProfile('gerente_loja', 'gerente_oficina')	L,O	users.manage	igual
+core.ts	9264	POST	/team/:id/active	requireProfile('gerente_loja', 'gerente_oficina')	L,O	users.deactivate	igual
+core.ts	9290	POST	/team/:id/password	requireProfile('gerente_loja', 'gerente_oficina')	L,O	users.reset_password	igual
+core.ts	9324	POST	/team/:id/remove-from-company	requireProfile('gerente_loja', 'gerente_oficina')	L,O	users.manage	igual
+core.ts	9348	POST	/team/link	requireProfile('gerente_loja', 'gerente_oficina')	L,O	users.manage	igual
+core.ts	9390	GET	/team/recuperacao-de-senha	requireProfile()	DONOS	users.password_recovery.manage	igual
+core.ts	9399	PUT	/team/recuperacao-de-senha	requireProfile()	DONOS	users.password_recovery.manage	igual
+core.ts	9421	GET	/team/profiles	requireProfile('gerente_loja', 'gerente_oficina')	L,O	users.view	igual
+core.ts	9453	GET	/workshop/orders	abertaAo('balcao', 'bancada', 'escritorio')	C,CL,CO,E,L,M,O,T	workshop.kanban.view	igual
+core.ts	9516	GET	/workshop/orders/:id/impressao	abertaAo('balcao', 'bancada', 'escritorio')	C,CL,CO,E,L,M,O,T	workshop.kanban.view	igual
+core.ts	9536	GET	/workshop/orders/:id	abertaAo('balcao', 'bancada', 'escritorio')	C,CL,CO,E,L,M,O,T	workshop.kanban.view	igual
+core.ts	9557	GET	/workshop/orders/:id/avisos	abertaAo('balcao', 'bancada', 'escritorio')	C,CL,CO,E,L,M,O,T	workshop.kanban.view	igual
+core.ts	9576	GET	/workshop/entrada	requireProfile('gerente_oficina', 'operador_caixa_oficina', 'atendente', 'mecanico')	CO,M,O,T	workshop.orders.open	igual
+core.ts	9586	POST	/workshop/orders	requireProfile('gerente_oficina', 'operador_caixa_oficina', 'atendente', 'mecanico')	CO,M,O,T	workshop.orders.open	igual
+core.ts	9625	POST	/workshop/orders/:id/assume	requireProfile('mecanico', 'gerente_oficina')	M,O	workshop.orders.assume	igual
+core.ts	9654	POST	/workshop/orders/:id/move	requireProfile('mecanico', 'gerente_oficina', 'operador_caixa_oficina')	CO,M,O	workshop.orders.move	igual
+core.ts	9692	POST	/workshop/orders/:id/release	requireProfile('mecanico', 'gerente_oficina')	M,O	workshop.orders.assume	igual
+core.ts	9734	POST	/workshop/orders/:id/regularizar	requireProfile('gerente_oficina')	O	workshop.admin	igual
+core.ts	9775	PATCH	/workshop/orders/:id/plan	requireProfile('mecanico', 'gerente_oficina')	M,O	workshop.orders.plan	igual
+core.ts	9810	GET	/workshop/orders/:id/photos	abertaAo('balcao', 'bancada', 'escritorio')	C,CL,CO,E,L,M,O,T	workshop.kanban.view	igual
+core.ts	9829	POST	/workshop/orders/:id/photos	requireProfile('mecanico', 'gerente_oficina', 'operador_caixa_oficina', 'atendente')	CO,M,O,T	workshop.orders.open	igual
+core.ts	9858	DELETE	/workshop/orders/:id/photos/:photoId	requireProfile('mecanico', 'gerente_oficina')	M,O	workshop.orders.plan	igual
+core.ts	9882	GET	/workshop/orders/:id/checklist	abertaAo('balcao', 'bancada', 'escritorio')	C,CL,CO,E,L,M,O,T	workshop.kanban.view	igual
+core.ts	9897	PATCH	/workshop/orders/:id/checklist/:itemId	requireProfile('mecanico', 'gerente_oficina', 'operador_caixa_oficina', 'atendente')	CO,M,O,T	workshop.orders.open	igual
+core.ts	9924	GET	/workshop/sla	requireProfile('gerente_oficina')	O	workshop.admin	igual
+core.ts	9934	PUT	/workshop/sla	requireProfile('gerente_oficina')	O	workshop.admin	igual
+core.ts	9956	POST	/workshop/orders/:id/comments	requireProfile('mecanico', 'gerente_oficina', 'operador_caixa_oficina', 'atendente')	CO,M,O,T	workshop.orders.open	igual
+core.ts	9986	POST	/workshop/orders/:id/parts	requireProfile('mecanico', 'gerente_oficina')	M,O	workshop.parts.use	igual
+core.ts	10017	POST	/workshop/orders/:id/labor	requireProfile('mecanico', 'gerente_oficina')	M,O	workshop.labor.manage	igual
+core.ts	10044	POST	/workshop/orders/:id/pedir-aprovacao	requireProfile('mecanico', 'gerente_oficina', 'atendente')	M,O,T	workshop.quote.request	igual
+core.ts	10081	POST	/workshop/orders/:id/decidir-orcamento	requireProfile('mecanico', 'gerente_oficina', 'atendente')	M,O,T	workshop.quote.request	igual
+core.ts	10128	POST	/workshop/orders/:id/complete	requireProfile('mecanico', 'gerente_oficina')	M,O	workshop.orders.complete	igual
+core.ts	10174	GET	/workshop/pending-payment	requireProfile('operador_caixa_oficina', 'gerente_oficina')	CO,O	workshop.checkout	igual
+core.ts	10197	POST	/workshop/orders/:id/checkout	requireProfile('operador_caixa_oficina', 'gerente_oficina')	CO,O	workshop.checkout	igual
+core.ts	10267	POST	/workshop/orders/:id/estorno	requireProfile('operador_caixa_oficina', 'gerente_oficina')	CO,O	workshop.checkout	igual
+core.ts	10322	GET	/equipment	abertaAo('balcao', 'bancada', 'escritorio')	C,CL,CO,E,L,M,O,T	workshop.equipment.view	igual
+core.ts	10392	POST	/equipment	requireProfile('mecanico', 'gerente_oficina', 'operador_caixa_oficina', 'atendente')	CO,M,O,T	workshop.orders.open	igual
+core.ts	10467	GET	/equipment/:id	abertaAo('balcao', 'bancada', 'escritorio')	C,CL,CO,E,L,M,O,T	workshop.equipment.view	igual
+core.ts	10519	PATCH	/equipment/:id	requireProfile('mecanico', 'gerente_oficina')	M,O	workshop.equipment.manage	igual
+core.ts	10569	PATCH	/equipment/:id/identidade	requireProfile('mecanico', 'gerente_oficina')	M,O	workshop.equipment.manage	igual
+core.ts	10612	GET	/equipment/:id/photos	abertaAo('balcao', 'bancada', 'escritorio')	C,CL,CO,E,L,M,O,T	workshop.equipment.view	igual
+core.ts	10628	POST	/equipment/:id/photos	requireProfile('mecanico', 'gerente_oficina', 'operador_caixa_oficina', 'atendente')	CO,M,O,T	workshop.orders.open	igual
+core.ts	10656	DELETE	/equipment/:id/photos/:photoId	requireProfile('mecanico', 'gerente_oficina')	M,O	workshop.equipment.manage	igual
+core.ts	10679	POST	/equipment/:id/owner	requireProfile('gerente_oficina', 'operador_caixa_loja', 'gerente_loja')	CL,L,O	workshop.equipment.owner	igual
+core.ts	10723	POST	/equipment/:id/owner/desfazer	requireProfile('gerente_oficina')	O	workshop.admin	igual
+core.ts	10779	POST	/products/:id/barcode	requireProfile('gerente_loja', 'gerente_oficina', 'estoquista', 'operador_caixa_loja')	CL,E,L,O	labels.products.print	igual
+core.ts	10801	POST	/labels/products	requireProfile('gerente_loja', 'gerente_oficina', 'estoquista', 'operador_caixa_loja')	CL,E,L,O	labels.products.print	igual
+core.ts	10818	GET	/labels/catalog	abertaAo('balcao', 'bancada', 'escritorio')	C,CL,CO,E,L,M,O,T	qualquer(pdv.sell, products.view, workshop.kanban.view)	igual
+core.ts	10838	GET	/labels/candidates	abertaAo('escritorio')	E,L,O,T	products.view	igual
+core.ts	10871	POST	/labels/candidates/codes	abertaAo('escritorio')	E,L,O,T	products.view	igual
+core.ts	10900	POST	/labels/sheet	requireProfile('gerente_loja', 'gerente_oficina', 'estoquista', 'operador_caixa_loja')	CL,E,L,O	labels.products.print	igual
+core.ts	10956	GET	/purchases/notes/:id/repricing	requireProfile('gerente_loja', 'gerente_oficina', 'estoquista')	E,L,O	purchases.view	igual
+core.ts	10967	POST	/purchases/repricing/apply	requireProfile('gerente_loja', 'gerente_oficina')	L,O	products.price.manage	igual
+core.ts	11002	GET	/acquirers	requireProfile('gerente_loja', 'gerente_oficina')	L,O	finance.acquirers.manage	igual
+core.ts	11016	POST	/acquirers	requireProfile('gerente_loja', 'gerente_oficina')	L,O	finance.acquirers.manage	igual
+core.ts	11038	PATCH	/acquirers/:id	requireProfile('gerente_loja', 'gerente_oficina')	L,O	finance.acquirers.manage	igual
+core.ts	11065	PUT	/acquirers/:id/rates	requireProfile('gerente_loja', 'gerente_oficina')	L,O	finance.acquirers.manage	igual
+core.ts	11096	DELETE	/acquirers/rates/:id	requireProfile('gerente_loja', 'gerente_oficina')	L,O	finance.acquirers.manage	igual
+core.ts	11115	GET	/acquirers/preview	requireProfile('gerente_loja', 'gerente_oficina')	L,O	finance.acquirers.manage	igual
+core.ts	11143	GET	/commissions/setup	requireProfile('gerente_loja', 'gerente_oficina')	L,O	finance.commissions.manage	igual
+core.ts	11157	POST	/commissions/groups	requireProfile('gerente_loja', 'gerente_oficina')	L,O	finance.commissions.manage	igual
+core.ts	11176	PATCH	/commissions/groups/:id	requireProfile('gerente_loja', 'gerente_oficina')	L,O	finance.commissions.manage	igual
+core.ts	11198	PUT	/commissions/groups/:id/tiers	requireProfile('gerente_loja', 'gerente_oficina')	L,O	finance.commissions.manage	igual
+core.ts	11222	DELETE	/commissions/tiers/:id	requireProfile('gerente_loja', 'gerente_oficina')	L,O	finance.commissions.manage	igual
+core.ts	11240	PUT	/commissions/members/:userId	requireProfile('gerente_loja', 'gerente_oficina')	L,O	finance.commissions.manage	igual
+core.ts	11259	GET	/commissions/summary	requireProfile('gerente_loja', 'gerente_oficina')	L,O	finance.commissions.manage	igual
+core.ts	11280	POST	/commissions/close	requireProfile('gerente_loja', 'gerente_oficina')	L,O	finance.commissions.manage	igual
+core.ts	11311	GET	/commissions/closings	requireProfile('gerente_loja', 'gerente_oficina')	L,O	finance.commissions.manage	igual
+core.ts	11325	GET	/commissions/closings/:id	requireProfile('gerente_loja', 'gerente_oficina')	L,O	finance.commissions.manage	igual
+core.ts	11341	GET	/payment-methods	abertaAo('balcao', 'bancada', 'escritorio')	C,CL,CO,E,L,M,O,T	qualquer(pdv.sell, sales.view, workshop.kanban.view)	igual
+core.ts	11364	GET	/finance/setup	requireProfile('gerente_loja', 'gerente_oficina')	L,O	finance.advanced.view	igual
+core.ts	11383	POST	/finance/categories	requireProfile('gerente_loja', 'gerente_oficina')	L,O	finance.manage	igual
+core.ts	11406	PATCH	/finance/categories/:id	requireProfile('gerente_loja', 'gerente_oficina')	L,O	finance.manage	igual
+core.ts	11428	POST	/finance/cost-centers	requireProfile('gerente_loja', 'gerente_oficina')	L,O	finance.manage	igual
+core.ts	11450	PATCH	/finance/cost-centers/:id	requireProfile('gerente_loja', 'gerente_oficina')	L,O	finance.manage	igual
+core.ts	11472	POST	/finance/accounts	requireProfile('gerente_loja', 'gerente_oficina')	L,O	finance.manage	igual
+core.ts	11501	PATCH	/finance/accounts/:id	requireProfile('gerente_loja', 'gerente_oficina')	L,O	finance.manage	igual
+core.ts	11542	GET	/units/equipment-candidates	requireProfile('gerente_loja', 'gerente_oficina', 'estoquista')	E,L,O	inventory.units.manage	igual
+core.ts	11599	GET	/units/summary	abertaAo('escritorio')	E,L,O,T	inventory.units.view	igual
+core.ts	11646	GET	/units/:productId	abertaAo('balcao', 'escritorio')	C,CL,CO,E,L,O,T	qualquer(inventory.units.view, pdv.sell)	igual
+core.ts	11689	POST	/units/:id/equipment	requireProfile('gerente_loja', 'gerente_oficina', 'estoquista')	E,L,O	inventory.units.manage	igual
+core.ts	11734	POST	/units/:id/equipment/sheet	requireProfile('gerente_loja', 'gerente_oficina', 'estoquista')	E,L,O	inventory.units.manage	igual
+core.ts	11770	DELETE	/units/:id/equipment	requireProfile('gerente_loja', 'gerente_oficina', 'estoquista')	E,L,O	inventory.units.manage	igual
+core.ts	11793	GET	/units	abertaAo('balcao', 'escritorio')	C,CL,CO,E,L,O,T	qualquer(inventory.units.view, pdv.sell)	igual
+core.ts	11804	PATCH	/units/:id	requireProfile('gerente_loja', 'gerente_oficina', 'estoquista')	E,L,O	inventory.units.manage	igual
+core.ts	11840	POST	/units/:id/write-off	requireProfile('gerente_loja', 'gerente_oficina', 'estoquista')	E,L,O	inventory.units.manage	igual
+core.ts	11881	GET	/scales/formats	abertaAo('balcao', 'bancada', 'escritorio')	C,CL,CO,E,L,M,O,T	qualquer(pdv.sell, sales.view, workshop.kanban.view)	igual
+core.ts	11895	GET	/scales/products	abertaAo('escritorio')	E,L,O,T	products.view	igual
+core.ts	11914	POST	/scales/export	requireProfile('gerente_loja', 'gerente_oficina', 'estoquista')	E,L,O	products.manage	igual
+core.ts	11942	POST	/labels/equipment	requireProfile('gerente_oficina', 'mecanico', 'operador_caixa_oficina')	CO,M,O	workshop.equipment.label	igual
+core.ts	12027	POST	/labels/equipment/sheet	requireProfile('gerente_oficina', 'gerente_loja', 'mecanico', 'estoquista', 'atendente')	E,L,M,O,T	labels.equipment.print	igual
+core.ts	12113	GET	/labels/equipment/formats	requireProfile('gerente_oficina', 'gerente_loja', 'mecanico', 'estoquista', 'atendente')	E,L,M,O,T	labels.equipment.print	igual
+core.ts	12139	POST	/equipment-tags/batches	requireProfile('gerente_oficina', 'gerente_loja', 'mecanico', 'estoquista')	E,L,M,O	workshop.tags.print	igual
+core.ts	12162	GET	/equipment-tags	requireProfile(req, 'gerente_oficina', 'gerente_loja', 'mecanico', 'estoquista', 'atendente', 'operador_caixa_oficina',)	CO,E,L,M,O,T	workshop.tags.view	igual
+core.ts	12208	GET	/equipment-tags/batches	requireProfile(req, 'gerente_oficina', 'gerente_loja', 'mecanico', 'estoquista', 'atendente', 'operador_caixa_oficina',)	CO,E,L,M,O,T	workshop.tags.view	igual
+core.ts	12243	POST	/equipment-tags/sheet	requireProfile('gerente_oficina', 'gerente_loja', 'mecanico', 'estoquista')	E,L,M,O	workshop.tags.print	igual
+core.ts	12344	POST	/equipment-tags/release	requireProfile('gerente_oficina', 'gerente_loja', 'estoquista')	E,L,O	workshop.tags.release	igual
+core.ts	12368	POST	/equipment-tags/:id/damage	requireProfile('gerente_oficina', 'gerente_loja', 'mecanico', 'estoquista')	E,L,M,O	workshop.tags.print	igual
+core.ts	12398	POST	/equipment-tags/:id/replace	requireProfile('gerente_oficina', 'mecanico')	M,O	workshop.equipment.manage	igual
+core.ts	12423	GET	/equipment-tags/layout	requireProfile('gerente_oficina', 'gerente_loja', 'mecanico', 'estoquista')	E,L,M,O	workshop.tags.print	igual
+core.ts	12433	PUT	/equipment-tags/layout	requireProfile('gerente_oficina', 'gerente_loja')	L,O	workshop.tags.layout	igual
+core.ts	12458	GET	/purchases/notes	requireProfile('gerente_loja', 'gerente_oficina', 'estoquista', 'operador_caixa_loja', 'operador_caixa_oficina')	CL,CO,E,L,O	qualquer(purchases.receive, pdv.backoffice)	igual
+core.ts	12482	POST	/purchases/nfe/preview	requireProfile('gerente_loja', 'gerente_oficina', 'estoquista', 'operador_caixa_loja', 'operador_caixa_oficina')	CL,CO,E,L,O	qualquer(purchases.receive, pdv.backoffice)	igual
+core.ts	12498	POST	/purchases/nfe/import	requireProfile('gerente_loja', 'gerente_oficina', 'estoquista', 'operador_caixa_loja', 'operador_caixa_oficina')	CL,CO,E,L,O	qualquer(purchases.receive, pdv.backoffice)	igual
+core.ts	12523	GET	/purchases/cte	requireProfile(req, 'gerente_loja', 'gerente_oficina', 'estoquista', 'operador_caixa_loja', 'operador_caixa_oficina',)	CL,CO,E,L,O	qualquer(purchases.receive, pdv.backoffice)	igual
+core.ts	12540	POST	/purchases/cte/import	requireProfile(req, 'gerente_loja', 'gerente_oficina', 'estoquista', 'operador_caixa_loja', 'operador_caixa_oficina',)	CL,CO,E,L,O	qualquer(purchases.receive, pdv.backoffice)	igual
+core.ts	12572	GET	/purchases/dfe	requireProfile('gerente_loja', 'gerente_oficina', 'estoquista')	E,L,O	purchases.view	igual
+core.ts	12607	POST	/purchases/dfe/consultar	requireProfile('gerente_loja', 'gerente_oficina', 'estoquista')	E,L,O	purchases.receive	igual
+core.ts	12615	POST	/purchases/dfe/:chave/manifestar	requireProfile('gerente_loja', 'gerente_oficina')	L,O	purchases.manage	igual
+core.ts	12634	POST	/purchases/dfe/:chave/importar	requireProfile('gerente_loja', 'gerente_oficina', 'estoquista')	E,L,O	purchases.receive	igual
+core.ts	12692	GET	/purchases/notes/:id/xml	requireProfile('gerente_loja', 'gerente_oficina', 'estoquista', 'operador_caixa_loja', 'operador_caixa_oficina', 'contador')	CL,CO,E,K,L,O	qualquer(purchases.receive, pdv.backoffice, accounting.closing.view)	igual
+core.ts	12734	GET	/purchases/notes/:id/items	requireProfile('gerente_loja', 'gerente_oficina', 'estoquista', 'operador_caixa_loja', 'operador_caixa_oficina')	CL,CO,E,L,O	qualquer(purchases.receive, pdv.backoffice)	igual
+core.ts	12744	POST	/purchases/notes/:id/link	requireProfile('gerente_loja', 'gerente_oficina', 'estoquista', 'operador_caixa_loja', 'operador_caixa_oficina')	CL,CO,E,L,O	qualquer(purchases.receive, pdv.backoffice)	igual
+core.ts	12799	POST	/purchases/notes/:id/conferir	requireProfile(req, 'gerente_loja', 'gerente_oficina', 'estoquista', 'operador_caixa_loja', 'operador_caixa_oficina',)	CL,CO,E,L,O	qualquer(purchases.receive, pdv.backoffice)	igual
+core.ts	12851	POST	/purchases/notes/:id/confirm	requireProfile('gerente_loja', 'gerente_oficina', 'estoquista', 'operador_caixa_loja', 'operador_caixa_oficina')	CL,CO,E,L,O	qualquer(purchases.receive, pdv.backoffice)	igual
+core.ts	12889	POST	/purchases/manual	requireProfile('gerente_loja', 'gerente_oficina', 'estoquista')	E,L,O	purchases.receive	igual
+core.ts	12931	POST	/purchases/notes/:id/estornar	requireProfile('gerente_loja', 'gerente_oficina')	L,O	purchases.manage	igual
+core.ts	12968	GET	/purchases/notes/:id/devolviveis	requireProfile('gerente_loja', 'gerente_oficina', 'estoquista')	E,L,O	purchases.view	igual
+core.ts	12978	GET	/purchases/supplier-returns	requireProfile('gerente_loja', 'gerente_oficina', 'estoquista')	E,L,O	purchases.view	igual
+core.ts	12993	GET	/purchases/supplier-returns/:id	requireProfile('gerente_loja', 'gerente_oficina', 'estoquista')	E,L,O	purchases.view	igual
+core.ts	13003	POST	/purchases/supplier-returns	requireProfile('gerente_loja', 'gerente_oficina')	L,O	purchases.manage	igual
+core.ts	13049	GET	/purchases/notas-sem-conta	requireProfile('gerente_loja', 'gerente_oficina')	L,O	purchases.manage	igual
+core.ts	13059	POST	/purchases/notes/:id/conta-a-pagar	requireProfile('gerente_loja', 'gerente_oficina')	L,O	purchases.manage	igual
+core.ts	13093	POST	/purchases/supplier-returns/:id/fiscal	requireProfile('gerente_loja', 'gerente_oficina')	L,O	purchases.manage	igual
+core.ts	13122	GET	/orders	abertaAo('escritorio')	E,L,O,T	ecommerce.orders.view	igual
+core.ts	13163	GET	/orders/:id	abertaAo('escritorio')	E,L,O,T	ecommerce.orders.view	igual
+core.ts	13207	GET	/orders/:id/nfe/readiness	requireProfile('gerente_loja')	L	ecommerce.orders.manage	igual
+core.ts	13224	POST	/orders/:id/nfe	requireProfile('gerente_loja')	L	ecommerce.orders.manage	igual
+core.ts	13261	POST	/orders/:id/nfe/municipio	requireProfile('gerente_loja')	L	ecommerce.orders.manage	igual
+core.ts	13293	POST	/orders/:id/pay	requireProfile('gerente_loja')	L	ecommerce.orders.manage	igual
+core.ts	13330	POST	/orders/:id/cancel	requireProfile('gerente_loja', 'atendente')	L,T	ecommerce.orders.service	igual
+core.ts	13377	POST	/orders/:id/devolver	requireProfile('gerente_loja')	L	ecommerce.orders.manage	igual
+core.ts	13416	POST	/orders/:id/devolucao/receber	requireProfile('gerente_loja', 'estoquista')	E,L	ecommerce.orders.receive_return	igual
+core.ts	13452	POST	/orders/:id/devolucao/solicitacoes/:requestId/decidir	requireProfile('gerente_loja', 'atendente')	L,T	ecommerce.orders.service	igual
+core.ts	13482	POST	/orders/:id/fulfillment	requireProfile('gerente_loja', 'estoquista', 'atendente')	E,L,T	ecommerce.orders.fulfill	igual
+core.ts	13514	POST	/orders/:id/fulfillment/voltar	requireProfile('gerente_loja')	L	ecommerce.orders.manage	igual
+core.ts	13540	GET	/promotions	abertaAo('escritorio')	E,L,O,T	products.view	igual
+core.ts	13559	POST	/promotions	requireProfile('gerente_loja')	L	ecommerce.promotions.manage	igual
+core.ts	13598	PATCH	/promotions/:id	requireProfile('gerente_loja')	L	ecommerce.promotions.manage	igual
+core.ts	13625	DELETE	/promotions/:id	requireProfile('gerente_loja')	L	ecommerce.promotions.manage	igual
+core.ts	13647	GET	/coupons	abertaAo('escritorio')	E,L,O,T	products.view	igual
+core.ts	13657	POST	/coupons	requireProfile('gerente_loja')	L	ecommerce.promotions.manage	igual
+core.ts	13684	DELETE	/coupons/:id	requireProfile('gerente_loja')	L	ecommerce.promotions.manage	igual
+core.ts	13751	GET	/sync/status	requireProfile('gerente_loja', 'gerente_oficina')	L,O	integrations.sync.operate	igual
+core.ts	13778	POST	/sync/run	requireProfile('gerente_loja', 'gerente_oficina')	L,O	integrations.sync.operate	igual
+core.ts	13788	POST	/sync/probe	requireProfile('gerente_loja')	L	integrations.sync.admin	igual
+core.ts	13808	POST	/sync/bootstrap	requireProfile('gerente_loja')	L	integrations.sync.admin	igual
+core.ts	13841	POST	/sync/revive	requireProfile('gerente_loja')	L	integrations.sync.admin	igual
+core.ts	13861	GET	/integrations/status	requireProfile('gerente_loja', 'gerente_oficina')	L,O	integrations.status.view	igual
+core.ts	13931	GET	/integrations/asaas	requireProfile('gerente_loja')	L	integrations.asaas.manage	igual
+core.ts	13956	GET	/integrations/asaas/grupo	requireProfile()	DONOS	group.dashboard.view	igual
+core.ts	13978	PUT	/integrations/asaas/credentials	requireProfile('gerente_loja')	L	integrations.asaas.manage	igual
+core.ts	14033	POST	/integrations/asaas/homologar	requireProfile('gerente_loja')	L	integrations.asaas.manage	igual
+core.ts	14082	POST	/integrations/asaas/homologar/conferir-aviso	requireProfile('gerente_loja')	L	integrations.asaas.manage	igual
+core.ts	14096	PUT	/integrations/asaas/webhook-token	requireProfile('gerente_loja')	L	integrations.asaas.manage	igual
+core.ts	14120	DELETE	/integrations/asaas/credentials/:environment	requireProfile('gerente_loja')	L	integrations.asaas.manage	igual
+core.ts	14151	PATCH	/integrations/asaas	requireProfile('gerente_loja')	L	integrations.asaas.manage	igual
+core.ts	14187	POST	/integrations/asaas/test	requireProfile('gerente_loja')	L	integrations.asaas.manage	igual
+core.ts	14263	GET	/audit	requireProfile()	DONOS	audit.view	igual
+core.ts	14292	GET	/shipping-settings	requireProfile('gerente_loja', 'gerente_oficina')	L,O	ecommerce.shipping.manage	igual
+core.ts	14309	PUT	/shipping-settings	requireProfile('gerente_loja', 'gerente_oficina')	L,O	ecommerce.shipping.manage	igual
+core.ts	14355	GET	/emails	requireProfile('gerente_loja', 'gerente_oficina')	L,O	ecommerce.emails.manage	igual
+core.ts	14385	POST	/emails/:id/reenviar	requireProfile('gerente_loja', 'gerente_oficina')	L,O	ecommerce.emails.manage	igual
+core.ts	14405	POST	/emails/enviar	requireProfile('gerente_loja', 'gerente_oficina')	L,O	ecommerce.emails.manage	igual
+core.ts	14424	GET	/emails/identidade	requireProfile('gerente_loja', 'gerente_oficina')	L,O	ecommerce.emails.manage	igual
+core.ts	14438	PUT	/emails/identidade	requireProfile('gerente_loja', 'gerente_oficina')	L,O	ecommerce.emails.manage	igual
+core.ts	14465	GET	/comunicacoes/prontidao	requireProfile('gerente_loja', 'gerente_oficina')	L,O	ecommerce.emails.manage	igual
+core.ts	14479	GET	/asaas/conciliacao	requireProfile('gerente_loja', 'gerente_oficina')	L,O	integrations.asaas.reconcile	igual
+core.ts	14513	POST	/asaas/conciliacao/sincronizar	requireProfile('gerente_loja', 'gerente_oficina')	L,O	integrations.asaas.reconcile	igual
+core.ts	14541	GET	/asaas/conciliacao/sincronizacao	requireProfile('gerente_loja', 'gerente_oficina')	L,O	integrations.asaas.reconcile	igual
+core.ts	14564	POST	/customers/:id/convite-portal	requireProfile('gerente_loja', 'gerente_oficina', 'mecanico', 'atendente')	L,M,O,T	customers.portal.invite	igual
+core.ts	14585	GET	/workshop/chamados	requireProfile('gerente_oficina', 'gerente_loja', 'mecanico', 'atendente')	L,M,O,T	workshop.tickets.manage	igual
+core.ts	14602	POST	/workshop/chamados/:id/converter	requireProfile('gerente_oficina', 'gerente_loja', 'mecanico', 'atendente')	L,M,O,T	workshop.tickets.manage	igual
+core.ts	14637	POST	/workshop/chamados/:id/encerrar	requireProfile('gerente_oficina', 'gerente_loja', 'mecanico', 'atendente')	L,M,O,T	workshop.tickets.manage	igual
+core.ts	14669	GET	/carriers	requireProfile('gerente_loja', 'gerente_oficina', 'estoquista')	E,L,O	purchases.view	igual
+core.ts	14684	GET	/carriers/:id	requireProfile('gerente_loja', 'gerente_oficina', 'estoquista')	E,L,O	purchases.view	igual
+core.ts	14695	POST	/carriers	requireProfile('gerente_loja', 'gerente_oficina')	L,O	purchases.manage	igual
+core.ts	14714	PATCH	/carriers/:id	requireProfile('gerente_loja', 'gerente_oficina')	L,O	purchases.manage	igual
+core.ts	14732	POST	/carriers/:id/active	requireProfile('gerente_loja', 'gerente_oficina')	L,O	purchases.manage	igual
+core.ts	14757	GET	/inbound/config	requireProfile('gerente_loja', 'gerente_oficina', 'estoquista')	E,L,O	purchases.view	igual
+core.ts	14767	PUT	/inbound/config	requireProfile('gerente_loja', 'gerente_oficina')	L,O	purchases.manage	igual
+core.ts	14793	GET	/suppliers	requireProfile('gerente_loja', 'gerente_oficina', 'estoquista')	E,L,O	purchases.view	igual
+core.ts	14808	GET	/suppliers/:id	requireProfile('gerente_loja', 'gerente_oficina', 'estoquista')	E,L,O	purchases.view	igual
+core.ts	14822	POST	/suppliers	requireProfile('gerente_loja', 'gerente_oficina')	L,O	purchases.manage	igual
+core.ts	14840	PATCH	/suppliers/:id	requireProfile('gerente_loja', 'gerente_oficina')	L,O	purchases.manage	igual
+core.ts	14859	POST	/suppliers/:id/active	requireProfile('gerente_loja', 'gerente_oficina')	L,O	purchases.manage	igual
+core.ts	14884	GET	/purchase-orders	requireProfile('gerente_loja', 'gerente_oficina', 'estoquista')	E,L,O	purchases.view	igual
+core.ts	14904	GET	/purchase-orders/:id	requireProfile('gerente_loja', 'gerente_oficina', 'estoquista')	E,L,O	purchases.view	igual
+core.ts	14914	POST	/purchase-orders	requireProfile('gerente_loja', 'gerente_oficina')	L,O	purchases.manage	igual
+core.ts	14939	PUT	/purchase-orders/:id/items	requireProfile('gerente_loja', 'gerente_oficina')	L,O	purchases.manage	igual
+core.ts	14962	POST	/purchase-orders/:id/send	requireProfile('gerente_loja', 'gerente_oficina')	L,O	purchases.manage	igual
+core.ts	14986	GET	/purchase-orders/:id/impressao	requireProfile('gerente_loja', 'gerente_oficina', 'estoquista')	E,L,O	purchases.view	igual
+core.ts	15003	POST	/purchase-orders/:id/email	requireProfile('gerente_loja', 'gerente_oficina')	L,O	purchases.manage	igual
+core.ts	15030	POST	/purchase-orders/:id/cancel	requireProfile('gerente_loja', 'gerente_oficina')	L,O	purchases.manage	igual
+core.ts	15053	POST	/purchase-orders/:id/notes/:noteId	requireProfile('gerente_loja', 'gerente_oficina', 'estoquista')	E,L,O	purchases.receive	igual
+core.ts	15119	GET	/sales/:id/returnable	abertaAo('balcao', 'escritorio')	C,CL,CO,E,L,O,T	qualquer(pdv.sell, sales.view)	igual
+core.ts	15129	GET	/sale-returns	abertaAo('balcao', 'escritorio')	C,CL,CO,E,L,O,T	qualquer(pdv.sell, sales.view)	igual
+core.ts	15144	GET	/sale-returns/:id	abertaAo('balcao', 'escritorio')	C,CL,CO,E,L,O,T	qualquer(pdv.sell, sales.view)	igual
+core.ts	15164	POST	/sale-returns	abertaAo('escritorio')	E,L,O,T	sales.returns.operate	igual
+core.ts	15236	GET	/inventory-counts	requireProfile('gerente_loja', 'gerente_oficina', 'estoquista')	E,L,O	inventory.manage	igual
+core.ts	15250	GET	/inventory-counts/:id	requireProfile('gerente_loja', 'gerente_oficina', 'estoquista')	E,L,O	inventory.manage	igual
+core.ts	15260	POST	/inventory-counts	requireProfile('gerente_loja', 'gerente_oficina', 'estoquista')	E,L,O	inventory.manage	igual
+core.ts	15292	POST	/inventory-counts/:id/items	requireProfile('gerente_loja', 'gerente_oficina', 'estoquista')	E,L,O	inventory.manage	igual
+core.ts	15311	POST	/inventory-counts/:id/apply	requireProfile('gerente_loja', 'gerente_oficina')	L,O	inventory.adjust.approve	igual
+core.ts	15334	POST	/inventory-counts/:id/cancel	requireProfile('gerente_loja', 'gerente_oficina')	L,O	inventory.adjust.approve	igual
+core.ts	15362	GET	/leads	requireProfile('gerente_loja', 'gerente_oficina', 'atendente', 'operador_caixa_loja')	CL,L,O,T	crm.view	igual
+core.ts	15377	POST	/leads	requireProfile('gerente_loja', 'gerente_oficina', 'atendente', 'operador_caixa_loja')	CL,L,O,T	crm.leads.manage	igual
+core.ts	15398	PATCH	/leads/:id/status	requireProfile('gerente_loja', 'gerente_oficina', 'atendente', 'operador_caixa_loja')	CL,L,O,T	crm.leads.manage	igual
+core.ts	15416	POST	/leads/:id/convert	requireProfile('gerente_loja', 'gerente_oficina', 'atendente')	L,O,T	crm.opportunities.close	igual
+core.ts	15434	GET	/opportunities	requireProfile('gerente_loja', 'gerente_oficina', 'atendente', 'operador_caixa_loja')	CL,L,O,T	crm.view	igual
+core.ts	15448	POST	/opportunities	requireProfile('gerente_loja', 'gerente_oficina', 'atendente', 'operador_caixa_loja')	CL,L,O,T	crm.leads.manage	igual
+core.ts	15467	POST	/opportunities/:id/close	requireProfile('gerente_loja', 'gerente_oficina', 'atendente')	L,O,T	crm.opportunities.close	igual
+core.ts	15485	GET	/crm/summary	requireProfile('gerente_loja', 'gerente_oficina', 'atendente', 'operador_caixa_loja')	CL,L,O,T	crm.view	igual
+core.ts	15501	GET	/loyalty/program	requireProfile('gerente_loja', 'gerente_oficina', 'operador_caixa_loja', 'atendente')	CL,L,O,T	crm.view	igual
+core.ts	15511	PUT	/loyalty/program	requireProfile('gerente_loja', 'gerente_oficina')	L,O	crm.loyalty.config	igual
+core.ts	15534	GET	/loyalty/customers/:id	requireProfile('gerente_loja', 'gerente_oficina', 'operador_caixa_loja', 'atendente')	CL,L,O,T	crm.view	igual
+core.ts	15545	POST	/loyalty/redeem	requireProfile('gerente_loja', 'gerente_oficina', 'operador_caixa_loja')	CL,L,O	crm.loyalty.redeem	igual
+core.ts	15568	GET	/rentals	requireProfile('gerente_loja', 'gerente_oficina', 'atendente', 'operador_caixa_loja')	CL,L,O,T	rentals.view	igual
+core.ts	15582	GET	/rentals/:id	requireProfile('gerente_loja', 'gerente_oficina', 'atendente', 'operador_caixa_loja')	CL,L,O,T	rentals.view	igual
+core.ts	15592	POST	/rentals	requireProfile('gerente_loja', 'gerente_oficina', 'atendente')	L,O,T	rentals.manage	igual
+core.ts	15619	POST	/rentals/:id/return	requireProfile('gerente_loja', 'gerente_oficina', 'atendente')	L,O,T	rentals.manage	igual
+core.ts	15636	POST	/rentals/:id/cancel	requireProfile('gerente_loja', 'gerente_oficina')	L,O	rentals.cancel	igual
+core.ts	15659	GET	/workshop/parts	requireProfile('gerente_loja', 'gerente_oficina', 'estoquista', 'mecanico', 'atendente')	E,L,M,O,T	workshop.parts.view	igual
+core.ts	15688	GET	/workshop/parts/scan	requireProfile('gerente_loja', 'gerente_oficina', 'estoquista', 'mecanico')	E,L,M,O	qualquer(workshop.parts.use, workshop.parts.manage)	igual
+core.ts	15723	POST	/workshop/parts	requireProfile('gerente_loja', 'gerente_oficina', 'estoquista')	E,L,O	workshop.parts.manage	igual
+core.ts	15785	POST	/workshop/parts/:id/reposicao	requireProfile('gerente_loja', 'gerente_oficina', 'estoquista')	E,L,O	workshop.parts.manage	igual
+core.ts	15828	PATCH	/workshop/parts/:id	requireProfile('gerente_loja', 'gerente_oficina', 'estoquista')	E,L,O	workshop.parts.manage	igual
+core.ts	15856	POST	/workshop/orders/:orderId/parts/:partId/return	requireProfile('gerente_oficina', 'mecanico')	M,O	workshop.parts.use	igual
+core.ts	15899	GET	/bank/statements	requireProfile('gerente_loja', 'gerente_oficina')	L,O	finance.bank_reconciliation.manage	igual
+core.ts	15916	GET	/bank/lines	requireProfile('gerente_loja', 'gerente_oficina')	L,O	finance.bank_reconciliation.manage	igual
+core.ts	15934	POST	/bank/statements	requireProfile('gerente_loja', 'gerente_oficina')	L,O	finance.bank_reconciliation.manage	igual
+core.ts	15958	GET	/bank/lines/:id/suggestions	requireProfile('gerente_loja', 'gerente_oficina')	L,O	finance.bank_reconciliation.manage	igual
+core.ts	15969	POST	/bank/lines/:id/match	requireProfile('gerente_loja', 'gerente_oficina')	L,O	finance.bank_reconciliation.manage	igual
+core.ts	16009	DELETE	/bank/lines/:id/match	requireProfile('gerente_loja', 'gerente_oficina')	L,O	finance.bank_reconciliation.manage	igual
+core.ts	16034	GET	/bank/conciliacao	requireProfile('gerente_loja', 'gerente_oficina')	L,O	finance.bank_reconciliation.manage	igual
+core.ts	16056	GET	/storefront/settings	requireProfile('gerente_loja', 'gerente_oficina')	L,O	ecommerce.store.manage	igual
+core.ts	16081	POST	/storefront/imagem	requireProfile('gerente_loja', 'gerente_oficina')	L,O	ecommerce.store.manage	igual
+core.ts	16105	DELETE	/storefront/imagem/:tipo	requireProfile('gerente_loja', 'gerente_oficina')	L,O	ecommerce.store.manage	igual
+core.ts	16124	PUT	/storefront/settings	requireProfile('gerente_loja', 'gerente_oficina')	L,O	ecommerce.store.manage	igual
+core.ts	16158	GET	/storefront/checkout-policy	requireProfile('gerente_loja', 'gerente_oficina')	L,O	ecommerce.store.manage	igual
+core.ts	16168	PUT	/storefront/checkout-policy	requireProfile('gerente_loja', 'gerente_oficina')	L,O	ecommerce.store.manage	igual
+core.ts	16195	GET	/portal/login-google	requireProfile()	DONOS	integrations.google_login.manage	igual
+core.ts	16204	PUT	/portal/login-google	requireProfile()	DONOS	integrations.google_login.manage	igual
+core.ts	16237	POST	/storefront/featured/:productId	requireProfile('gerente_loja', 'gerente_oficina')	L,O	ecommerce.store.manage	igual
+core.ts	16262	GET	/workshops/:id/members	requireProfile('gerente_loja', 'gerente_oficina')	L,O	workshop.benches.manage	igual
+core.ts	16273	POST	/workshops/:id/members	requireProfile('gerente_loja', 'gerente_oficina')	L,O	workshop.benches.manage	igual
+core.ts	16296	DELETE	/workshops/:id/members/:userId	requireProfile('gerente_loja', 'gerente_oficina')	L,O	workshop.benches.manage	igual
+core.ts	16333	GET	/reports	requireProfile('gerente_loja', 'gerente_oficina')	L,O	reports.central.view	igual
+core.ts	16357	GET	/reports/:id	requireProfile('gerente_loja', 'gerente_oficina')	L,O	reports.central.view	igual
+core.ts	16429	GET	/insights/operations	requireProfile('gerente_loja', 'gerente_oficina')	L,O	reports.bi.view	igual
+core.ts	16445	GET	/insights/products	requireProfile('gerente_loja', 'gerente_oficina')	L,O	reports.bi.view	igual
+core.ts	16468	GET	/insights/brands	requireProfile('gerente_loja', 'gerente_oficina')	L,O	reports.bi.view	igual
+core.ts	16486	GET	/insights/margin	requireProfile('gerente_loja', 'gerente_oficina')	L,O	reports.bi.view	igual
+core.ts	16517	GET	/logistics/readiness	requireProfile('gerente_loja', 'estoquista')	E,L	logistics.manage	igual
+core.ts	16532	GET	/logistics/carriers	requireProfile('gerente_loja', 'estoquista')	E,L	logistics.manage	igual
+core.ts	16552	POST	/logistics/quote	requireProfile('gerente_loja', 'estoquista')	E,L	logistics.manage	igual
+core.ts	16591	GET	/loja/prontidao-do-dia-1	requireProfile('gerente_loja', 'gerente_oficina')	L,O	ecommerce.store.manage	igual
+core.ts	16618	POST	/import/produtos	requireProfile('gerente_loja', 'gerente_oficina', 'estoquista')	E,L,O	products.manage	igual
+core.ts	16647	GET	/import/produtos	requireProfile('gerente_loja', 'gerente_oficina', 'estoquista')	E,L,O	products.manage	igual
+core.ts	16657	GET	/import/produtos/:id/itens	requireProfile('gerente_loja', 'gerente_oficina', 'estoquista')	E,L,O	products.manage	igual
+core.ts	16678	PUT	/import/produtos/:id/leitura	requireProfile('gerente_loja', 'gerente_oficina', 'estoquista')	E,L,O	products.manage	igual
+core.ts	16702	POST	/import/produtos/:id/confirmar	requireProfile('gerente_loja', 'gerente_oficina')	L,O	products.catalog.admin	igual
+core.ts	16722	DELETE	/import/produtos/:id	requireProfile('gerente_loja', 'gerente_oficina', 'estoquista')	E,L,O	products.manage	igual
+nfse.ts	45	GET	/fiscal/nfse/config	requireProfile(...GERENCIA)	L,O	fiscal.view	igual
+nfse.ts	54	PATCH	/fiscal/nfse/config	requireProfile(...GERENCIA)	L,O	fiscal.config.manage	igual
+nfse.ts	64	GET	/fiscal/nfse/readiness	requireProfile(...GERENCIA)	L,O	fiscal.view	igual
+nfse.ts	73	GET	/fiscal/nfse/documents	requireProfile(...GERENCIA)	L,O	fiscal.view	igual
+nfse.ts	82	GET	/fiscal/sales/:saleId/nfse	requireProfile(...GERENCIA, ...CAIXAS)	C,CL,CO,L,O	fiscal.sale.emit	igual
+nfse.ts	91	POST	/fiscal/sales/:saleId/nfse	requireProfile(...GERENCIA, ...CAIXAS)	C,CL,CO,L,O	fiscal.sale.emit	igual
+nfse.ts	112	POST	/fiscal/sales/:saleId/nfse/manual	requireProfile(...GERENCIA, ...CAIXAS)	C,CL,CO,L,O	fiscal.sale.emit	igual
+nfse.ts	132	POST	/fiscal/nfse/:id/cancel-record	requireProfile(...GERENCIA)	L,O	fiscal.documents.cancel	igual
+payment-terminals.ts	91	GET	/health	rotaPublica (inalterada)	PUBLICA	PUBLICA	igual
+payment-terminals.ts	106	POST	/agent/pair	rotaPublica (inalterada)	PUBLICA	PUBLICA	igual
+payment-terminals.ts	122	POST	/agent/heartbeat	rotaPublica (inalterada)	PUBLICA	PUBLICA	igual
+payment-terminals.ts	146	GET	/agent/commands	rotaPublica (inalterada)	PUBLICA	PUBLICA	igual
+payment-terminals.ts	163	POST	/agent/commands/:id/result	rotaPublica (inalterada)	PUBLICA	PUBLICA	igual
+payment-terminals.ts	184	GET	/agent/print-jobs	rotaPublica (inalterada)	PUBLICA	PUBLICA	igual
+payment-terminals.ts	200	POST	/agent/print-jobs/:id/result	rotaPublica (inalterada)	PUBLICA	PUBLICA	igual
+payment-terminals.ts	215	GET	/readiness	requirePermission('payment-terminal.view')	C,CL,CO,L,T	integrations.card_terminal.view	igual
+payment-terminals.ts	219	GET	/providers-status	requirePermission('payment-terminal.view')	C,CL,CO,L,T	integrations.card_terminal.view	igual
+payment-terminals.ts	223	GET	/local-agent/status	requirePermission('payment-terminal.settings.manage')	C,CL,CO,L	integrations.card_terminal.operate	igual
+payment-terminals.ts	227	POST	/local-agent/pairing	requirePermission('payment-terminal.settings.manage')	L	integrations.card_terminal.manage	igual
+payment-terminals.ts	244	POST	/local-agent/pair	requirePermission('payment-terminal.settings.manage')	L	integrations.card_terminal.manage	igual
+payment-terminals.ts	258	POST	/local-agent/heartbeat	requirePermission('payment-terminal.settings.manage')	L	integrations.card_terminal.manage	igual
+payment-terminals.ts	271	POST	/local-agents/:id/revoke	requirePermission('payment-terminal.settings.manage')	L	integrations.card_terminal.manage	igual
+payment-terminals.ts	285	GET	/agent-commands	requirePermission('payment-terminal.settings.manage')	L	integrations.card_terminal.manage	igual
+payment-terminals.ts	300	GET	/providers	requirePermission('payment-terminal.view')	C,CL,CO,L,T	integrations.card_terminal.view	igual
+payment-terminals.ts	304	GET	/providers/:provider/capabilities	requirePermission('payment-terminal.view')	C,CL,CO,L,T	integrations.card_terminal.view	igual
+payment-terminals.ts	308	GET	/configurations	requirePermission('payment-terminal.configuration.view')	C,CL,CO,L,T	integrations.card_terminal.view	igual
+payment-terminals.ts	312	POST	/configurations	requirePermission('payment-terminal.configuration.manage')	L	integrations.card_terminal.manage	igual
+payment-terminals.ts	342	PATCH	/configurations/:id	requirePermission('payment-terminal.configuration.manage')	L	integrations.card_terminal.manage	igual
+payment-terminals.ts	360	POST	/credentials	requirePermission('payment-terminal.configuration.manage')	L	integrations.card_terminal.manage	igual
+payment-terminals.ts	395	GET	/terminals	requirePermission('payment-terminal.terminal.view')	C,CL,CO,L,T	integrations.card_terminal.view	igual
+payment-terminals.ts	399	POST	/providers/:provider/test-connection	requirePermission('payment-terminal.terminal.test')	C,CL,CO,L	integrations.card_terminal.operate	igual
+payment-terminals.ts	403	POST	/providers/:provider/test-transaction	requirePermission('payment-terminal.transaction.create')	L	integrations.card_terminal.manage	igual
+payment-terminals.ts	428	GET	/transactions	requirePermission('payment-terminal.transaction.view')	C,CL,CO,L,T	integrations.card_terminal.view	igual
+payment-terminals.ts	437	POST	/transactions	requirePermission('payment-terminal.transaction.create')	C,CL,CO,L	integrations.card_terminal.operate	igual
+payment-terminals.ts	462	GET	/transactions/:id	requirePermission('payment-terminal.transaction.view')	C,CL,CO,L,T	integrations.card_terminal.view	igual
+payment-terminals.ts	480	POST	/transactions/:id/cancel	requirePermission('payment-terminal.transaction.cancel')	C,CL,CO,L	integrations.card_terminal.operate	igual
+payment-terminals.ts	494	POST	/transactions/:id/refund	requirePermission('payment-terminal.transaction.refund')	C,CL,CO,L	integrations.card_terminal.operate	igual
+payment-terminals.ts	515	POST	/transactions/:id/query	requirePermission('payment-terminal.reconciliation.manage')	L	integrations.card_terminal.manage	igual
+payment-terminals.ts	537	GET	/transactions/:id/receipt	requirePermission('payment-terminal.receipt.view')	C,CL,CO,L,T	integrations.card_terminal.view	igual
+payment-terminals.ts	549	POST	/transactions/:id/reprint	requirePermission('payment-terminal.receipt.reprint')	C,CL,CO,L	integrations.card_terminal.operate	igual
+payment-terminals.ts	562	GET	/homologation	requirePermission('payment-terminal.homologation.run')	C,CL,CO,L	integrations.card_terminal.operate	igual
+payment-terminals.ts	566	POST	/homologation/run	requirePermission('payment-terminal.homologation.run')	L	integrations.card_terminal.manage	igual
+payment-terminals.ts	598	GET	/local-agents	requirePermission('payment-terminal.settings.manage')	C,CL,CO,L	integrations.card_terminal.operate	igual
+payment-terminals.ts	602	GET	/dashboard	requirePermission('payment-terminal.dashboard.view')	C,CL,CO,L,T	integrations.card_terminal.view	igual
+payment-terminals.ts	606	GET	/recovery	requirePermission('payment-terminal.recovery.manage')	C,CL,CO,L	integrations.card_terminal.operate	igual
+payment-terminals.ts	618	GET	/dead-letter	requirePermission('payment-terminal.recovery.manage')	C,CL,CO,L	integrations.card_terminal.operate	igual
+logistics.ts	52	GET	/health	rotaPublica (inalterada)	PUBLICA	PUBLICA	igual
+logistics.ts	56	GET	/readiness	requirePermission('logistics.view')	E,L,T	logistics.view	igual
+logistics.ts	60	GET	/providers-status	requirePermission('logistics.view')	E,L,T	logistics.view	igual
+logistics.ts	69	GET	/shipments	requirePermission('logistics.shipment.view')	E,L,T	logistics.view	igual
+logistics.ts	86	GET	/orders/:orderId/shipments	requirePermission('logistics.shipment.view')	E,L,T	logistics.view	igual
+logistics.ts	100	POST	/orders/:orderId/services	requirePermission('logistics.quote.request')	E,L	logistics.manage	igual
+logistics.ts	112	POST	/orders/:orderId/label	requirePermission('logistics.label.create')	E,L	logistics.manage	igual
+logistics.ts	135	POST	/shipments	requirePermission('logistics.label.create')	E,L	logistics.manage	igual
+logistics.ts	161	POST	/shipments/:id/continue	requirePermission('logistics.label.create')	E,L	logistics.manage	igual
+logistics.ts	170	GET	/shipments/:id/label	requirePermission('logistics.label.view')	E,L,T	logistics.view	igual
+logistics.ts	179	POST	/shipments/:id/sync	requirePermission('logistics.tracking.sync')	E,L	logistics.manage	igual
+logistics.ts	187	POST	/shipments/:id/cancel	requirePermission('logistics.shipment.cancel')	E,L	logistics.manage	igual
+logistics.ts	206	GET	/settings/shipping	requirePermission('logistics.config.view')	E,L,T	logistics.view	igual
+logistics.ts	214	PUT	/settings/shipping	requirePermission('logistics.config.manage')	E,L	logistics.manage	igual
+logistics.ts	222	POST	/quotes	requirePermission('logistics.quote.request')	E,L	logistics.manage	igual
+logistics.ts	259	GET	/quotes/:quoteId	requirePermission('logistics.quote.request')	E,L	logistics.manage	igual
+logistics.ts	270	GET	/carriers	requirePermission('logistics.config.view')	E,L,T	logistics.view	igual
+logistics.ts	287	POST	/carriers/credentials	requirePermission('logistics.config.manage')	E,L	logistics.manage	igual
+logistics.ts	332	DELETE	/carriers/:carrier/credentials	requirePermission('logistics.config.manage')	E,L	logistics.manage	igual
+logistics.ts	356	POST	/carriers/:carrier/test-connection	requirePermission('logistics.config.manage')	E,L	logistics.manage	igual
+logistics.ts	369	POST	/carriers/:carrier/test-quote	requirePermission('logistics.quote.request')	E,L	logistics.manage	igual
+logistics.ts	377	POST	/carriers/:carrier/test-tracking	requirePermission('logistics.tracking.view')	E,L,T	logistics.view	igual
+logistics.ts	387	GET	/homologation	requirePermission('logistics.homologation.run')	E,L	logistics.manage	igual
+logistics.ts	391	POST	/homologation/run	requirePermission('logistics.homologation.run')	E,L	logistics.manage	igual
+system-admin.ts	26	GET	/health	rotaPublica (inalterada)	PUBLICA	PUBLICA	igual
+system-admin.ts	30	GET	/readiness	requirePermission('system-readiness.view')	DONOS	system.status.view	igual
+system-admin.ts	50	GET	/implantacao	requirePermission('system-readiness.view')	DONOS	system.deploy.view	igual
+system-admin.ts	79	GET	/implantacao/empresas	requirePermission('system-readiness.view')	DONOS	system.deploy.view	igual
+system-admin.ts	90	GET	/implantacao/empresas/:companyId	requirePermission('system-readiness.view')	DONOS	system.deploy.view	igual
+system-admin.ts	98	PUT	/implantacao/empresas/:companyId/itens/:item/marca	requirePermission('system-readiness.manage')	DONOS	system.deploy.manage	igual
+system-admin.ts	125	DELETE	/implantacao/empresas/:companyId/itens/:item/marca	requirePermission('system-readiness.manage')	DONOS	system.deploy.manage	igual
+system-admin.ts	182	GET	/release	requirePermission('system-release.view')	DONOS	system.status.view	igual
+system-admin.ts	206	GET	/backup/status	requirePermission('system-backup.view')	DONOS	system.backup.view	igual
+system-admin.ts	215	POST	/backup/conferir-bucket	requirePermission('system-backup.manage')	DONOS	system.backup.manage	igual
+index.ts	25	GET	/health	rotaPublica (inalterada)	PUBLICA	PUBLICA	igual
+index.ts	55	GET	/readiness	rotaPublica (inalterada)	PUBLICA	PUBLICA	igual
+index.ts	73	GET	/version	rotaPublica (inalterada)	PUBLICA	PUBLICA	igual
+index.ts	188	GET	/openapi.json	rotaPublica (inalterada)	PUBLICA	PUBLICA	igual
+index.ts	237	GET	/asaas/status	requirePermission('asaas.connection.view')	L,T	integrations.asaas.view	igual
+index.ts	256	POST	/asaas/test-connection	requirePermission('asaas.connection.test')	L	integrations.asaas.manage	igual
+index.ts	275	POST	/asaas/customers/sync	requirePermission('asaas.customer.sync')	L	integrations.asaas.manage	igual
+index.ts	286	POST	/asaas/charges	requirePermission('asaas.charge.create')	L	integrations.asaas.manage	igual
+index.ts	297	GET	/asaas/charges/:chargeLinkId	requirePermission('asaas.charge.view')	L,T	integrations.asaas.view	igual
+index.ts	308	POST	/asaas/charges/:chargeLinkId/cancel	requirePermission('asaas.charge.cancel')	L	integrations.asaas.manage	igual
+index.ts	317	GET	/asaas/queue	requirePermission('asaas.queue.view')	L,T	integrations.asaas.view	igual
+index.ts	331	POST	/asaas/queue/:attemptId/retry	requirePermission('asaas.queue.retry')	L	integrations.asaas.manage	igual
+index.ts	392	POST	/webhooks/asaas	rotaPublica (inalterada)	PUBLICA	PUBLICA	igual
+index.ts	407	POST	/asaas/homologation/start	requirePermission('asaas.homologation.run')	L	integrations.asaas.manage	igual
+index.ts	418	POST	/asaas/production/activate	requirePermission('asaas.production.activate')	L	integrations.asaas.manage	igual
+storefront.ts	141	GET	/identificacao	rotaPublica (inalterada)	PUBLICA	PUBLICA	igual
+storefront.ts	148	GET	/stores	rotaPublica (inalterada)	PUBLICA	PUBLICA	igual
+storefront.ts	156	GET	/products	rotaPublica (inalterada)	PUBLICA	PUBLICA	igual
+storefront.ts	184	GET	/ofertas	rotaPublica (inalterada)	PUBLICA	PUBLICA	igual
+storefront.ts	198	GET	/destaques	rotaPublica (inalterada)	PUBLICA	PUBLICA	igual
+storefront.ts	211	GET	/categories	rotaPublica (inalterada)	PUBLICA	PUBLICA	igual
+storefront.ts	227	GET	/municipios	rotaPublica (inalterada)	PUBLICA	PUBLICA	igual
+storefront.ts	242	GET	/stores/:storeSlug/products/:id	rotaPublica (inalterada)	PUBLICA	PUBLICA	igual
+storefront.ts	270	POST	/stores/:storeSlug/products/:id/shipping-quote	rotaPublica (inalterada)	PUBLICA	PUBLICA	igual
+storefront.ts	489	POST	/checkout/frete	rotaPublica (inalterada)	PUBLICA	PUBLICA	igual
+storefront.ts	530	POST	/checkout/cupom	rotaPublica (inalterada)	PUBLICA	PUBLICA	igual
+storefront.ts	645	GET	/products/:id	rotaPublica (inalterada)	PUBLICA	PUBLICA	igual
+storefront.ts	661	POST	/checkout	rotaPublica (inalterada)	PUBLICA	PUBLICA	igual
+storefront.ts	922	POST	/portal/registrar	rotaPublica (inalterada)	PUBLICA	PUBLICA	igual
+storefront.ts	975	POST	/portal/entrar	rotaPublica (inalterada)	PUBLICA	PUBLICA	igual
+storefront.ts	991	POST	/portal/sair	rotaPublica (inalterada)	PUBLICA	PUBLICA	igual
+storefront.ts	1003	POST	/portal/verificar-email	rotaPublica (inalterada)	PUBLICA	PUBLICA	igual
+storefront.ts	1019	POST	/portal/reenviar-verificacao	rotaPublica (inalterada)	PUBLICA	PUBLICA	igual
+storefront.ts	1046	POST	/portal/convite/resgatar	rotaPublica (inalterada)	PUBLICA	PUBLICA	igual
+storefront.ts	1055	GET	/portal/equipamentos	rotaPublica (inalterada)	PUBLICA	PUBLICA	igual
+storefront.ts	1064	GET	/portal/equipamentos/:id	rotaPublica (inalterada)	PUBLICA	PUBLICA	igual
+storefront.ts	1078	GET	/portal/chamados	rotaPublica (inalterada)	PUBLICA	PUBLICA	igual
+storefront.ts	1087	POST	/portal/equipamentos/:id/chamados	rotaPublica (inalterada)	PUBLICA	PUBLICA	igual
+storefront.ts	1103	POST	/portal/chamados/:id/cancelar	rotaPublica (inalterada)	PUBLICA	PUBLICA	igual
+storefront.ts	1118	POST	/portal/ordens/:id/aprovar	rotaPublica (inalterada)	PUBLICA	PUBLICA	igual
+storefront.ts	1127	POST	/portal/ordens/:id/recusar	rotaPublica (inalterada)	PUBLICA	PUBLICA	igual
+storefront.ts	1135	GET	/portal/pedidos	rotaPublica (inalterada)	PUBLICA	PUBLICA	igual
+storefront.ts	1147	GET	/portal/pedidos/:id	rotaPublica (inalterada)	PUBLICA	PUBLICA	igual
+storefront.ts	1195	POST	/portal/pedidos/:id/cancelar	rotaPublica (inalterada)	PUBLICA	PUBLICA	igual
+storefront.ts	1256	GET	/portal/pedidos/:id/nfe/danfe	rotaPublica (inalterada)	PUBLICA	PUBLICA	igual
+storefront.ts	1269	GET	/portal/pedidos/:id/nfe/xml	rotaPublica (inalterada)	PUBLICA	PUBLICA	igual
+storefront.ts	1284	POST	/portal/pedidos/:id/devolucao	rotaPublica (inalterada)	PUBLICA	PUBLICA	igual
+storefront.ts	1308	GET	/products/:id/avaliacoes	rotaPublica (inalterada)	PUBLICA	PUBLICA	igual
+storefront.ts	1320	POST	/products/:id/avaliacoes	rotaPublica (inalterada)	PUBLICA	PUBLICA	igual
+storefront.ts	1338	GET	/products/:id/minha-avaliacao	rotaPublica (inalterada)	PUBLICA	PUBLICA	igual
+storefront.ts	1349	GET	/portal/enderecos	rotaPublica (inalterada)	PUBLICA	PUBLICA	igual
+storefront.ts	1358	POST	/portal/enderecos	rotaPublica (inalterada)	PUBLICA	PUBLICA	igual
+storefront.ts	1372	PUT	/portal/enderecos/:id	rotaPublica (inalterada)	PUBLICA	PUBLICA	igual
+storefront.ts	1381	POST	/portal/enderecos/:id/padrao	rotaPublica (inalterada)	PUBLICA	PUBLICA	igual
+storefront.ts	1391	DELETE	/portal/enderecos/:id	rotaPublica (inalterada)	PUBLICA	PUBLICA	igual
+storefront.ts	1407	POST	/portal/senha	rotaPublica (inalterada)	PUBLICA	PUBLICA	igual
+storefront.ts	1425	GET	/portal/perfil	rotaPublica (inalterada)	PUBLICA	PUBLICA	igual
+storefront.ts	1439	PUT	/portal/perfil	rotaPublica (inalterada)	PUBLICA	PUBLICA	igual
+storefront.ts	1455	POST	/portal/vincular	rotaPublica (inalterada)	PUBLICA	PUBLICA	igual
+storefront.ts	1478	POST	/portal/sair-outros	rotaPublica (inalterada)	PUBLICA	PUBLICA	igual
+storefront.ts	1495	GET	/portal/sessao	rotaPublica (inalterada)	PUBLICA	PUBLICA	igual
+storefront.ts	1509	GET	/portal/carrinho	rotaPublica (inalterada)	PUBLICA	PUBLICA	igual
+storefront.ts	1518	PUT	/portal/carrinho	rotaPublica (inalterada)	PUBLICA	PUBLICA	igual
+storefront.ts	1527	POST	/portal/carrinho/mesclar	rotaPublica (inalterada)	PUBLICA	PUBLICA	igual
+storefront.ts	1536	POST	/portal/carrinho/itens	rotaPublica (inalterada)	PUBLICA	PUBLICA	igual
+storefront.ts	1553	GET	/portal/envio-de-email	rotaPublica (inalterada)	PUBLICA	PUBLICA	igual
+storefront.ts	1565	POST	/portal/recuperar-senha	rotaPublica (inalterada)	PUBLICA	PUBLICA	igual
+storefront.ts	1578	POST	/portal/redefinir-senha	rotaPublica (inalterada)	PUBLICA	PUBLICA	igual
+storefront.ts	1597	GET	/portal/google/disponivel	rotaPublica (inalterada)	PUBLICA	PUBLICA	igual
+storefront.ts	1610	POST	/portal/google/iniciar	rotaPublica (inalterada)	PUBLICA	PUBLICA	igual
+storefront.ts	1626	POST	/portal/google/concluir	rotaPublica (inalterada)	PUBLICA	PUBLICA	igual
+storefront.ts	1642	POST	/portal/google/aceitar-termos	rotaPublica (inalterada)	PUBLICA	PUBLICA	igual
+storefront.ts	1659	GET	/portal/google/conta	rotaPublica (inalterada)	PUBLICA	PUBLICA	igual
+storefront.ts	1668	DELETE	/portal/google/conta	rotaPublica (inalterada)	PUBLICA	PUBLICA	igual
+storefront.ts	1682	GET	/portal/google/teste/autorizar	rotaPublica (inalterada)	PUBLICA	PUBLICA	igual
+storefront.ts	1695	GET	/portal/google/teste/autorizar/confirmar	rotaPublica (inalterada)	PUBLICA	PUBLICA	igual
+storefront.ts	1740	POST	/webhooks/payments/:provider/:companyId	rotaPublica (inalterada)	PUBLICA	PUBLICA	igual
+storefront.ts	1755	POST	/webhooks/payments/:provider	rotaPublica (inalterada)	PUBLICA	PUBLICA	igual
+storefront.ts	1779	GET	/equipamento/:token	rotaPublica (inalterada)	PUBLICA	PUBLICA	igual
+auth.ts	129	POST	/login	rotaPublica (inalterada)	PUBLICA	PUBLICA	igual
+auth.ts	296	POST	/password	rotaPublica (inalterada)	PUBLICA	PUBLICA	igual
+auth.ts	353	POST	/device/login	rotaPublica (inalterada)	PUBLICA	PUBLICA	igual
+auth.ts	457	POST	/device/enroll	requirePermission('api.device.enroll')	DONOS	devices.manage	igual
+auth.ts	526	GET	/devices	requirePermission('api.device.list')	DONOS	devices.view	igual
+auth.ts	595	POST	/device/:id/revoke	requirePermission('api.device.revoke')	DONOS	devices.manage	igual
+auth.ts	658	GET	/quick-login/users	rotaPublica (inalterada)	PUBLICA	PUBLICA	igual
+auth.ts	688	POST	/quick-login	rotaPublica (inalterada)	PUBLICA	PUBLICA	igual
+auth.ts	756	GET	/senha/recuperacao	rotaPublica (inalterada)	PUBLICA	PUBLICA	igual
+auth.ts	764	POST	/senha/esqueci	rotaPublica (inalterada)	PUBLICA	PUBLICA	igual
+auth.ts	777	POST	/senha/recuperar	rotaPublica (inalterada)	PUBLICA	PUBLICA	igual
+auth.ts	791	POST	/refresh	rotaPublica (inalterada)	PUBLICA	PUBLICA	igual
+auth.ts	855	POST	/logout	rotaPublica (inalterada)	PUBLICA	PUBLICA	igual
+auth.ts	869	GET	/session	rotaPublica (inalterada)	PUBLICA	PUBLICA	igual
+auth.ts	895	POST	/switch-company	rotaPublica (inalterada)	PUBLICA	PUBLICA	igual

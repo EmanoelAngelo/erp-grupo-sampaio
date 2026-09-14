@@ -1,0 +1,542 @@
+{
+ "FIS": {
+  "nome": "Fiscal, SEFAZ, A1, prontidão fiscal, contador, documentos da Oficina e da PJ Motors",
+  "porta": 19100,
+  "lotes": [
+   {
+    "id": "F1",
+    "gaps": [
+     3,
+     97
+    ],
+    "foco": "Assinatura XMLDSig real (C14N com biblioteca madura) e validação de layout (XSD)"
+   },
+   {
+    "id": "F2",
+    "gaps": [
+     4,
+     5,
+     18,
+     19
+    ],
+    "foco": "Parser de resposta SEFAZ, cancelamento/CC-e/inutilização pelo adapter real, portão de produção, eventos NFC-e × NF-e"
+   },
+   {
+    "id": "F3",
+    "gaps": [
+     20,
+     98
+    ],
+    "foco": "Fila fiscal autônoma por empresa (worker, retry, recuperação) e contingência com caminho de volta"
+   },
+   {
+    "id": "F4",
+    "gaps": [
+     21,
+     95,
+     129,
+     41,
+     178
+    ],
+    "foco": "Substituição tributária, regime normal, prontidão que enxerga o grupo tributário, questionário do contador"
+   },
+   {
+    "id": "F5",
+    "gaps": [
+     22,
+     23,
+     179,
+     180
+    ],
+    "foco": "CSC por ambiente, certificado real sem senha guardada, revogação, unidade operacional"
+   },
+   {
+    "id": "F6",
+    "gaps": [
+     26,
+     24
+    ],
+    "foco": "Chassi/série/IMEI da unidade no documento fiscal; caminho fiscal da venda da OS (serviço × peça, NFS-e interna)"
+   },
+   {
+    "id": "F7",
+    "gaps": [
+     51,
+     176,
+     181,
+     163,
+     96
+    ],
+    "foco": "Pacote do contador (datas e checksum), parser do XML de entrada, emissão no Finalizar, rotas fiscais legadas"
+   }
+  ]
+ },
+ "SEG": {
+  "nome": "Autenticação, hierarquia de perfis, seed, sessões, cabeçalhos de segurança, LGPD",
+  "porta": 19200,
+  "lotes": [
+   {
+    "id": "S1",
+    "gaps": [
+     10,
+     152,
+     40,
+     202
+    ],
+    "foco": "Hierarquia gerente × dono por capacidades, desativação, seed bootstrap × update, senha provisória no servidor"
+   },
+   {
+    "id": "S2",
+    "gaps": [
+     53,
+     69,
+     74,
+     55,
+     157,
+     156
+    ],
+    "foco": "Revogação de token, poda de sessões, IP real atrás de proxy, JSON malformado, CSP/HSTS"
+   },
+   {
+    "id": "S3",
+    "gaps": [
+     52,
+     84,
+     136,
+     149,
+     184,
+     206,
+     54,
+     160
+    ],
+    "foco": "Permissões pontuais: produto pelo caixa, BI por perfil, sync do nó, botões latentes, fotos da OS, sonda de login, autorizadores, senha de funcionário"
+   },
+   {
+    "id": "S4",
+    "gaps": [
+     73
+    ],
+    "foco": "LGPD: minimização de dados do cliente por perfil, exportação e anonimização do titular"
+   }
+  ]
+ },
+ "PAG": {
+  "nome": "PDV, caixa, terminais, maquininha/TEF, devoluções, fila offline",
+  "porta": 19300,
+  "lotes": [
+   {
+    "id": "P1",
+    "gaps": [
+     1,
+     8,
+     79,
+     162
+    ],
+    "foco": "Guarda absoluta contra adapter fake em produção, desativação de terminal, idempotência real, cancelamento/estorno e recibo honestos"
+   },
+   {
+    "id": "P2",
+    "gaps": [
+     39,
+     146,
+     150,
+     131
+    ],
+    "foco": "Cadastro de terminais/PDVs, caixa por terminal, token de dispositivo com tela, alerta de gaveta esquecida"
+   },
+   {
+    "id": "P3",
+    "gaps": [
+     9,
+     50,
+     161,
+     134
+    ],
+    "foco": "Devolução que respeita desconto e resíduo; dinheiro sempre com sessão de caixa"
+   },
+   {
+    "id": "P4",
+    "gaps": [
+     14,
+     76
+    ],
+    "foco": "Núcleo de TEF: tenant → loja → PDV → terminal → provedor, adapter, agente local (fila de comandos e callback), telas"
+   },
+   {
+    "id": "P5",
+    "gaps": [
+     78,
+     80,
+     81
+    ],
+    "foco": "PIX abandonado conciliável, cancelamento/devolução de cartão no provedor, fechamento com pendências eletrônicas"
+   },
+   {
+    "id": "P6",
+    "gaps": [
+     44,
+     45,
+     46,
+     82,
+     83,
+     203
+    ],
+    "foco": "Fila offline com retentativa e regularização, agente local de impressão/gaveta, taxas de operadora, hardware"
+   }
+  ]
+ },
+ "FIN": {
+  "nome": "Asaas, financeiro, conciliação, fluxo de caixa",
+  "porta": 19400,
+  "lotes": [
+   {
+    "id": "N1",
+    "gaps": [
+     2,
+     113,
+     91,
+     49
+    ],
+    "foco": "Webhook Asaas completo (rota registrada, tenant, idempotência, eventos duplicados/fora de ordem), timeout sem segunda cobrança"
+   },
+   {
+    "id": "N2",
+    "gaps": [
+     16,
+     92,
+     114,
+     155,
+     93,
+     77
+    ],
+    "foco": "Conciliação que consulta o provedor, estorno de título, parcelamento, IDOR do retry, rotas legadas, PIX de balcão via Asaas"
+   },
+   {
+    "id": "N3",
+    "gaps": [
+     94,
+     86,
+     172,
+     173,
+     174,
+     177,
+     208,
+     171,
+     169,
+     170,
+     17
+    ],
+    "foco": "Fluxo de caixa projetado, margem BI × DRE, critérios de cancelada, baixa idempotente, telas e homologação"
+   }
+  ]
+ },
+ "ECO": {
+  "nome": "E-commerce, conta do cliente, Google, checkout, pedidos, promoções",
+  "porta": 19500,
+  "lotes": [
+   {
+    "id": "E1",
+    "gaps": [
+     6,
+     43,
+     28,
+     133,
+     205
+    ],
+    "foco": "Identidade no checkout (sem upsert por CPF), conta obrigatória, pedido na conta, perfil"
+   },
+   {
+    "id": "E2",
+    "gaps": [
+     27
+    ],
+    "foco": "Login Google OAuth2/OIDC completo com provedor de teste"
+   },
+   {
+    "id": "E3",
+    "gaps": [
+     115,
+     191,
+     192,
+     116,
+     193
+    ],
+    "foco": "Endereços com snapshot, cadastro manual completo, limites de recuperação, carrinho"
+   },
+   {
+    "id": "E4",
+    "gaps": [
+     121,
+     122,
+     31,
+     124,
+     125,
+     132
+    ],
+    "foco": "Máquina de estados do pedido, devolução com estoque e financeiro, cancelamento, portal, pedido vira venda"
+   },
+   {
+    "id": "E5",
+    "gaps": [
+     32,
+     33,
+     197,
+     194,
+     123
+    ],
+    "foco": "Promoções validadas, cupons"
+   },
+   {
+    "id": "E6",
+    "gaps": [
+     29,
+     71,
+     207,
+     195,
+     196
+    ],
+    "foco": "Ciclo da reserva × boleto, vitrine com teto, publicação sem foto, prazos de entrega"
+   }
+  ]
+ },
+ "LOG": {
+  "nome": "Logística, transportadoras, etiqueta, rastreio",
+  "porta": 19600,
+  "lotes": [
+   {
+    "id": "L1",
+    "gaps": [
+     30,
+     126,
+     127,
+     117
+    ],
+    "foco": "Melhor Envio em produção sem variável de teste, tela de credencial, documentação honesta"
+   },
+   {
+    "id": "L2",
+    "gaps": [
+     119,
+     120,
+     118,
+     34
+    ],
+    "foco": "Envio, etiqueta, rastreio e eventos com adapter por provedor; Correios/Jadlog honestos"
+   }
+  ]
+ },
+ "EML": {
+  "nome": "E-mail e comunicações, entrada IMAP",
+  "porta": 19700,
+  "lotes": [
+   {
+    "id": "M1",
+    "gaps": [
+     7,
+     38,
+     65,
+     201
+    ],
+    "foco": "Segredos fora da fila e da tela, reenvio com motivo, SMTP sem reinício, enfileiramento que não derruba o fato"
+   },
+   {
+    "id": "M2",
+    "gaps": [
+     36,
+     37,
+     199,
+     200,
+     198
+    ],
+    "foco": "Comunicações da oficina e do pós-venda, rótulos, promessas honestas, remetente por empresa"
+   },
+   {
+    "id": "M3",
+    "gaps": [
+     35,
+     128,
+     130
+    ],
+    "foco": "Leitura IMAP que não satura; configuração externa"
+   }
+  ]
+ },
+ "OFI": {
+  "nome": "Oficina, equipamentos/QR, Kanban, PJ Motors",
+  "porta": 19800,
+  "lotes": [
+   {
+    "id": "O1",
+    "gaps": [
+     42,
+     104,
+     209,
+     105
+    ],
+    "foco": "PDV da Oficina: OS a receber, formas de pagamento, caixa, financeiro, recibo, replay idempotente, estorno de OS paga"
+   },
+   {
+    "id": "O2",
+    "gaps": [
+     99,
+     102,
+     186,
+     103,
+     182,
+     100,
+     101
+    ],
+    "foco": "Quem abre e mexe na OS, devolução de peça, portal, eventos de status, custo da peça"
+   },
+   {
+    "id": "O3",
+    "gaps": [
+     183,
+     187,
+     106,
+     107,
+     185,
+     188,
+     190
+    ],
+    "foco": "Kanban com versão e paginação, identidade do equipamento, troca de plaquinha, configuração de plaquinha, OS legada, reimpressão"
+   },
+   {
+    "id": "O4",
+    "gaps": [
+     25,
+     108,
+     109,
+     110,
+     111,
+     189,
+     112
+    ],
+    "foco": "PJ Motors: pré-venda de moto, vínculo de plaquinha, fronteira com a Oficina, reserva por unidade"
+   }
+  ]
+ },
+ "EST": {
+  "nome": "Estoque, compras, notas de entrada, paginação, relatórios",
+  "porta": 19900,
+  "lotes": [
+   {
+    "id": "T1",
+    "gaps": [
+     15,
+     85,
+     204
+    ],
+    "foco": "Casamento de item da nota com produto existente (GTIN, código do fornecedor, vínculo, confirmação)"
+   },
+   {
+    "id": "T2",
+    "gaps": [
+     70,
+     164
+    ],
+    "foco": "Paginação real de produtos, clientes e listas grandes"
+   },
+   {
+    "id": "T3",
+    "gaps": [
+     87,
+     89,
+     90,
+     167,
+     88,
+     165,
+     166,
+     168
+    ],
+    "foco": "Reservas presas, devolução ao fornecedor, pedido de compra enviado, inventário por local, decisões do dono"
+   }
+  ]
+ },
+ "DEP": {
+  "nome": "Implantação, backup/restore, observabilidade, legado, desempenho",
+  "porta": 20000,
+  "lotes": [
+   {
+    "id": "D1",
+    "gaps": [
+     13,
+     61,
+     62,
+     60,
+     63,
+     151,
+     153
+    ],
+    "foco": "Implantação de referência (frontend estático, proxy HTTPS, serviço, uploads, logs), Docker, staging, processo"
+   },
+   {
+    "id": "D2",
+    "gaps": [
+     11,
+     12,
+     58,
+     59,
+     68
+    ],
+    "foco": "Estado do backup, restauração do bucket, uploads remotos, logError, disco do backup"
+   },
+   {
+    "id": "D3",
+    "gaps": [
+     56,
+     57,
+     64,
+     67,
+     139,
+     154
+    ],
+    "foco": "db:migrate no Windows, versões, documentação, checklist de implantação por empresa, artefatos legados"
+   },
+   {
+    "id": "D4",
+    "gaps": [
+     72,
+     75,
+     141,
+     147,
+     148,
+     138,
+     137
+    ],
+    "foco": "Rotas e coleções legadas, redação do payload, instância única"
+   },
+   {
+    "id": "D5",
+    "gaps": [
+     140,
+     142,
+     143,
+     144,
+     145,
+     47,
+     48,
+     175,
+     210,
+     66,
+     135
+    ],
+    "foco": "Drift de schema, dados legados, índices, fuso, fila da central, projeção, testes noturnos, bundle, SVG, isolamento de rede"
+   }
+  ]
+ },
+ "INT": {
+  "nome": "Integração: passo único de migração, interface transversal, E2E e reauditoria",
+  "porta": 20100,
+  "lotes": [
+   {
+    "id": "I1",
+    "gaps": [
+     158,
+     159
+    ],
+    "foco": "window.prompt/confirm por diálogo próprio e foco preso em diálogos, depois da junção dos branches (telas de várias frentes)"
+   }
+  ]
+ }
+}

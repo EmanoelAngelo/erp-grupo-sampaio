@@ -1,0 +1,152 @@
+node_modules/
+out/
+dist/
+server/dist/
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+*.p12
+*.pfx
+server/data/*.json
+!server/data/.gitkeep
+*.log
+.DS_Store
+
+# O BANCO OPERACIONAL NÃO É CÓDIGO.
+#
+# Ficou versionado por muito tempo, junto com o -wal e o -shm, e isso dava uma
+# segurança que não existia: em modo WAL as transações recentes moram no -wal,
+# e os três arquivos entram no commit em instantes diferentes. O trio gravado
+# não é, necessariamente, um estado coerente do banco. No dia em que isto foi
+# corrigido o -wal estava com 4,1 MB contra 3,3 MB do .db — mais da metade do
+# movimento recente estava fora do que o git guardava.
+#
+# Além disso é DADO DE OPERAÇÃO: vendas, clientes e fiscal reais das seis
+# empresas. Dado de cliente não vai para repositório de código.
+#
+# A cópia certa sai de `npm run backup`, que usa VACUUM INTO — inclui o WAL e
+# produz um arquivo que abre. `npm run backup:verify` confere abrindo.
+server/data/*.db
+server/data/*.db-shm
+server/data/*.db-wal
+
+# ...E EM QUALQUER PASTA ABAIXO DELA.
+#
+# As tres linhas acima casam so com filhos DIRETOS de `server/data`. Um
+# snapshot em `server/data/snapshots/` — que e exatamente o que a rotacao da
+# chave e as migracoes produzem — escapava do padrao e entrava no commit: 5,7
+# MB com venda, cliente e fiscal reais das seis empresas, mais os segredos
+# cifrados. Foi pego com o arquivo ja criado e ainda nao commitado.
+server/data/**/*.db
+server/data/**/*.db-shm
+server/data/**/*.db-wal
+
+# O BANCO NA RAIZ, que aparece quando alguem sobrepoe o caminho.
+#
+# `resolveDatabasePath()` resolve relativo a RAIZ do repositorio, nao ao
+# diretorio de onde se chamou. Rodar de dentro de `server/` com
+# `DEVORA_DATABASE_PATH=./data/...` cria um banco em `<raiz>/data/` — e
+# `server/data/*.db` nao o alcanca.
+data/*.db
+data/*.db-shm
+data/*.db-wal
+
+# Copia de arquivo de ambiente. `.env` ja esta ignorado; a copia de seguranca
+# feita antes de mexer nele carrega os mesmos segredos e nao estava.
+.env.bak
+.env.bak-*
+.env.backup
+.env.backup-*
+
+# Pasta legada de backup. O script antigo escrevia aqui cópias do banco com
+# extensão .json — arquivos com venda e cliente reais, que ficaram fora de
+# qualquer regra de ignorar. `server/data/backups/` tem .gitignore próprio.
+server/backups/
+
+# Saida de execucao da suite redirecionada para arquivo (vitest ... > x.txt).
+# Tres desses, com meio megabyte cada, estavam versionados na raiz (GAP-PRD-154).
+vitest-*.txt
+
+# Quarentena: arquivos que estavam nas pastas de upload e que o banco nao
+# referencia. Sao 458 PNG de 1x1 de 70 bytes que a suite deixava a cada rodada,
+# separados antes da primeira copia remota dos uploads para nao irem parar num
+# bucket pago para sempre. Movidos, nao apagados — se eu estiver errado sobre
+# algum, ele continua no disco.
+server/data/quarentena/
+
+# Fotos de produto enviadas pelo usuário: dado, não código.
+server/data/uploads/
+
+# Onde `ProductImageService.uploadsDir()` de fato grava: foto de produto é dado, não código.
+data/uploads/
+
+# Worktrees de agente: cópias inteiras do repositório, centenas de MB, descartáveis.
+# Estava só em `.git/info/exclude`, que é local e não acompanha o clone.
+.claude/worktrees/
+
+# ============================================================================
+# PREPARAÇÃO PARA PUBLICAR NO GITHUB (2026-09-14)
+# ============================================================================
+#
+# O repositório guarda CÓDIGO. Ambiente, banco, backups, uploads, XMLs,
+# certificados e configuração local de ferramenta ficam no disco — e nunca
+# entram no Git. As regras acima continuam valendo; este bloco fecha as
+# portas que a auditoria de segurança do Git achou abertas.
+
+# Ambiente: todo arquivo .env, menos os MODELOS sem segredo.
+.env
+.env.*
+!.env.example
+!.env.*.example
+
+# Configuração local do Claude Code: permissões com comandos da máquina,
+# que já carregaram senha em texto. Fica no disco, fora do Git.
+.claude/settings.local.json
+
+# Dados de operação: banco, WAL, snapshots, backups, uploads, XMLs e
+# quarentena — em server/data, no caminho duplicado server/server/data, na
+# pasta legada server/backups, em qualquer backups/ abaixo de server/ e no
+# data/ da raiz.
+server/data/**
+server/server/data/**
+server/backups/**
+server/**/backups/**
+data/**
+
+# Bancos em qualquer lugar.
+*.db
+*.db-wal
+*.db-shm
+*.db-journal
+*.sqlite
+*.sqlite3
+
+# Certificados e chaves.
+*.pfx
+*.p12
+*.pem
+*.key
+
+# Build, cobertura, temporários e relatórios de teste.
+node_modules/
+coverage/
+# Só a saída de build na raiz: src/lib/build/ é código.
+/build/
+dist/
+out/
+tmp/
+.vite/
+*.tsbuildinfo
+test-results/
+playwright-report/
+logs/
+*.log
+
+# O que o repositório PRECISA manter dentro dessas pastas — por último, porque
+# no .gitignore a última regra que casa é a que vale.
+!server/data/.gitkeep
+!server/data/backups/
+server/data/backups/*
+!server/data/backups/.gitignore
