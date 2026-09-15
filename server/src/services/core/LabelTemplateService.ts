@@ -38,7 +38,10 @@ import {
   type DpiDaImpressora,
   type LabelField,
   type LabelFormat,
+  type ModoDeCorte,
+  type SensorDaMidia,
 } from './LabelFormats.js';
+import { PERFIS_DE_IMPRESSAO, acharPerfil, type IdDoPerfil } from './LabelProfiles.js';
 
 export type Midia = 'rolo' | 'folha';
 export type Orientacao = 'retrato' | 'paisagem';
@@ -69,6 +72,30 @@ export interface LabelTemplate {
   printerId: string | null;
   printerName: string | null;
   isDefault: boolean;
+  /*
+    A SAÍDA E A IMPRESSORA FÍSICA (P0 das etiquetas).
+
+    DEFEITO QUE ISTO CORRIGE: o modelo dizia o papel e o conteúdo, mas não
+    como a etiqueta chega à impressora nem o que a faz sair no LUGAR — a
+    calibração, a densidade, o corte e o sensor ficavam no driver de cada
+    computador, e a saída em ZPL/EPL/TSPL, que não passa por driver nenhum,
+    não tinha de onde tirá-los.
+  */
+  /** Perfil de saída que a tela escolhe por padrão (LabelProfiles). Nulo: o navegador. */
+  outputProfile: IdDoPerfil | null;
+  /** Calibração em mm (−10 a 10): positivo empurra para a direita / para baixo. */
+  offsetXmm: number;
+  offsetYmm: number;
+  /** Escurecimento 0–30. Nulo: o da impressora. */
+  darkness: number | null;
+  /** Velocidade em pol/s (1–14). Nula: a da impressora. */
+  printSpeed: number | null;
+  cutMode: ModoDeCorte;
+  mediaType: SensorDaMidia;
+  /** Vão (ou marca preta) entre etiquetas do rolo, em mm. Nulo: não informado. */
+  mediaGapMm: number | null;
+  /** Avanço de papel depois da última etiqueta do lote, em mm. */
+  feedAfterMm: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -101,9 +128,38 @@ interface Linha {
   is_default: number;
   created_at: string;
   updated_at: string;
+  /** As colunas da saída e da impressora física: nulas em banco antigo e em modelo que não as disse. */
+  output_profile: string | null;
+  offset_x_mm: number | null;
+  offset_y_mm: number | null;
+  darkness: number | null;
+  print_speed: number | null;
+  cut_mode: string | null;
+  media_type: string | null;
+  media_gap_mm: number | null;
+  feed_after_mm: number | null;
 }
 
 const A4_ALTURA = 297;
+
+const MODOS_DE_CORTE: readonly ModoDeCorte[] = ['nenhum', 'cada_etiqueta', 'fim_do_lote'];
+const SENSORES: readonly SensorDaMidia[] = ['vao', 'marca', 'continua'];
+
+/** A linha do banco → os campos da saída e da impressora, com o padrão onde está nulo. */
+function impressoraDaLinha(l: Linha) {
+  const perfil = acharPerfil(l.output_profile);
+  return {
+    outputProfile: perfil ? perfil.id : null,
+    offsetXmm: l.offset_x_mm ?? 0,
+    offsetYmm: l.offset_y_mm ?? 0,
+    darkness: l.darkness ?? null,
+    printSpeed: l.print_speed ?? null,
+    cutMode: MODOS_DE_CORTE.includes(l.cut_mode as ModoDeCorte) ? (l.cut_mode as ModoDeCorte) : 'nenhum',
+    mediaType: SENSORES.includes(l.media_type as SensorDaMidia) ? (l.media_type as SensorDaMidia) : 'vao',
+    mediaGapMm: l.media_gap_mm ?? null,
+    feedAfterMm: l.feed_after_mm ?? 0,
+  };
+}
 
 function daLinha(l: Linha): LabelTemplate {
   let fields: LabelField[] = [];
@@ -137,6 +193,7 @@ function daLinha(l: Linha): LabelTemplate {
     printerId: l.printer_id,
     printerName: l.printer_name,
     isDefault: l.is_default === 1,
+    ...impressoraDaLinha(l),
     createdAt: l.created_at,
     updatedAt: l.updated_at,
   };
@@ -202,6 +259,8 @@ export function validarModelo(
   entrada: Record<string, unknown>,
   companyId: string,
   dpiAtual?: DpiDaImpressora,
+  /** O modelo gravado, na edição: o campo da impressora que o pedido não traz fica como está. */
+  anterior?: LabelTemplate,
 ): LabelTemplateInput {
   const name = String(entrada.name ?? '').trim();
   if (!name) throw new ApiError('CORE_LABEL_TEMPLATE_INVALID', 'Dê um nome ao modelo (ex.: "Rolo 40 × 30").', 400, { campo: 'nome' });
@@ -366,6 +425,75 @@ export function validarModelo(
     complementText,
     printerId,
     isDefault: entrada.isDefault === true,
+    ...validarImpressoraDoModelo(entrada, midia, anterior),
+  };
+}
+
+/**
+ * A SAÍDA PADRÃO, A CALIBRAÇÃO E OS AJUSTES DA TÉRMICA do modelo.
+ *
+ * O pedido que NÃO traz um campo (tela antiga aberta) mantém o valor gravado —
+ * o mesmo cuidado do dpi: uma tela sem o campo não pode zerar a calibração que
+ * alguém acertou na impressora. Valor fora da faixa é recusado dizendo o
+ * campo e o que vale.
+ */
+function validarImpressoraDoModelo(entrada: Record<string, unknown>, midia: Midia, anterior?: LabelTemplate) {
+  const veio = (chave: string) => entrada[chave] !== undefined;
+  const opcional = (valor: unknown, nome: string, min: number, max: number, soInteiro = false): number | null => {
+    if (valor === null || valor === undefined || valor === '') return null;
+    return soInteiro ? inteiro(valor, nome, min, max) : numero(valor, nome, min, max);
+  };
+  const escolha = <T extends string>(chave: string, nome: string, aceitos: readonly T[], padrao: T, atual?: T): T => {
+    if (!veio(chave)) return atual ?? padrao;
+    const v = entrada[chave];
+    if (v === null || v === '') return padrao;
+    if (!aceitos.includes(String(v) as T)) {
+      throw new ApiError(
+        'CORE_LABEL_TEMPLATE_INVALID',
+        `${nome}: "${String(v)}" não é uma das opções (${aceitos.join(', ')}).`,
+        400,
+        { campo: nome, aceitos: [...aceitos] },
+      );
+    }
+    return String(v) as T;
+  };
+
+  let outputProfile: IdDoPerfil | null = veio('outputProfile') ? null : anterior?.outputProfile ?? null;
+  if (veio('outputProfile') && entrada.outputProfile !== null && entrada.outputProfile !== '') {
+    const p = acharPerfil(String(entrada.outputProfile));
+    if (!p) {
+      throw new ApiError(
+        'CORE_LABEL_TEMPLATE_INVALID',
+        `Saída padrão: "${String(entrada.outputProfile)}" não é uma saída de impressão. Escolha uma de: `
+          + `${PERFIS_DE_IMPRESSAO.map((x) => x.rotulo).join(', ')}.`,
+        400,
+        { campo: 'Saída padrão', aceitos: PERFIS_DE_IMPRESSAO.map((x) => x.id) },
+      );
+    }
+    outputProfile = p.id;
+  }
+  // A combinação final (inclusive a saída mantida de antes com a mídia que mudou agora).
+  const perfil = acharPerfil(outputProfile);
+  if (perfil && !perfil.aceitaFolha && midia === 'folha') {
+    throw new ApiError(
+      'CORE_LABEL_TEMPLATE_INVALID',
+      `A saída "${perfil.rotulo}" é de impressora térmica de rolo e não imprime folha. Para folha A4/Carta, use `
+        + 'Navegador, Driver da impressora ou PDF — ou mude o modelo para rolo.',
+      400,
+      { campo: 'Saída padrão' },
+    );
+  }
+
+  return {
+    outputProfile,
+    offsetXmm: veio('offsetXmm') ? numero(entrada.offsetXmm, 'Deslocamento horizontal (mm)', -10, 10, 0) : anterior?.offsetXmm ?? 0,
+    offsetYmm: veio('offsetYmm') ? numero(entrada.offsetYmm, 'Deslocamento vertical (mm)', -10, 10, 0) : anterior?.offsetYmm ?? 0,
+    darkness: veio('darkness') ? opcional(entrada.darkness, 'Densidade (0 a 30)', 0, 30, true) : anterior?.darkness ?? null,
+    printSpeed: veio('printSpeed') ? opcional(entrada.printSpeed, 'Velocidade (pol/s)', 1, 14, true) : anterior?.printSpeed ?? null,
+    cutMode: escolha<ModoDeCorte>('cutMode', 'Corte', MODOS_DE_CORTE, 'nenhum', anterior?.cutMode),
+    mediaType: escolha<SensorDaMidia>('mediaType', 'Sensor da mídia', SENSORES, 'vao', anterior?.mediaType),
+    mediaGapMm: veio('mediaGapMm') ? opcional(entrada.mediaGapMm, 'Vão entre as etiquetas do rolo (mm)', 0, 20) : anterior?.mediaGapMm ?? null,
+    feedAfterMm: veio('feedAfterMm') ? numero(entrada.feedAfterMm, 'Avanço ao fim do lote (mm)', 0, 100, 0) : anterior?.feedAfterMm ?? 0,
   };
 }
 
@@ -376,6 +504,8 @@ function gravar(companyId: string, id: string, m: LabelTemplateInput, agora: str
     m.name, m.midia, m.paperWidthMm, m.paperHeightMm, m.widthMm, m.heightMm, m.columns, m.rows,
     m.gapXmm, m.gapYmm, m.marginTopMm, m.marginLeftMm, m.orientation, m.scalePercent, m.dpi,
     JSON.stringify(m.fields), m.priceHighlight ? 1 : 0, m.complementText, m.printerId, m.isDefault ? 1 : 0,
+    // A saída e a impressora física (P0 das etiquetas).
+    m.outputProfile, m.offsetXmm, m.offsetYmm, m.darkness, m.printSpeed, m.cutMode, m.mediaType, m.mediaGapMm, m.feedAfterMm,
   ];
   try {
     if (novo) {
@@ -383,8 +513,10 @@ function gravar(companyId: string, id: string, m: LabelTemplateInput, agora: str
         `INSERT INTO core_label_templates
            (id, company_id, name, midia, paper_width_mm, paper_height_mm, width_mm, height_mm, colunas, linhas,
             gap_x_mm, gap_y_mm, margin_top_mm, margin_left_mm, orientation, scale_percent, dpi, fields, price_highlight,
-            complement_text, printer_id, is_default, created_by, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            complement_text, printer_id, is_default,
+            output_profile, offset_x_mm, offset_y_mm, darkness, print_speed, cut_mode, media_type, media_gap_mm, feed_after_mm,
+            created_by, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       ).run(id, companyId, ...valores, userId, agora, agora);
     } else {
       db.prepare(
@@ -392,7 +524,9 @@ function gravar(companyId: string, id: string, m: LabelTemplateInput, agora: str
             SET name = ?, midia = ?, paper_width_mm = ?, paper_height_mm = ?, width_mm = ?, height_mm = ?,
                 colunas = ?, linhas = ?, gap_x_mm = ?, gap_y_mm = ?, margin_top_mm = ?, margin_left_mm = ?,
                 orientation = ?, scale_percent = ?, dpi = ?, fields = ?, price_highlight = ?, complement_text = ?,
-                printer_id = ?, is_default = ?, updated_at = ?
+                printer_id = ?, is_default = ?,
+                output_profile = ?, offset_x_mm = ?, offset_y_mm = ?, darkness = ?, print_speed = ?, cut_mode = ?,
+                media_type = ?, media_gap_mm = ?, feed_after_mm = ?, updated_at = ?
           WHERE id = ? AND company_id = ?`,
       ).run(...valores, agora, id, companyId);
     }
@@ -415,8 +549,9 @@ export function criarModelo(companyId: string, userId: string | null, entrada: R
 export function atualizarModelo(companyId: string, id: string, entrada: Record<string, unknown>): LabelTemplate {
   ensureCoreSchema();
   const atual = obterModelo(companyId, id);
-  // O pedido sem `dpi` (tela antiga) mantém a resolução gravada.
-  const m = validarModelo(entrada, companyId, atual.dpi);
+  // O pedido sem `dpi` (tela antiga) mantém a resolução gravada — e o mesmo
+  // vale para a saída, a calibração e os ajustes da térmica.
+  const m = validarModelo(entrada, companyId, atual.dpi, atual);
   withTransaction(() => gravar(companyId, id, m, new Date().toISOString(), null, false));
   return obterModelo(companyId, id);
 }
