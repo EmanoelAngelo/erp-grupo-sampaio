@@ -26,6 +26,7 @@ import { AppShell } from '@/components/gs/AppShell';
 import { Badge, Button, Card, EmptyState, PageHeader, SearchInput } from '@/components/gs/ui';
 import { formatCents, formatQuantity } from '@/components/gs/format';
 import { useSession } from '@/hooks/useSession';
+import { useEmpresaTemPlaquinha } from '@/hooks/useEmpresaTemPlaquinha';
 import { useCan } from '@/hooks/useCan';
 import { ModelosDeEtiqueta } from '@/components/gs/ModelosDeEtiqueta';
 import { ApiRequestError, apiRequest, exigirCampos } from '@/lib/api/client';
@@ -101,6 +102,15 @@ function sugestaoBruta(c: LabelCandidate, modo: QuantityModeOption['id']): numbe
 export default function EtiquetasPage() {
   const session = useSession();
   const isWorkshop = session?.company.kind === 'workshop';
+  /*
+    A ABA DA PLAQUINHA É DA PJ MOTORS (P0 das plaquinhas).
+
+    Ela aparecia — e abria — em toda empresa com bancada: a Oficina e a Preço
+    Justo listavam as máquinas e imprimiam a folha de plaquinhas por aqui.
+    Plaquinha é exclusiva da PJ Motors, e o servidor recusa a folha e os
+    formatos com 403 fora dela; fora dela a aba nem aparece.
+  */
+  const temPlaquinha = useEmpresaTemPlaquinha();
   const [params] = useSearchParams();
   const [tab, setTab] = useState<Tab>('produtos');
   const [error, setError] = useState<string | null>(null);
@@ -664,7 +674,7 @@ export default function EtiquetasPage() {
         {(
           [
             ['produtos', 'Etiqueta comercial'],
-            ['equipamentos', 'Plaquinha de oficina'],
+            ...(temPlaquinha ? [['equipamentos', 'Plaquinha de oficina']] : []),
           ] as [Tab, string][]
         ).map(([id, label]) => (
           <button

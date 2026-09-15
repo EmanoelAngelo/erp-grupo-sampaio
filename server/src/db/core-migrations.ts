@@ -8,6 +8,7 @@
  * Cada passo é idempotente: rodar duas vezes não quebra e não duplica.
  */
 import { PRESET_OFICIAL } from '../services/core/StorefrontPresets.js';
+import { EMPRESA_DAS_PLAQUINHAS } from '../services/core/EmpresaDasPlaquinhas.js';
 import { randomUUID } from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
 import { getConnection, withTransaction } from './sqlite.js';
@@ -2044,9 +2045,12 @@ export function migrateCoreSchema(opcoes: OpcoesDaMigracao = {}): { from: number
       essas plaquinhas foram impressas pelo caminho antigo, uma a uma, e o
       sistema nao tem como saber quando.
 
-      A REGRA DE OURO tambem entra aqui, como dado: `uses_equipment_tags` = 1
-      para a Oficina e para a PJ Motors, as duas operacoes que lidam com a
-      maquina fisica. As outras quatro ficam em zero, que e o padrao da coluna.
+      A REGRA DE OURO tambem entra aqui, como dado. Na rodada 53 ela marcava a
+      Oficina e a PJ Motors; desde o P0 das plaquinhas `ensureOfficialTagCompanies`
+      marca SO a PJ Motors (plaquinha e exclusiva dela). A carga abaixo nao
+      muda: ela registra o numero de TODA maquina existente, de qualquer
+      empresa, porque a numeracao do grupo e uma so e o indice unico de
+      `public_id` precisa conhecer todos os numeros ja colados.
     */
     if (!stepApplied(68)) {
       markStep(68);
@@ -2885,26 +2889,38 @@ export function migrateCoreSchema(opcoes: OpcoesDaMigracao = {}): { from: number
 }
 
 /**
- * A REGRA DE OURO DO DONO, aplicada ao grupo (rodada 53).
+ * A REGRA DE OURO DO DONO, aplicada ao grupo (rodada 53; restrita no P0 das
+ * plaquinhas).
  *
- * "O sistema de etiquetas com QR e ID é somente para PJ Motors e Oficina" —
- * as duas operações que lidam com a máquina física que fica parada no pátio.
- * As outras quatro identificam mercadoria por etiqueta comercial.
+ * ## O defeito
+ *
+ * Esta função marcava `uses_equipment_tags = 1` na Oficina e na PJ Motors a
+ * cada subida do servidor — a regra antiga, "plaquinha é da PJ Motors e da
+ * Oficina". O dono restringiu: plaquinha com QR e número existe SÓ na PJ
+ * Motors. Continuar marcando a Oficina reabria o pool para ela na manhã
+ * seguinte a qualquer correção.
+ *
+ * ## O que ela faz agora — e o que deixa de fazer de propósito
+ *
+ * Marca SÓ a PJ Motors. Não DESMARCA ninguém: um banco que já tem a Oficina
+ * marcada fica com o valor gravado (nada é sobrescrito nem apagado), e quem
+ * o torna inerte é `empresaUsaPlaquinha`, que exige o slug da PJ Motors além
+ * da marca. As plaquinhas que a Oficina já tinha continuam em
+ * `core_equipment_tags`, intactas e inalcançáveis por rota.
  *
  * Mora junto de `ensureOfficialWorkshops` porque é a mesma natureza: o
  * desenho do GRUPO, que a migração aplica uma vez e o seed reaplica. A marca
  * é por SLUG — o único identificador que sobrevive a renomear a empresa e a
- * um novo seed —, e empresa nova nasce sem ela, que é o lado seguro: quem não
- * foi escolhido não consome numeração do grupo.
+ * um novo seed. Idempotente: rodar de novo não muda nada.
  */
 export function ensureOfficialTagCompanies(): void {
   ensureCoreSchema();
   getConnection()
     .prepare(
       `UPDATE core_companies SET uses_equipment_tags = 1
-        WHERE slug IN ('oficina', 'pj-motors')`,
+        WHERE slug = ? AND uses_equipment_tags <> 1`,
     )
-    .run();
+    .run(EMPRESA_DAS_PLAQUINHAS);
 }
 
 /**

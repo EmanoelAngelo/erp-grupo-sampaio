@@ -194,7 +194,7 @@ export function AbrirOsDialog({
               />
             )}
           </Field>
-          <Field label="Aparelho" hint={aparelho.id ? 'Vinculado ao cadastro' : 'Marca e modelo, ou busque pela plaquinha'}>
+          <Field label="Aparelho" hint={aparelho.id ? 'Vinculado ao cadastro' : 'Marca e modelo, ou busque pelo número (#0007)'}>
             {(p) => (
               <Input
                 {...p}

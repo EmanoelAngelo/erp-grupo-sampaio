@@ -257,17 +257,22 @@ describe('plaquinha do equipamento', () => {
   it('traz QR com token e #ID, sem dado do proprietário', async () => {
     resetDbForTests();
     // O login provisiona a empresa; a oficina é criada dentro dela.
+    //
+    // A empresa é a PJ MOTORS com bancada (P0 das plaquinhas): plaquinha é
+    // exclusiva dela, e numa empresa qualquer ('oficina-lb', como era) esta
+    // rota agora responde 403 — o que `plaquinhas-so-na-pj` prova.
     const login = await loginForTest(app, {
       userId: 'ger-of',
-      companyId: 'oficina-lb',
+      companyId: 'pj-motors',
       profileCodes: ['gerente_oficina'],
     });
     const oficinaAuth = { Authorization: `Bearer ${login.body.accessToken}` };
+    getConnection().prepare("UPDATE core_companies SET uses_equipment_tags = 1 WHERE id = 'pj-motors'").run();
     const workshopId = 'ws-lb';
     getConnection()
       .prepare(
         `INSERT INTO core_workshops (id, company_id, slug, name, kind, active, created_at)
-         VALUES (?, 'oficina-lb', 'oficina-mobilidade', 'Mobilidade', 'mobility', 1, ?)`,
+         VALUES (?, 'pj-motors', 'oficina-mobilidade', 'Mobilidade', 'mobility', 1, ?)`,
       )
       .run(workshopId, new Date().toISOString());
 
@@ -310,16 +315,18 @@ describe('plaquinha do equipamento', () => {
   */
   it('ignora o endereço que o navegador mandar e usa o configurado', async () => {
     resetDbForTests();
+    // A PJ Motors com bancada, pelo mesmo motivo do caso acima (P0 das plaquinhas).
     const login = await loginForTest(app, {
       userId: 'ger-of2',
-      companyId: 'oficina-lb2',
+      companyId: 'pj-motors',
       profileCodes: ['gerente_oficina'],
     });
     const oficinaAuth = { Authorization: `Bearer ${login.body.accessToken}` };
+    getConnection().prepare("UPDATE core_companies SET uses_equipment_tags = 1 WHERE id = 'pj-motors'").run();
     getConnection()
       .prepare(
         `INSERT INTO core_workshops (id, company_id, slug, name, kind, active, created_at)
-         VALUES ('ws-lb2', 'oficina-lb2', 'oficina-mobilidade', 'Mobilidade', 'mobility', 1, ?)`,
+         VALUES ('ws-lb2', 'pj-motors', 'oficina-mobilidade', 'Mobilidade', 'mobility', 1, ?)`,
       )
       .run(new Date().toISOString());
 

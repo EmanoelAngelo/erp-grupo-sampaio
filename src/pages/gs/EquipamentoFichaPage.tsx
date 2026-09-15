@@ -318,7 +318,12 @@ export default function EquipamentoFichaPage() {
       <Card className="mb-5">
         <div className="flex flex-wrap gap-6 items-start">
           <div>
-            <p className="m-0 text-[length:var(--gs-text-sm)] text-[var(--gs-muted)]">Plaquinha</p>
+            {/* O número da máquina, só leitura. Fora da PJ Motors ele não é
+                "plaquinha" (P0 das plaquinhas): é a identidade do equipamento
+                que a OS e o QR de acompanhamento usam. */}
+            <p className="m-0 text-[length:var(--gs-text-sm)] text-[var(--gs-muted)]">
+              {ficha.plaquinha?.empresaUsa ? 'Plaquinha' : 'Número'}
+            </p>
             <p className="m-0 text-[length:var(--gs-text-lg)] font-bold tabular-nums">
               {ficha.publicIdLabel}
             </p>

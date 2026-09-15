@@ -20,6 +20,15 @@
  * número liberado sem papel é aceito pelo cadastro e não existe colado em
  * lugar nenhum. Aqui o botão de liberar só acende para lote que já foi ao
  * papel, e o aviso explica o que falta.
+ *
+ * ## Só na PJ Motors (P0 das plaquinhas)
+ *
+ * A rota abria em qualquer empresa e só depois o servidor dizia
+ * `usaPlaquinha: false` — com a lista e o resumo do pool já entregues. Agora a
+ * tela pergunta à SESSÃO antes de montar: fora da PJ Motors ela mostra "não
+ * disponível nesta empresa" e não faz chamada nenhuma. O servidor recusa com
+ * 403 do mesmo jeito, e a tela trata essa recusa como o mesmo estado (a PJ com
+ * a plaquinha desligada cai nela).
  */
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AppShell } from '@/components/gs/AppShell';
@@ -36,7 +45,9 @@ import {
 } from '@/components/gs/ui';
 import { ApiRequestError, apiRequest } from '@/lib/api/client';
 import { useHasProfile } from '@/hooks/useSession';
+import { useEmpresaTemPlaquinha } from '@/hooks/useEmpresaTemPlaquinha';
 import { dataHoraBR } from '@/lib/datas';
+import { PLAQUINHA_SO_NA_PJ } from '@/lib/acesso/plaquinhaDaEmpresa';
 
 interface Plaquinha {
   id: string;
@@ -128,11 +139,35 @@ function quando(iso: string | null): string {
   return dataHoraBR(iso);
 }
 
+/**
+ * A PORTA DA ROTA: fora da PJ Motors, o estado "não disponível" e nenhuma
+ * chamada. Componente separado porque o pool abaixo dispara as leituras num
+ * efeito — e efeito não se pula com `if` depois de declarado.
+ */
 export default function PlaquinhasPage() {
+  const temPlaquinha = useEmpresaTemPlaquinha();
+  if (!temPlaquinha) return <PlaquinhasIndisponiveis />;
+  return <PoolDePlaquinhas />;
+}
+
+function PlaquinhasIndisponiveis({ motivo = PLAQUINHA_SO_NA_PJ }: { motivo?: string }) {
+  return (
+    <AppShell>
+      <PageHeader breadcrumb={['Oficina', 'Plaquinhas']} title="Plaquinhas" />
+      <Card>
+        <EmptyState title="Plaquinhas não disponíveis nesta empresa" description={motivo} />
+      </Card>
+    </AppShell>
+  );
+}
+
+function PoolDePlaquinhas() {
   const [itens, setItens] = useState<Plaquinha[]>([]);
   const [lotes, setLotes] = useState<Lote[]>([]);
   const [resumo, setResumo] = useState<Record<string, number>>({});
   const [usaPlaquinha, setUsaPlaquinha] = useState(true);
+  /** A frase do servidor quando ele recusa a empresa (403 da regra de ouro). */
+  const [motivoSemPlaquinha, setMotivoSemPlaquinha] = useState<string | undefined>(undefined);
   /*
     A operação SEM BANCADA não gera plaquinha (GAP-PRD-110): a PJ Motors adota a
     plaquinha da Oficina pela unidade. `true` até o servidor dizer o contrário —
@@ -219,6 +254,18 @@ export default function PlaquinhasPage() {
       setFalhouCarga(false);
     } catch (err) {
       /*
+        A RECUSA DA REGRA DE OURO NÃO É FALHA DE LEITURA (P0 das plaquinhas).
+
+        O servidor responde 403 `CORE_COMPANY_NO_TAGS` a toda rota de plaquinha
+        fora da PJ Motors — e à PJ com a marca desligada. Isso é a empresa sem a
+        função, e a tela diz isso, em vez do alarme de "não consegui ler".
+      */
+      if (err instanceof ApiRequestError && err.code === 'CORE_COMPANY_NO_TAGS') {
+        setUsaPlaquinha(false);
+        setMotivoSemPlaquinha(err.message);
+        return;
+      }
+      /*
         "Não consegui carregar" NÃO é "não há plaquinha".
 
         Com a lista zerada e o aviso de erro rolado para fora da tela, o pool
@@ -262,21 +309,9 @@ export default function PlaquinhasPage() {
   const selecionaveis = useMemo(() => itens.filter((t) => t.status === 'gerada'), [itens]);
 
   if (!usaPlaquinha && !carregando) {
-    return (
-      <AppShell>
-        <PageHeader breadcrumb={['Oficina', 'Plaquinhas']} title="Plaquinhas" />
-        <Card>
-          <EmptyState
-            title="Esta operação não usa plaquinha"
-            description={
-              'Plaquinha com QR e número é da PJ Motors e da Oficina, onde a máquina fica parada '
-              + 'no pátio. Aqui a mercadoria é identificada pela etiqueta de produto, em '
-              + 'Etiquetas · Código de barras.'
-            }
-          />
-        </Card>
-      </AppShell>
-    );
+    // A frase antiga dizia "da PJ Motors e da Oficina": a regra mudou, e a
+    // tela repete a do servidor quando ele a manda.
+    return <PlaquinhasIndisponiveis motivo={motivoSemPlaquinha} />;
   }
 
   return (

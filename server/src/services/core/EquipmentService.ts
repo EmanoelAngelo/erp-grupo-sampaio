@@ -38,6 +38,7 @@ import { recordDomainEvent } from '../sync/DomainEvents.js';
 import { limitarDeslocamento, limitarPagina } from './paginacao.js';
 import {
   associarPlaquinha,
+  exigirEmpresaComPlaquinha,
   formatTagId as formatPublicId,
   registrarPlaquinhaDoCadastro,
   reservarPlaquinhaParaEquipamento,
@@ -365,6 +366,17 @@ export function createEquipment(input: {
   const assembledAt = exigirDataDeCalendario(input.assembledAt, 'Data de montagem');
   const temPlaquinhaEscolhida =
     input.tagPublicId !== undefined && input.tagPublicId !== null && input.tagPublicId !== '';
+  /*
+    ESCOLHER A PLAQUINHA DO POOL É GESTÃO DE PLAQUINHA (P0 das plaquinhas).
+
+    O cadastro da máquina aceitava o número de um adesivo do pool em qualquer
+    empresa com bancada, e a Oficina associava por aqui as plaquinhas que ela
+    mesma gerava. Plaquinha agora é só da PJ Motors: fora dela, o cadastro
+    segue o caminho de sempre — o número do equipamento é sorteado da
+    sequência do grupo —, e pedir um adesivo do pool é recusado com a regra
+    escrita, em vez de devolver "a plaquinha é de outra operação".
+  */
+  if (temPlaquinhaEscolhida) exigirEmpresaComPlaquinha(input.companyId);
 
   // Equipamento externo é do cliente: precisa de dono desde o início.
   if (input.origin === 'EXTERNAL_CUSTOMER' && !input.ownerCustomerId) {

@@ -35,6 +35,7 @@ import { BuscaDeCliente, type Escolhido } from '@/components/gs/BuscaDeCadastro'
 import { Paginacao } from '@/components/gs/Paginacao';
 import { paginaDeEquipamentos, type Pagina } from '@/lib/api/paginas';
 import { useHasProfile } from '@/hooks/useSession';
+import { useEmpresaTemPlaquinha } from '@/hooks/useEmpresaTemPlaquinha';
 import { dataBR } from '@/lib/datas';
 import { CampoBancada } from '@/components/gs/BancadaDeEntrada';
 import { useBancadasDeEntrada } from '@/hooks/useBancadasDeEntrada';
@@ -124,6 +125,8 @@ function identificacao(eq: Equipment): string {
 }
 
 export default function EquipamentosPage() {
+  // Plaquinha é da PJ Motors (P0): fora dela a tela chama o número de "Nº".
+  const temPlaquinha = useEmpresaTemPlaquinha();
   const [itens, setItens] = useState<Equipment[] | null>(null);
   const [busca, setBusca] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -232,7 +235,7 @@ export default function EquipamentosPage() {
 
       <Card
         title="Lista"
-        subtitle="Busque pela plaquinha, marca, modelo, número de série ou chassi."
+        subtitle={`Busque pel${temPlaquinha ? 'a plaquinha' : 'o número'}, marca, modelo, número de série ou chassi.`}
       >
         <div className="mb-4">
           <SearchInput
@@ -265,14 +268,18 @@ export default function EquipamentosPage() {
                 title={busca ? 'Nada encontrado' : 'Nenhum equipamento cadastrado'}
                 description={
                   busca
-                    ? 'Confira a plaquinha ou tente parte do modelo.'
-                    : 'Cadastre o primeiro equipamento para gerar a plaquinha.'
+                    ? `Confira ${temPlaquinha ? 'a plaquinha' : 'o número'} ou tente parte do modelo.`
+                    : temPlaquinha
+                      ? 'Cadastre o primeiro equipamento para gerar a plaquinha.'
+                      : 'Cadastre o primeiro equipamento.'
                 }
               />
             }
             columns={[
               {
-                header: 'Plaquinha',
+                // O mesmo número, com o nome certo: fora da PJ Motors ele é a
+                // identidade da máquina, não uma plaquinha (P0 das plaquinhas).
+                header: temPlaquinha ? 'Plaquinha' : 'Nº',
                 render: (e) => (
                   // O número abre a FICHA (rodada 52): garantia, quem montou e
                   // tudo o que já aconteceu com aquela máquina.
@@ -417,6 +424,15 @@ function NovoEquipamentoCard({
     'EXTERNAL_CUSTOMER',
   );
   /*
+    O SELETOR DO POOL É DA PJ MOTORS (P0 das plaquinhas).
+
+    O cadastro pedia `/core/equipment-tags?status=disponivel` em toda empresa
+    com bancada e oferecia "Plaquinha colada na máquina" — a Oficina associava
+    por aqui as plaquinhas que gerava. Fora da PJ a leitura nem sai (o servidor
+    responderia 403) e o número da máquina é sorteado, como sempre foi.
+  */
+  const temPlaquinha = useEmpresaTemPlaquinha();
+  /*
     O DONO POR BUSCA (GAP-PRD-070): o seletor trazia os 100 primeiros
     clientes, e a máquina do 101º não tinha como ser cadastrada com dono.
   */
@@ -477,12 +493,13 @@ function NovoEquipamentoCard({
       Falha aqui também não trava: quem não usa plaquinha, ou quem ainda não
       gerou lote nenhum, cadastra do jeito de sempre e o número é sorteado.
     */
+    if (!temPlaquinha) return;
     void apiRequest<{ items: { public_id: number; publicIdLabel: string }[] }>(
       '/core/equipment-tags?status=disponivel',
     )
       .then((r) => setLivres(r.items ?? []))
       .catch(() => setLivres([]));
-  }, []);
+  }, [temPlaquinha]);
 
   const salvar = useCallback(async () => {
     // Barra aqui o que o servidor barraria de qualquer jeito, para o atendente
@@ -545,7 +562,9 @@ function NovoEquipamentoCard({
         livres.length > 0
           ? 'Informe a plaquinha que já está colada na máquina, ou deixe em branco para o sistema '
             + 'gerar o número.'
-          : 'A plaquinha é gerada pelo sistema ao salvar.'
+          : temPlaquinha
+            ? 'A plaquinha é gerada pelo sistema ao salvar.'
+            : 'O número do equipamento é gerado pelo sistema ao salvar.'
       }
     >
       <div className="flex flex-col gap-4">
@@ -853,7 +872,7 @@ function NovoEquipamentoCard({
 
         <div className="flex gap-3">
           <Button loading={busy} onClick={() => void salvar()}>
-            Salvar e gerar plaquinha
+            {temPlaquinha ? 'Salvar e gerar plaquinha' : 'Salvar equipamento'}
           </Button>
           <Button variant="ghost" onClick={onCancelar}>
             Cancelar

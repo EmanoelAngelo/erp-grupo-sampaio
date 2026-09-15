@@ -94,7 +94,57 @@ describe('a regra mora num lugar só', () => {
 });
 
 describe('plaquinha só onde o aparelho fica', () => {
-  it('a Oficina de Mobilidade emite', async () => {
+  /*
+    P0 DAS PLAQUINHAS: A OFICINA NÃO EMITE MAIS PLAQUINHA NENHUMA.
+
+    Este bloco provava "a Oficina de Mobilidade emite". O dono restringiu a
+    plaquinha à PJ Motors: a empresa deste arquivo (uma oficina com as duas
+    bancadas) leva 403 mesmo na bancada de mobilidade, e a resposta não traz
+    endereço de QR nenhum.
+
+    A regra da BANCADA (celular não ganha adesivo) continua valendo onde a
+    plaquinha existe — e é na PJ Motors que os três casos seguintes a provam,
+    com as mesmas duas bancadas.
+  */
+  it('a Oficina não emite — nem na bancada de mobilidade: plaquinha é da PJ Motors', async () => {
+    const eq = await equipamento(mobilidade, 'Patinete');
+    const res = await request(app)
+      .post('/api/v1/core/labels/equipment')
+      .set(auth)
+      .send({ equipmentIds: [eq], baseUrl: 'http://loja' });
+
+    expect(res.status).toBe(403);
+    expect(res.body.error.code).toBe('CORE_COMPANY_NO_TAGS');
+    expect(res.body.error.message).toContain('PJ Motors');
+    expect(JSON.stringify(res.body)).not.toContain('/equipamento/');
+  });
+
+  /** A PJ Motors com as duas bancadas: é nela que a regra da bancada ainda decide. */
+  async function entrarNaPj(): Promise<void> {
+    const res = await loginForTest(app, {
+      userId: 'ger-pj-regras',
+      companyId: 'pj-motors',
+      profileCodes: ['gerente_oficina'],
+    });
+    auth = { Authorization: `Bearer ${res.body.accessToken}` };
+    companyId = res.body.company.id;
+    const db = getConnection();
+    const agora = new Date().toISOString();
+    db.prepare('UPDATE core_companies SET uses_equipment_tags = 1 WHERE id = ?').run(companyId);
+    mobilidade = 'wk-mob-pj';
+    celulares = 'wk-cel-pj';
+    db.prepare(
+      `INSERT INTO core_workshops (id, company_id, slug, name, kind, active, created_at)
+       VALUES (?, ?, 'mob-pj', 'Oficina de Mobilidade', 'mobility', 1, ?)`,
+    ).run(mobilidade, companyId, agora);
+    db.prepare(
+      `INSERT INTO core_workshops (id, company_id, slug, name, kind, active, created_at)
+       VALUES (?, ?, 'cel-pj', 'Oficina de Celulares', 'phones', 1, ?)`,
+    ).run(celulares, companyId, agora);
+  }
+
+  it('na PJ Motors, a bancada de mobilidade emite', async () => {
+    await entrarNaPj();
     const eq = await equipamento(mobilidade, 'Patinete');
     const res = await request(app)
       .post('/api/v1/core/labels/equipment')
@@ -105,7 +155,8 @@ describe('plaquinha só onde o aparelho fica', () => {
     expect(res.body.items[0].qrUrl).toContain('/equipamento/');
   });
 
-  it('a Oficina de Celulares NÃO emite, e diz por quê', async () => {
+  it('a bancada de Celulares NÃO emite, e diz por quê', async () => {
+    await entrarNaPj();
     const eq = await equipamento(celulares, 'Celular');
     const res = await request(app)
       .post('/api/v1/core/labels/equipment')
@@ -119,6 +170,7 @@ describe('plaquinha só onde o aparelho fica', () => {
   });
 
   it('a recusa vale mesmo no meio de um lote', async () => {
+    await entrarNaPj();
     const bom = await equipamento(mobilidade, 'Bike');
     const proibido = await equipamento(celulares, 'Celular');
     const res = await request(app)

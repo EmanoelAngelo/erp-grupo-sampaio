@@ -27,6 +27,7 @@ import {
 } from '@/components/gs/PagamentoDialog';
 import { formatCents, formatQuantity, parseReaisToCents } from '@/components/gs/format';
 import { useHasProfile, useSession } from '@/hooks/useSession';
+import { useEmpresaTemPlaquinha } from '@/hooks/useEmpresaTemPlaquinha';
 import { useCan } from '@/hooks/useCan';
 import { ApiRequestError } from '@/lib/api/client';
 import { oficinaCaixaApi, type FilaDeRecebimento } from '@/lib/api/oficinaCaixa';
@@ -577,6 +578,13 @@ type VendaNaTela = VendaConcluida & {
 
 export default function PdvPage() {
   const session = useSession();
+  /*
+    O AVISO "SEM PLAQUINHA DA OFICINA" É DA PJ MOTORS (P0 das plaquinhas).
+    A Preço Justo vende celular controlado por unidade, e o balcão dela lia
+    "sem plaquinha da oficina — sendo moto…" em toda venda de aparelho. Fora da
+    PJ a plaquinha não existe, e o aviso não tem o que pedir.
+  */
+  const temPlaquinha = useEmpresaTemPlaquinha();
   const searchRef = useRef<HTMLInputElement>(null);
   // O rascunho da venda que o F5 interrompeu (D-pdv-teclado-06): lido UMA vez,
   // na montagem, e usado como valor inicial dos estados do carrinho.
@@ -6038,7 +6046,7 @@ export default function PdvPage() {
                           da venda a unidade fica `sold` e o vínculo não se faz
                           mais.
                         */}
-                        {(line.unidadesSemPlaquinha ?? 0) > 0 && (
+                        {temPlaquinha && (line.unidadesSemPlaquinha ?? 0) > 0 && (
                           <span className="block text-[length:var(--gs-text-xs)] text-[var(--gs-warning)]">
                             {line.unidadesSemPlaquinha === 1
                               ? 'sem plaquinha da oficina'

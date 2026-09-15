@@ -261,8 +261,10 @@ describe('GAP-PRD-106 — máquina vinculada à loja: chassi, motor e série sã
   it('a ficha diz o vínculo; corrigir o chassi pela ficha é recusado nomeando a loja; o modelo passa', async () => {
     const criado = await cadastrar({ category: 'moto', chassis: 'CH-VINC-1' });
     const id = String(criado.body.id);
-    const pj = upsertCompany({ slug: 'pj-106', legalName: 'PJ Ltda', tradeName: 'PJ Motors 106', kind: 'retail' });
-    getConnection().prepare('UPDATE core_companies SET uses_equipment_tags = 1 WHERE id IN (?, ?)').run(pj, OFICINA);
+    // O slug da PJ Motors (P0 das plaquinhas): vincular a plaquinha é gesto só
+    // dela, e a marca ligada num slug qualquer ('pj-106') não vincula mais.
+    const pj = upsertCompany({ slug: 'pj-motors', legalName: 'PJ Ltda', tradeName: 'PJ Motors 106', kind: 'retail' });
+    getConnection().prepare('UPDATE core_companies SET uses_equipment_tags = 1 WHERE id = ?').run(pj);
     const moto = createProduct(pj, { name: 'Jet 50', priceCents: 1000 }).id;
     updateProduct(pj, moto, { serialized: true });
     const [unitId] = createUnits(pj, moto, 1, { entryReferenceType: 'ajuste', entryReferenceId: 'e106' });

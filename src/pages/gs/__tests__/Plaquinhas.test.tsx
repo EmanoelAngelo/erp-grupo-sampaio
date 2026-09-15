@@ -16,6 +16,10 @@
  *     resultado, e o editor vira formulário às cegas;
  *   - a tela pode oferecer o pool a uma loja de roupa — a regra de ouro tem
  *     que aparecer como TEXTO, não como lista vazia.
+ *
+ * Desde o P0 das plaquinhas a sessão destes casos é a PJ MOTORS: a plaquinha é
+ * exclusiva dela, e a Oficina (a sessão de antes) abre a rota e vê "não
+ * disponível nesta empresa" sem chamada nenhuma — o que o último bloco prova.
  */
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
@@ -42,6 +46,8 @@ let usaPlaquinha: boolean;
 let folhaAvisa: { abaixoDoPiso: boolean; moduloMm: number; baseUrlConfigurada: boolean };
 /** A leitura do pool falha: "não sei" não pode virar "não há". */
 let poolResponde500: boolean;
+/** O servidor recusa a empresa (403 da regra de ouro) — a PJ com a marca desligada. */
+let poolRecusaAEmpresa: boolean;
 let pedidos: { metodo: string; url: string; corpo: Record<string, unknown> }[];
 
 function plaquinha(n: number, extra: Partial<Plaquinha> = {}): Plaquinha {
@@ -172,6 +178,17 @@ function servidor() {
       });
     }
     if (alvo.includes('/equipment-tags')) {
+      if (poolRecusaAEmpresa) {
+        return responder(
+          {
+            error: {
+              code: 'CORE_COMPANY_NO_TAGS',
+              message: 'Plaquinha com QR e número é exclusiva da PJ Motors: esta empresa não gera plaquinha.',
+            },
+          },
+          403,
+        );
+      }
       if (poolResponde500) {
         return responder({ error: { code: 'API_UNAVAILABLE', message: 'Erro interno.' } }, 500);
       }
@@ -194,17 +211,19 @@ function servidor() {
   });
 }
 
-function entrarComo(profileCode: string) {
+/** A PJ Motors por padrão: é a única empresa com plaquinha (P0 das plaquinhas). */
+function entrarComo(
+  profileCode: string,
+  empresa: { slug: string; tradeName: string; kind: string } = { slug: 'pj-motors', tradeName: 'PJ Motors', kind: 'retail' },
+) {
   setSession(
     {
       accessToken: 'token-de-teste',
       refreshToken: 'r',
       expiresAt: Date.now() + 3_600_000,
       user: { id: 'user-1', login: 'carlos', displayName: 'Carlos Gerente', profileCode },
-      company: { id: 'oficina', slug: 'oficina', tradeName: 'Oficina', kind: 'workshop' },
-      companies: [
-        { id: 'oficina', slug: 'oficina', tradeName: 'Oficina', kind: 'workshop', profileCode },
-      ],
+      company: { id: empresa.slug, ...empresa },
+      companies: [{ id: empresa.slug, ...empresa, profileCode }],
     },
     'LOGIN',
     'client.login',
@@ -217,6 +236,7 @@ beforeEach(() => {
   usaPlaquinha = true;
   folhaAvisa = { abaixoDoPiso: false, moduloMm: 0.87, baseUrlConfigurada: true };
   poolResponde500 = false;
+  poolRecusaAEmpresa = false;
   localStorage.clear();
   vi.stubGlobal('fetch', servidor());
   // A folha abre numa janela nova; no teste ela é dublada.
@@ -357,13 +377,32 @@ describe('o editor de layout', () => {
  * aponta onde ela mora.
  */
 describe('a regra de ouro na tela', () => {
-  it('loja que não usa plaquinha vê a explicação, não um pool vazio', async () => {
+  /*
+    A RECUSA DO SERVIDOR VIRA O ESTADO "NÃO DISPONÍVEL" (P0 das plaquinhas).
+
+    Antes o servidor respondia 200 com `usaPlaquinha: false`, e este caso
+    cobrava a frase "Esta operação não usa plaquinha — é da PJ Motors e da
+    Oficina". Agora a leitura é 403 `CORE_COMPANY_NO_TAGS` (a PJ com a marca
+    desligada chega aqui), e a tela repete a frase do servidor em vez do alarme
+    de "não consegui ler".
+  */
+  it('a recusa da regra de ouro vira "não disponível", com a frase do servidor — não um pool vazio', async () => {
+    poolRecusaAEmpresa = true;
+    montar();
+
+    expect(await screen.findByText('Plaquinhas não disponíveis nesta empresa')).toBeTruthy();
+    expect(screen.getByText(/exclusiva da PJ Motors/)).toBeTruthy();
+    expect(screen.queryByText('Não foi possível ler as plaquinhas')).toBeNull();
+    // E não há como gerar lote nenhum daqui.
+    expect(screen.queryByRole('button', { name: 'Gerar' })).toBeNull();
+  });
+
+  it('a resposta antiga (200 com usaPlaquinha: false) cai no mesmo estado', async () => {
     usaPlaquinha = false;
     montar();
 
-    expect(await screen.findByText('Esta operação não usa plaquinha')).toBeTruthy();
+    expect(await screen.findByText('Plaquinhas não disponíveis nesta empresa')).toBeTruthy();
     expect(screen.getByText(/etiqueta de produto/)).toBeTruthy();
-    // E não há como gerar lote nenhum daqui.
     expect(screen.queryByRole('button', { name: 'Gerar' })).toBeNull();
   });
 
@@ -502,6 +541,37 @@ describe('o que a tela fazia errado', () => {
     await waitFor(() => expect(pedidos.some((p) => p.url.includes('/sheet'))).toBe(true));
     expect(pedidos.find((p) => p.url.includes('/sheet'))!.corpo.formatId).toBe('plaq_personalizado');
   });
+});
+
+/**
+ * A ROTA FORA DA PJ MOTORS (P0 das plaquinhas).
+ *
+ * Quem digita `/sistema/equipamentos/plaquinhas` na Oficina, na Preço Justo ou
+ * numa loja de roupa vê "não disponível nesta empresa" — e a tela não faz
+ * chamada de plaquinha nenhuma: nem lista, nem lote, nem layout, nem formato.
+ * O que sai é só o da CASCA (`EstadoConexao`: a sonda `/health` e a fila de
+ * vendas offline da própria empresa), que toda tela faz e que não é plaquinha.
+ */
+describe('fora da PJ Motors a rota não abre o pool', () => {
+  for (const empresa of [
+    { slug: 'oficina', tradeName: 'Oficina', kind: 'workshop' },
+    { slug: 'preco-justo', tradeName: 'Preço Justo', kind: 'retail' },
+    { slug: 'gringa', tradeName: 'Gringa', kind: 'retail' },
+  ]) {
+    it(`${empresa.tradeName}: "não disponível nesta empresa", e nenhum pedido ao servidor`, async () => {
+      entrarComo('gerente_oficina', empresa);
+      montar();
+
+      expect(await screen.findByText('Plaquinhas não disponíveis nesta empresa')).toBeTruthy();
+      expect(screen.getByText(/exclusiva da PJ Motors/)).toBeTruthy();
+      expect(screen.queryByText('Gerar lote')).toBeNull();
+      expect(screen.queryByText('Lotes')).toBeNull();
+      expect(pedidos.filter((p) => /equipment-tags|labels\/equipment/.test(p.url))).toEqual([]);
+      // Tudo o que saiu é da casca — nenhuma leitura da tela.
+      const daCasca = /\/health(\?|$)|\/core\/offline-sales\?/;
+      expect(pedidos.map((p) => p.url).filter((u) => !daCasca.test(u))).toEqual([]);
+    });
+  }
 });
 
 describe('a busca do balcão', () => {

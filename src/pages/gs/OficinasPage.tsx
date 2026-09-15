@@ -30,6 +30,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { AppShell } from '@/components/gs/AppShell';
 import { Badge, Button, Card, EmptyState, PageHeader } from '@/components/gs/ui';
 import { ApiRequestError } from '@/lib/api/client';
+import { useEmpresaTemPlaquinha } from '@/hooks/useEmpresaTemPlaquinha';
 import {
   coreApi,
   type Company,
@@ -47,6 +48,15 @@ export default function OficinasPage() {
   const [empresas, setEmpresas] = useState<Company[]>([]);
   const [erro, setErro] = useState<string | null>(null);
   const [aviso, setAviso] = useState<string | null>(null);
+  /*
+    A PLAQUINHA SAIU DO RETRATO DA BANCADA fora da PJ Motors (P0 das
+    plaquinhas). A de mobilidade da Oficina aparecia com o selo "Plaquinha do
+    equipamento" e a frase de como o cliente acompanha pela plaquinha — uma
+    função que a Oficina não tem mais. A capacidade da bancada continua no
+    servidor (é ela que decide o QR de acompanhamento da OS); a tela só deixa
+    de anunciar plaquinha onde ela não existe.
+  */
+  const temPlaquinha = useEmpresaTemPlaquinha();
 
   const carregar = useCallback(async () => {
     setErro(null);
@@ -166,18 +176,21 @@ export default function OficinasPage() {
               <div className="flex flex-wrap gap-2 mb-3">
                 {w.capabilities.kanban && <Badge tone="info">Ordens de serviço</Badge>}
                 {w.capabilities.parts && <Badge tone="info">Estoque de peças</Badge>}
-                {w.capabilities.equipmentTags ? (
-                  <Badge tone="success">Plaquinha do equipamento</Badge>
-                ) : (
-                  <Badge tone="neutral">Sem plaquinha</Badge>
-                )}
+                {temPlaquinha &&
+                  (w.capabilities.equipmentTags ? (
+                    <Badge tone="success">Plaquinha do equipamento</Badge>
+                  ) : (
+                    <Badge tone="neutral">Sem plaquinha</Badge>
+                  ))}
               </div>
 
-              <p className="text-[length:var(--gs-text-sm)] text-[var(--gs-muted)] mt-0">
-                {w.capabilities.equipmentTags
-                  ? 'O aparelho fica na oficina: a plaquinha é como se acha e como o cliente acompanha.'
-                  : 'O aparelho entra e sai: a própria OS identifica, e a plaquinha não é emitida aqui.'}
-              </p>
+              {temPlaquinha && (
+                <p className="text-[length:var(--gs-text-sm)] text-[var(--gs-muted)] mt-0">
+                  {w.capabilities.equipmentTags
+                    ? 'O aparelho fica na oficina: a plaquinha é como se acha e como o cliente acompanha.'
+                    : 'O aparelho entra e sai: a própria OS identifica, e a plaquinha não é emitida aqui.'}
+                </p>
+              )}
 
               <p className="font-semibold m-0 mt-3">Identidade dos documentos</p>
               <p className="text-[length:var(--gs-text-sm)] text-[var(--gs-muted)] mt-0">

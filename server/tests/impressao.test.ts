@@ -496,7 +496,7 @@ describe('layouts de OS, caixa e plaquinha', () => {
   }
 
   /**
-   * A OFICINA — a operação que de fato usa plaquinha.
+   * A PJ MOTORS COM BANCADA — a única operação em que a plaquinha existe.
    *
    * Os dois casos da plaquinha usavam a empresa deste arquivo, que é a **Preço
    * Justo**, e a bancada dela é a de CELULARES: a rodada 18 já dizia que
@@ -504,29 +504,34 @@ describe('layouts de OS, caixa e plaquinha', () => {
    * gerador de plaquinha sem guarda nenhum — passava. Com o guarda da rodada
    * 53 no lugar, o cenário precisa da operação certa, e é ela que se monta
    * aqui.
+   *
+   * Até o P0 das plaquinhas a "operação certa" era a Oficina. O dono restringiu
+   * a plaquinha à PJ Motors: a operação certa agora é ela — com uma bancada de
+   * mobilidade, que é o que a regra da bancada pede para dar QR à máquina.
    */
-  async function oficinaDeVerdade(): Promise<{ companyId: string; workshopId: string; userId: string }> {
-    const { ensureOfficialWorkshops, ensureOfficialTagCompanies } = await import(
-      '../src/db/core-migrations.js'
-    );
-    const oficinaCo = upsertCompany({
-      slug: 'oficina',
-      legalName: 'Oficina Ltda',
-      tradeName: 'Oficina',
-      kind: 'workshop',
+  async function operacaoComPlaquinha(): Promise<{ companyId: string; workshopId: string; userId: string }> {
+    const { ensureOfficialTagCompanies } = await import('../src/db/core-migrations.js');
+    const pj = upsertCompany({
+      slug: 'pj-motors',
+      legalName: 'PJ Motors Ltda',
+      tradeName: 'PJ Motors',
+      kind: 'retail',
     });
-    ensureOfficialWorkshops();
     ensureOfficialTagCompanies();
-    const bancada = getConnection()
-      .prepare("SELECT id FROM core_workshops WHERE slug = 'oficina-mobilidade'")
-      .get() as { id: string };
-    const mecanico = await upsertUser({
-      login: 'MEC_IMPRESSAO',
-      displayName: 'Mecânico',
+    const bancada = `ws-pj-${Math.random().toString(36).slice(2, 8)}`;
+    getConnection()
+      .prepare(
+        `INSERT INTO core_workshops (id, company_id, slug, name, kind, active, created_at)
+         VALUES (?, ?, ?, 'Bancada da PJ', 'mobility', 1, ?)`,
+      )
+      .run(bancada, pj, bancada, new Date().toISOString());
+    const quem = await upsertUser({
+      login: `GER_IMPRESSAO_${bancada}`,
+      displayName: 'Gerente da PJ',
       password: 'senha-teste-123',
     });
-    linkUserToCompany(mecanico, oficinaCo, 'gerente_oficina', true);
-    return { companyId: oficinaCo, workshopId: String(bancada.id), userId: mecanico };
+    linkUserToCompany(quem, pj, 'gerente_loja', true);
+    return { companyId: pj, workshopId: bancada, userId: quem };
   }
 
   async function cliente(nome = 'Cliente Teste'): Promise<string> {
@@ -579,7 +584,7 @@ describe('layouts de OS, caixa e plaquinha', () => {
   it('a plaquinha traz QR de verdade e o #ID legível', async () => {
     const { createEquipment } = await import('../src/services/core/EquipmentService.js');
     const { createCustomer } = await import('../src/services/core/CatalogService.js');
-    const of = await oficinaDeVerdade();
+    const of = await operacaoComPlaquinha();
     const eq = createEquipment({
       companyId: of.companyId,
       workshopId: of.workshopId,
@@ -603,7 +608,7 @@ describe('layouts de OS, caixa e plaquinha', () => {
   it('o QR da plaquinha NÃO expõe dado do dono', async () => {
     const { createEquipment } = await import('../src/services/core/EquipmentService.js');
     const { createCustomer } = await import('../src/services/core/CatalogService.js');
-    const of = await oficinaDeVerdade();
+    const of = await operacaoComPlaquinha();
     const dono = createCustomer(of.companyId, {
       name: 'Maria Aparecida da Silva',
       phone: '11988887777',
@@ -642,7 +647,7 @@ describe('layouts de OS, caixa e plaquinha', () => {
    */
   it('a fila de impressão recusa plaquinha de quem não usa plaquinha', async () => {
     const { createEquipment } = await import('../src/services/core/EquipmentService.js');
-    const of = await oficinaDeVerdade();
+    const of = await operacaoComPlaquinha();
     const eq = createEquipment({
       companyId: of.companyId,
       workshopId: of.workshopId,
@@ -652,10 +657,10 @@ describe('layouts de OS, caixa e plaquinha', () => {
       model: 'PT2',
     } as Parameters<typeof createEquipment>[0]);
 
-    // A Oficina imprime.
+    // A PJ Motors imprime.
     expect(() => renderDocument(of.companyId, 'EQUIPMENT_QR_TAG', String(eq.id))).not.toThrow();
 
-    // A loja de variedades deste arquivo, não — e a recusa diz por quê.
+    // A mesma PJ com a marca desligada, não — e a recusa diz por quê.
     getConnection()
       .prepare('UPDATE core_companies SET uses_equipment_tags = 0 WHERE id = ?')
       .run(of.companyId);
@@ -666,5 +671,34 @@ describe('layouts de OS, caixa e plaquinha', () => {
       recusa = err;
     }
     expect((recusa as { code?: string })?.code).toBe('CORE_COMPANY_NO_TAGS');
+
+    /*
+      E A OFICINA TAMBÉM NÃO (P0 das plaquinhas) — nem com a marca ligada que
+      um banco de antes da regra guarda, nem com máquina da bancada de
+      mobilidade dela. Antes do P0 era ela que este caso mostrava imprimindo.
+    */
+    const { ensureOfficialWorkshops } = await import('../src/db/core-migrations.js');
+    const oficinaCo = upsertCompany({ slug: 'oficina', legalName: 'Oficina Ltda', tradeName: 'Oficina', kind: 'workshop' });
+    ensureOfficialWorkshops();
+    getConnection().prepare('UPDATE core_companies SET uses_equipment_tags = 1 WHERE id = ?').run(oficinaCo);
+    linkUserToCompany(of.userId, oficinaCo, 'gerente_oficina', false);
+    const mobilidade = getConnection()
+      .prepare("SELECT id FROM core_workshops WHERE slug = 'oficina-mobilidade'")
+      .get() as { id: string };
+    const daOficina = createEquipment({
+      companyId: oficinaCo,
+      workshopId: String(mobilidade.id),
+      userId: of.userId,
+      origin: 'INTERNAL_PJ_MOTORS',
+      brand: 'Shineray',
+      model: 'Oficina',
+    } as Parameters<typeof createEquipment>[0]);
+    let recusaDaOficina: unknown;
+    try {
+      renderDocument(oficinaCo, 'EQUIPMENT_QR_TAG', String(daOficina.id));
+    } catch (err) {
+      recusaDaOficina = err;
+    }
+    expect((recusaDaOficina as { code?: string; status?: number })?.code).toBe('CORE_COMPANY_NO_TAGS');
   });
 });

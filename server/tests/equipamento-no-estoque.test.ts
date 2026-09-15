@@ -285,13 +285,15 @@ beforeEach(async () => {
   */
   ensureOfficialTagCompanies();
   /*
-    A SEGUNDA operacao com plaquinha, para provar o cerco ENTRE empresas.
+    A MARCA LIGADA NUMA SEGUNDA LOJA — hoje, o retrato de um banco ANTIGO.
 
-    A regra de ouro decide QUEM usa plaquinha; o cerco desta secao e outra
-    coisa — a plaquinha adotada por uma operacao nao aparece para a vizinha.
-    Sem uma segunda empresa com a capacidade, essa protecao ficaria sem quem
-    a testasse, e ela vale para o dia em que o grupo tiver duas lojas de
-    maquina.
+    Antes do P0 das plaquinhas esta linha criava "a segunda operacao com
+    plaquinha", para provar o cerco entre empresas. Agora plaquinha e
+    exclusiva da PJ Motors: a marca gravada na Me Mimei nao vale nada
+    (`empresaUsaPlaquinha` exige o slug da PJ), e e exatamente isso que os
+    casos do cerco passam a provar — a marca velha de outra loja nao reabre a
+    lista nem o vinculo para ela. O vinculo antigo que ela tenha feito e
+    montado a mao, como o banco real o guardaria.
   */
   getConnection().prepare('UPDATE core_companies SET uses_equipment_tags = 1 WHERE id = ?').run(outraLoja);
   mobilidade = workshopIdOf('oficina-mobilidade');
@@ -576,12 +578,27 @@ describe('a lista de candidatas atravessa empresa sem vazar o que é dos outros'
       unitIds: [unidadeDaOutra],
     });
     const adotada = criarPlaquinha({ model: 'Adotada' });
-    vincularUnidade({
-      companyId: outraLoja,
-      unitId: unidadeDaOutra,
-      equipmentId: adotada.id,
-      userId: vendedor,
-    });
+    /*
+      A OUTRA LOJA NÃO ADOTA MAIS (P0 das plaquinhas) — mesmo com a marca
+      ligada no cadastro dela. A adoção pela rota era o que este caso montava;
+      agora ela é recusada, e o vínculo que a Me Mimei fez ANTES da regra é
+      gravado à mão, do jeito que o banco real o guarda.
+    */
+    const recusaDaOutra = recusa(() =>
+      vincularUnidade({
+        companyId: outraLoja,
+        unitId: unidadeDaOutra,
+        equipmentId: adotada.id,
+        userId: vendedor,
+      }),
+    );
+    expect(recusaDaOutra.code).toBe('CORE_COMPANY_NO_TAGS');
+    getConnection()
+      .prepare('UPDATE core_product_units SET equipment_id = ? WHERE id = ?')
+      .run(adotada.id, unidadeDaOutra);
+    getConnection()
+      .prepare('UPDATE core_equipment SET origin_company_id = ? WHERE id = ?')
+      .run(outraLoja, adotada.id);
 
     expect(linhaPlaquinha(adotada.id).origin_company_id).toBe(outraLoja);
     expect(plaquinhasVinculaveis(loja).map((p) => p.id)).not.toContain(adotada.id);
@@ -616,8 +633,15 @@ describe('a lista de candidatas atravessa empresa sem vazar o que é dos outros'
       .run(outraLoja, carimbada.id);
 
     expect(plaquinhasVinculaveis(loja).map((p) => p.id)).not.toContain(carimbada.id);
-    // E continua visível para a dona — o carimbo exclui os outros, não todo mundo.
-    expect(plaquinhasVinculaveis(outraLoja).map((p) => p.id)).toContain(carimbada.id);
+    /*
+      E a "dona" do carimbo também não a vê (P0 das plaquinhas). Antes esta
+      linha cobrava o contrário — o carimbo excluía os outros e deixava a dona
+      ver. Agora a Me Mimei não tem plaquinha: a lista dela é vazia mesmo com a
+      marca ligada no cadastro, e o carimbo antigo continua gravado sem abrir
+      nada para ninguém.
+    */
+    expect(plaquinhasVinculaveis(outraLoja)).toEqual([]);
+    expect(linhaPlaquinha(carimbada.id).origin_company_id).toBe(outraLoja);
   });
 
   it('a busca acha pela plaquinha com #, sem #, e pelo chassi', () => {

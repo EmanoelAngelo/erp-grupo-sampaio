@@ -37,6 +37,7 @@ import { formatCents } from '@/components/gs/format';
 import { ApiRequestError } from '@/lib/api/client';
 import { escreverFolha, plaquinhaDaMaquinaApi } from '@/lib/api/plaquinhaDaMaquina';
 import { useHasProfile } from '@/hooks/useSession';
+import { useEmpresaTemPlaquinha } from '@/hooks/useEmpresaTemPlaquinha';
 import {
   coreApi,
   type PlaquinhaCandidata,
@@ -104,6 +105,17 @@ export default function UnidadesEstoquePage() {
   // As perguntas da tela no lugar de window.prompt/confirm (GAP-PRD-158).
   const { pedirMotivo, dialogoDeMotivo } = usePedirMotivo();
   const { confirmar: confirmarNaTela, dialogoDeConfirmacao } = useConfirmar();
+  /*
+    O VÍNCULO COM A PLAQUINHA É DA PJ MOTORS (P0 das plaquinhas).
+
+    Esta tela serve toda loja com produto controlado por unidade — a Preço
+    Justo com celular, inclusive —, e mostrava a todas a fila "sem plaquinha
+    da oficina", a coluna Plaquinha e os botões de vincular, reimprimir e
+    desfazer. Vincular, desvincular e reimprimir são gestão de plaquinha, e o
+    servidor os recusa com 403 fora da PJ. Aqui, fora dela, nada disso aparece:
+    a tela fica sendo a de identidade da unidade (chassi, IMEI, série, baixa).
+  */
+  const temPlaquinha = useEmpresaTemPlaquinha();
   const [busca, setBusca] = useState('');
   const [achados, setAchados] = useState<StockItem[]>([]);
   const [produto, setProduto] = useState<StockItem | null>(null);
@@ -513,7 +525,7 @@ export default function UnidadesEstoquePage() {
     lendo o que o dono anterior escreveu — e ainda poria o custo interno de
     montagem na frente do cliente.
   */
-  const painelDeVinculo = vinculando ? (
+  const painelDeVinculo = vinculando && temPlaquinha ? (
     <Card
       title="Vincular plaquinha da oficina"
       subtitle="A plaquinha vive na oficina, que é outra empresa do grupo. Vinculada, ela acompanha a
@@ -668,7 +680,7 @@ export default function UnidadesEstoquePage() {
         operador a passar os olhos por cima justamente do dia em que o número
         subir.
       */}
-      {fila !== null && fila > 0 && (
+      {temPlaquinha && fila !== null && fila > 0 && (
         <div className="mb-5 px-4 py-3 rounded-[var(--gs-radius)] bg-[var(--gs-surface-hover)] text-[length:var(--gs-text-sm)]">
           <strong>
             {fila} peça(s) em estoque ainda sem plaquinha da oficina, em toda a empresa.
@@ -699,7 +711,8 @@ export default function UnidadesEstoquePage() {
             {resumo.produtosSerializados === 0 && (
               <li>
                 Nenhum produto desta empresa é <strong>controlado por unidade</strong>. Sem isso a moto
-                vende como item comum — sem chassi, sem plaquinha e sem dono no portal. Marque cada
+                vende como item comum — sem chassi, {temPlaquinha ? 'sem plaquinha e ' : ''}sem dono no
+                portal. Marque cada
                 produto-moto no cadastro de produtos (&ldquo;Controlado por unidade&rdquo;): as
                 unidades do saldo nascem na hora.
               </li>
@@ -718,7 +731,7 @@ export default function UnidadesEstoquePage() {
         AS VENDIDAS SEM PLAQUINHA (GAP-PRD-108) — a fila que antes não existia,
         porque o vínculo depois da venda não existia.
       */}
-      {resumo && (resumo.vendidasSemPlaquinha ?? 0) > 0 && (
+      {temPlaquinha && resumo && (resumo.vendidasSemPlaquinha ?? 0) > 0 && (
         <div
           role="status"
           className="mb-5 px-4 py-3 rounded-[var(--gs-radius)] bg-[var(--gs-surface-hover)] text-[length:var(--gs-text-sm)]"
@@ -794,7 +807,7 @@ export default function UnidadesEstoquePage() {
                       existe vínculo. O número, quem mostra é a tabela do produto,
                       que consulta a plaquinha inteira.
                     */}
-                    {u.equipment_id ? (
+                    {!temPlaquinha ? null : u.equipment_id ? (
                       <Badge tone="info">com plaquinha</Badge>
                     ) : u.status === 'in_stock' || vendidaSemPlaquinha(u) ? (
                       <>
@@ -820,7 +833,7 @@ export default function UnidadesEstoquePage() {
           produto && unidades
             ? `${emEstoque} em estoque` +
               (pendentes > 0 ? ` · ${pendentes} sem identidade` : '') +
-              (semPlaquinha > 0 ? ` · ${semPlaquinha} sem plaquinha` : '')
+              (temPlaquinha && semPlaquinha > 0 ? ` · ${semPlaquinha} sem plaquinha` : '')
             : undefined
         }
         className="mb-5"
@@ -886,7 +899,7 @@ export default function UnidadesEstoquePage() {
               garantia rastreável ou raspar o QR e não achar nada — por isso o
               número aparece, com a ressalva de que nem toda peça precisa.
             */}
-            {semPlaquinha > 0 && (
+            {temPlaquinha && semPlaquinha > 0 && (
               <div className="mb-4 px-4 py-3 rounded-[var(--gs-radius)] bg-[var(--gs-surface-hover)] text-[length:var(--gs-text-sm)]">
                 <strong>{semPlaquinha} peça(s) sem plaquinha da oficina.</strong> Sendo moto montada
                 pela oficina, vincular é o que faz o comprador virar dono no portal ao fechar a
@@ -901,7 +914,7 @@ export default function UnidadesEstoquePage() {
                   <tr className="text-left text-[var(--gs-text-soft)] border-b border-[var(--gs-border)]">
                     <th className={TH}>Identidade</th>
                     <th className={TH}>Situação</th>
-                    <th className={TH}>Plaquinha</th>
+                    {temPlaquinha && <th className={TH}>Plaquinha</th>}
                     <th className={`${TH} text-right`}>Custo</th>
                     <th className={`${TH} text-right`} />
                   </tr>
@@ -910,7 +923,7 @@ export default function UnidadesEstoquePage() {
                   {ordenadas.map((u) =>
                     editando === u.id ? (
                       <tr key={u.id} className="border-b border-[var(--gs-border)]">
-                        <td className={TD} colSpan={5}>
+                        <td className={TD} colSpan={temPlaquinha ? 5 : 4}>
                           <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
                             {CAMPOS.map((c) => (
                               <label key={c.chave} className="flex flex-col gap-1.5">
@@ -977,6 +990,7 @@ export default function UnidadesEstoquePage() {
                           recusa a baixa. Ver aqui evita a descoberta no 409, com
                           o cliente na frente.
                         */}
+                        {temPlaquinha && (
                         <td className={TD}>
                           {u.plaquinha ? (
                             <div className="flex flex-col gap-1">
@@ -1003,13 +1017,14 @@ export default function UnidadesEstoquePage() {
                             <span className="text-[var(--gs-muted)]">—</span>
                           )}
                         </td>
+                        )}
                         <td className={`${TD} text-right tabular-nums`}>
                           {u.cost_cents ? formatCents(u.cost_cents) : '—'}
                         </td>
                         <td className={`${TD} text-right whitespace-nowrap`}>
                           {/* A moto que saiu vendida sem plaquinha ainda ganha a
                               plaquinha com o mesmo número (GAP-PRD-108). */}
-                          {vendidaSemPlaquinha(u) && (
+                          {temPlaquinha && vendidaSemPlaquinha(u) && (
                             <Button variant="ghost" onClick={() => abrirVinculo(u)}>
                               Vincular plaquinha (já vendida)
                             </Button>
@@ -1025,7 +1040,7 @@ export default function UnidadesEstoquePage() {
                                   que o servidor grava; `plaquinha` é só o bloco
                                   de exibição. Se um dia a consulta do bloco
                                   falhar, o botão errado não aparece. */}
-                              {u.equipment_id ? (
+                              {!temPlaquinha ? null : u.equipment_id ? (
                                 <Button variant="ghost" onClick={() => void desligar(u)}>
                                   Desvincular
                                 </Button>

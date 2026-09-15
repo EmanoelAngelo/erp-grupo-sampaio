@@ -26,7 +26,16 @@ type QuemVe = {
   environment: Environment | null;
   profileCode: string | null | undefined;
   capabilities: readonly string[] | null;
+  /** O slug da empresa da sessão — o recorte por empresa (plaquinhas, P0). */
+  empresa: string | null | undefined;
 };
+
+/** O item declara empresas? Então só elas o veem. Ausente = todas. */
+function empresaVe(empresas: readonly string[] | undefined, slug: string | null | undefined): boolean {
+  if (!empresas) return true;
+  const minha = String(slug ?? '').trim().toLowerCase();
+  return empresas.includes(minha);
+}
 
 /**
  * O grupo aparece neste ambiente, para este perfil?
@@ -57,6 +66,9 @@ function canSee(item: NavItem, quem: QuemVe): boolean {
  * visível do que o grupo que o contém. Vale para as duas dimensões.
  */
 function canSeeChild(child: NavChild, parent: NavItem, quem: QuemVe): boolean {
+  // A empresa vem ANTES do acesso personalizado: capability não faz a Oficina
+  // virar a PJ Motors (plaquinhas, P0).
+  if (!empresaVe(child.empresas, quem.empresa)) return false;
   if (quem.capabilities) return child.to ? telaAbre(quem.capabilities, child.to) === true : false;
   if (!quem.environment) return false;
   if (!(child.environments ?? parent.environments ?? ['gestao']).includes(quem.environment)) {
@@ -99,6 +111,7 @@ function Sidebar({ open, onNavigate }: { open: boolean; onNavigate: () => void }
     environment,
     profileCode,
     capabilities: acessoPersonalizado(session) ? session!.access!.capabilities : null,
+    empresa: session?.company.slug,
   };
   const visible = NAV_ITEMS.filter((item) => canSee(item, quem))
     .map((item) => ({

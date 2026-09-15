@@ -34,6 +34,7 @@ import {
   ROTA_GESTAO,
   type Environment,
 } from '@/router/environments';
+import { EMPRESA_DAS_PLAQUINHAS } from '@/lib/acesso/plaquinhaDaEmpresa';
 import type { NavIconName } from './icons';
 
 /*
@@ -313,6 +314,17 @@ export interface NavChild {
    * final de `environments.ts`.
    */
   profiles?: readonly string[];
+  /**
+   * Empresas (slug) que veem este item. Ausente = todas, que é o caso de todo
+   * item menos um.
+   *
+   * Existe por causa das PLAQUINHAS (P0): o item morava no grupo Oficina e
+   * aparecia para a Oficina, a Preço Justo e as lojas de roupa, e a tela abria
+   * para responder "esta operação não usa plaquinha". Plaquinha é da PJ Motors;
+   * fora dela o item não aparece. Vale também para o acesso personalizado:
+   * capability não faz outra empresa virar a PJ.
+   */
+  empresas?: readonly string[];
 }
 
 export interface NavItem {
@@ -602,6 +614,9 @@ export const NAV_ITEMS: NavItem[] = [
         label: 'Plaquinhas',
         hint: 'Gerar o lote, imprimir a folha e liberar para uso',
         to: '/sistema/equipamentos/plaquinhas',
+        // Exclusiva da PJ Motors (P0 das plaquinhas): a Oficina, a Preço Justo e
+        // as lojas não veem o item — a rota, se digitada, diz o mesmo.
+        empresas: [EMPRESA_DAS_PLAQUINHAS],
       },
       // Gestão de acesso: quem entra no sistema e com qual perfil. Não é
       // trabalho de bancada — nem de estoquista ou atendente: é a mesma tela

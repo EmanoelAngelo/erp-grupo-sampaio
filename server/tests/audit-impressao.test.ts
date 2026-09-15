@@ -471,7 +471,9 @@ describe('plaquinha: venda (PJ Motors) e manutenção (Oficina) não se misturam
       tradeName: 'Oficina',
       kind: 'workshop',
     });
-    // A regra de ouro do dono: plaquinha é só de PJ Motors e Oficina.
+    // A regra de ouro do dono, restrita no P0 das plaquinhas: plaquinha é SÓ da
+    // PJ Motors. A marca ligada na Oficina fica aqui como o retrato de um banco
+    // antigo — e é inerte: `empresaUsaPlaquinha` exige o slug da PJ.
     getConnection()
       .prepare(
         "UPDATE core_companies SET uses_equipment_tags = 1 WHERE slug IN ('pj-motors', 'oficina')",
@@ -516,17 +518,27 @@ describe('plaquinha: venda (PJ Motors) e manutenção (Oficina) não se misturam
   });
 
   it('cada plaquinha impressa carrega a identidade do próprio contexto', async () => {
-    const daOficina = await papelDaFila(mecanico.auth, 'EQUIPMENT_QR_TAG', motoDoCliente.id);
-    expect(daOficina).toContain('Honda');
-    expect(daOficina).toContain('Oficina');
-    expect(daOficina).toMatch(/#\d{4}/);
-    expect(daOficina).not.toContain('PJ Motors');
-
     const daPj = await papelDaFila(vendedor.auth, 'EQUIPMENT_QR_TAG', motoDoPatio.id);
     expect(daPj).toContain('Shineray');
     expect(daPj).toContain('PJ Motors');
     expect(daPj).toMatch(/#\d{4}/);
     expect(daPj).not.toContain('Oficina');
+
+    /*
+      A OFICINA NÃO IMPRIME PLAQUINHA (P0 das plaquinhas).
+
+      Este caso provava que a plaquinha da máquina do cliente saía com a
+      identidade da Oficina. O dono tirou a plaquinha da Oficina: o pedido é
+      recusado com 403 antes de o equipamento ser lido, e a recusa não carrega
+      marca nem modelo da máquina.
+    */
+    const daOficina = await request(app)
+      .post('/api/v1/core/print/jobs')
+      .set(mecanico.auth)
+      .send({ documentType: 'EQUIPMENT_QR_TAG', documentId: motoDoCliente.id });
+    expect(daOficina.status, JSON.stringify(daOficina.body)).toBe(403);
+    expect(daOficina.body.error?.code).toBe('CORE_COMPANY_NO_TAGS');
+    expect(JSON.stringify(daOficina.body)).not.toContain('Honda');
   });
 
   it('a plaquinha de um contexto NÃO imprime no fluxo do outro', async () => {
@@ -538,13 +550,16 @@ describe('plaquinha: venda (PJ Motors) e manutenção (Oficina) não se misturam
     expect(cruzada.status, JSON.stringify(cruzada.body)).toBe(404);
     expect(cruzada.body.error?.code).toBe('CORE_EQUIPMENT_NOT_FOUND');
 
-    // Nem a Oficina enfileira a plaquinha da moto do pátio da PJ Motors.
+    // Nem a Oficina enfileira a plaquinha da moto do pátio da PJ Motors. Desde o
+    // P0 das plaquinhas a recusa vem antes do 404: a Oficina não tem plaquinha
+    // nenhuma (403), e nada da moto alheia é lido nem devolvido.
     const inversa = await request(app)
       .post('/api/v1/core/print/jobs')
       .set(mecanico.auth)
       .send({ documentType: 'EQUIPMENT_QR_TAG', documentId: motoDoPatio.id });
-    expect(inversa.status, JSON.stringify(inversa.body)).toBe(404);
-    expect(inversa.body.error?.code).toBe('CORE_EQUIPMENT_NOT_FOUND');
+    expect(inversa.status, JSON.stringify(inversa.body)).toBe(403);
+    expect(inversa.body.error?.code).toBe('CORE_COMPANY_NO_TAGS');
+    expect(JSON.stringify(inversa.body)).not.toContain('Shineray');
 
     // A FOLHA de plaquinhas idem: o id alheio vira problema declarado, sem
     // vazar marca nem modelo do que é da vizinha.
