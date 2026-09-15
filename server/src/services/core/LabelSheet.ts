@@ -44,9 +44,13 @@ import {
   recuoDaFolhaMm,
   type LabelFormat,
 } from './LabelFormats.js';
+import { dataNaEtiqueta, escalaTipografica } from './LabelLayout.js';
 
-/** O nome que aparece no rodapé da etiqueta. Fantasia primeiro: é como a loja é conhecida. */
-function nomeDaEmpresa(companyId: string): string {
+/**
+ * O nome que aparece no rodapé da etiqueta. Fantasia primeiro: é como a loja é conhecida.
+ * Exportado: a etiqueta em ZPL/EPL/TSPL/PDF (LabelPrintService) põe o MESMO nome no rodapé.
+ */
+export function nomeDaEmpresa(companyId: string): string {
   const c = getConnection()
     .prepare('SELECT trade_name, legal_name FROM core_companies WHERE id = ?')
     .get(companyId) as { trade_name: string | null; legal_name: string } | undefined;
@@ -83,28 +87,16 @@ function larguraDoConteudo(f: LabelFormat): number {
  * A escala tipográfica sai da ALTURA da etiqueta — e da escala que o modelo
  * pediu (50–200 %).
  *
- * Uma etiqueta de 22 mm e uma de 50 mm não podem usar o mesmo corpo de letra:
- * na pequena o texto vaza, na grande sobra papel em branco. Ancorar no papel
- * — e não em constantes por formato — faz um formato novo nascer legível sem
- * ninguém calibrar fonte à mão.
+ * A conta mora em `escalaTipografica` (LabelLayout.ts), a régua do layout
+ * explícito que a etiqueta em ZPL, EPL, TSPL e PDF usa. Ela morava aqui, e
+ * duas cópias divergiriam no dia em que uma mudasse: a mesma etiqueta sairia
+ * com um tamanho de letra no navegador e outro na térmica.
  *
  * O PREÇO é a exceção: o tamanho daqui é o TETO, e a largura manda de verdade
  * (ver `blocoDoPreco`).
  */
 function escala(f: LabelFormat) {
-  const h = alturaDoConteudo(f);
-  const k = (f.scalePercent ?? 100) / 100;
-  const destaque = f.priceHighlight !== false;
-  return {
-    nome: Math.max(6, Math.min(13, h * 0.28)) * k,
-    attr: Math.max(5, Math.min(9, h * 0.2)) * k,
-    // O preço é o que o cliente lê de longe: cresce mais rápido que o resto —
-    // a não ser que o modelo peça o preço discreto.
-    preco: (destaque ? Math.max(9, Math.min(30, h * 0.46)) : Math.max(7, Math.min(12, h * 0.26))) * k,
-    ean: Math.max(5.5, Math.min(9, h * 0.2)) * k,
-    rodape: Math.max(4.5, Math.min(7, h * 0.15)) * k,
-    barrasMm: Math.max(4, h * 0.26),
-  };
+  return escalaTipografica(f);
 }
 
 /**
@@ -310,6 +302,12 @@ function etiqueta(item: LabelItem, f: LabelFormat, empresa: string, s: ReturnTyp
   if (mostra('complemento') && f.complementText) {
     partes.push(`<div class="attr">${esc(f.complementText)}</div>`);
   }
+  // Validade e lote dividem UMA linha, como no layout explícito (LabelLayout):
+  // a mesma etiqueta tem de dizer a mesma coisa no navegador e na térmica.
+  const validade = mostra('validade') ? dataNaEtiqueta(item.validade) : '';
+  const lote = mostra('lote') ? String(item.lote ?? '').trim() : '';
+  const linhaDoLote = [validade ? `Val. ${validade}` : '', lote ? `Lote ${lote}` : ''].filter(Boolean).join(' · ');
+  if (linhaDoLote) partes.push(`<div class="attr">${esc(linhaDoLote)}</div>`);
   if (mostra('barras')) {
     if (item.barcode) {
       partes.push(barrasDoItem(item, f).html);
@@ -357,6 +355,12 @@ export interface LabelSheetInput {
    * cada, e recolocar a folha já usada não adiantava.
    */
   comecarEm?: number;
+  /**
+   * A etiqueta de TESTE: contorno preto meio milímetro para dentro da borda de
+   * cada adesivo, também no papel — se ele sai torto, a calibração X/Y do
+   * modelo diz quanto corrigir.
+   */
+  moldura?: boolean;
 }
 
 /**
@@ -477,7 +481,11 @@ export function renderLabelSheet(input: LabelSheetInput): string {
     .folha { background: #fff; box-shadow: 0 1px 4px rgba(0,0,0,.25); margin: 0 auto 16px; }
     .etq { outline: 1px dashed #ccc; outline-offset: -1px; }
     .etq-vazia { outline: 1px dotted #e4e4e7; outline-offset: -1px; }
-  }
+  }${input.moldura ? `
+  /* Etiqueta de teste: o contorno sai também no papel, meio milímetro para dentro. */
+  .folha .etq { outline: 0.25mm solid #000; outline-offset: -0.75mm; }` : ''}${f.offsetXmm || f.offsetYmm ? `
+  /* Calibração do modelo: cada etiqueta desloca no papel o que a impressora puxa torto. */
+  .etq, .etq-vazia { transform: translate(${f.offsetXmm ?? 0}mm, ${f.offsetYmm ?? 0}mm); }` : ''}
 </style></head><body>
 ${paginas.join('\n')}
 </body></html>`;
@@ -577,6 +585,8 @@ export function avisosDoFormato(f: LabelFormat): string[] {
     mostra('marca') || mostra('unidade') || mostra('sku'),
     mostra('atributos'),
     mostra('complemento'),
+    // Validade e lote dividem uma linha.
+    mostra('validade') || mostra('lote'),
   ].filter(Boolean).length;
   altura += linhasDeDetalhe * pxEmMm(s.attr * 1.1);
   if (mostra('preco')) altura += pxEmMm(s.preco) + 0.6;

@@ -27,7 +27,14 @@
 export type LabelField =
   | 'nome' | 'atributos' | 'preco' | 'barras' | 'ean' | 'codigo' | 'empresa'
   // Os que só os MODELOS da loja oferecem (LabelTemplateService).
-  | 'marca' | 'unidade' | 'sku' | 'descricao' | 'complemento';
+  | 'marca' | 'unidade' | 'sku' | 'descricao' | 'complemento'
+  // Do LOTE (core_product_batches): o que o fiscal sanitário e o cliente leem no alimento.
+  | 'validade' | 'lote';
+
+/** O corte da térmica: nenhum (destaca na serrilha), a cada etiqueta, ou só no fim do lote. */
+export type ModoDeCorte = 'nenhum' | 'cada_etiqueta' | 'fim_do_lote';
+/** Como a térmica acha o começo da etiqueta: vão entre adesivos, marca preta no verso, ou papel contínuo. */
+export type SensorDaMidia = 'vao' | 'marca' | 'continua';
 
 /** Os campos que um MODELO de etiqueta pode escolher — o rótulo vai para a tela. */
 export const CAMPOS_DA_ETIQUETA: readonly { id: LabelField; rotulo: string }[] = [
@@ -48,6 +55,11 @@ export const CAMPOS_DA_ETIQUETA: readonly { id: LabelField; rotulo: string }[] =
   { id: 'atributos', rotulo: 'Grade (tamanho, cor…)' },
   { id: 'empresa', rotulo: 'Nome da loja' },
   { id: 'complemento', rotulo: 'Texto próprio' },
+  // DEFEITO QUE ISTO CORRIGE: o lote e a validade existiam no cadastro
+  // (core_product_batches) e nenhuma etiqueta os imprimia — o alimento saía
+  // para a gôndola sem a data que o cliente e a vigilância sanitária procuram.
+  { id: 'validade', rotulo: 'Validade (do lote)' },
+  { id: 'lote', rotulo: 'Lote' },
 ];
 
 export interface LabelFormat {
@@ -90,6 +102,29 @@ export interface LabelFormat {
    * prontos), vale o palpite pela mídia: 203 no rolo, 300 na folha.
    */
   dpi?: number;
+  /*
+    O QUE SÓ A IMPRESSORA FÍSICA DECIDE (modelos da loja).
+
+    DEFEITO QUE ISTO CORRIGE: o modelo dizia o papel e o conteúdo, mas não o
+    que faz o adesivo sair no LUGAR: a térmica que puxa o rolo 1 mm torto
+    imprimia todas as etiquetas 1 mm tortas, e não havia onde compensar; a
+    densidade, a velocidade, o corte e o sensor da mídia ficavam no driver de
+    cada computador — e a saída em ZPL/EPL/TSPL, que não passa por driver
+    nenhum, não tinha de onde tirá-los.
+  */
+  /** Calibração: desloca a etiqueta inteira no papel, em mm (positivo = direita/baixo). */
+  offsetXmm?: number;
+  offsetYmm?: number;
+  /** Escurecimento da térmica, 0–30 (a escala do ZPL; TSPL e EPL usam a metade). Nulo: o da impressora. */
+  densidade?: number | null;
+  /** Velocidade em polegadas por segundo. Nula: a da impressora. */
+  velocidade?: number | null;
+  corte?: ModoDeCorte;
+  sensor?: SensorDaMidia;
+  /** O vão (ou a marca preta) entre uma etiqueta e a próxima no rolo, em mm. Nulo: não informado. */
+  vaoDoRoloMm?: number | null;
+  /** Avanço de papel depois da última etiqueta do lote, em mm. */
+  avancoFinalMm?: number;
 }
 
 /**
