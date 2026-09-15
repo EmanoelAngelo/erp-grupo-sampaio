@@ -26,7 +26,7 @@ import { ensureCoreSchema } from '../../db/schema.js';
 import { ApiError } from '../../utils/errors.js';
 import { recordDomainEvent } from '../sync/DomainEvents.js';
 import { getFiscalConfig, assertCanEmit, buildReadiness } from './FiscalConfigService.js';
-import { MODEL_NFE, reserveNextNumber } from './FiscalKeyService.js';
+import { MODEL_NFE, reserveNextNumber, resolveSerie } from './FiscalKeyService.js';
 import { getDocument, recordTransition, type FiscalDocument } from './FiscalDocumentService.js';
 import { advanceDocument } from './FiscalPipelineService.js';
 import type { NfceSale } from './FiscalXmlNfce.js';
@@ -503,7 +503,15 @@ export function createNfeForOrder(input: {
     orderAsFiscalOperation(input.companyId, input.orderId),
     destinatario.uf,
   );
-  const serie = input.serie ?? 1;
+  /*
+    A SÉRIE VEM DA CONFIGURAÇÃO, COMO NA VENDA DE BALCÃO (auditoria P0).
+
+    Aqui ainda era `input.serie ?? 1` — o defeito que `resolveSerie` fechou em
+    `FiscalDocumentService` e que ficou para trás na NF-e do pedido online: a
+    loja cadastrava a série 5, o checklist ficava verde, e a nota do pedido
+    saía na 1. Agora é a série ativa do ambiente da operação.
+  */
+  const serie = resolveSerie(input.companyId, MODEL_NFE, input.serie, config.environment);
 
   // VALIDA ANTES DE NUMERAR: descobrir um NCM faltando depois de reservar o
   // número queimaria um número por erro de cadastro, e número queimado só se

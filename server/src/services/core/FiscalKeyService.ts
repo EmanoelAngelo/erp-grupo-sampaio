@@ -207,15 +207,33 @@ export function reserveNextNumber(input: {
  * repetir o mesmo erro por outra porta. Sem série ativa, recusa — e a recusa
  * diz onde resolver, porque essa é a única saída possível.
  */
-export function resolveSerie(companyId: string, model: string, pedida?: number): number {
-  const series = getSeries(companyId, model).filter((s) => s.active);
+export function resolveSerie(
+  companyId: string,
+  model: string,
+  pedida: number | undefined,
+  /**
+   * O ambiente em que a nota vai sair. Obrigatório, e não opcional com
+   * padrão: um padrão aqui escolheria em silêncio a numeração de um ambiente
+   * para a nota do outro — exatamente o defeito que a série com ambiente fecha.
+   */
+  environment: FiscalEnvironment,
+): number {
+  const series = seriesDoAmbiente(companyId, model, environment);
+  const ambiente = rotuloDoAmbienteDaSerie(environment);
 
   if (pedida !== undefined) {
     if (!series.some((s) => s.serie === pedida)) {
+      const deOutroAmbiente = getSeries(companyId, model).find(
+        (s) => s.serie === pedida && s.active && s.environment !== null && s.environment !== environment,
+      );
       throw new ApiError(
         'CORE_FISCAL_SERIE_NAO_CONFIGURADA',
-        `A série ${pedida} não está cadastrada e ativa para o modelo ${model} desta operação. `
-          + 'Cadastre em Fiscal › Configuração › Numeração das notas.',
+        deOutroAmbiente
+          ? `A série ${pedida} do modelo ${model} é reservada para `
+            + `${rotuloDoAmbienteDaSerie(deOutroAmbiente.environment!)}, e esta operação emite em `
+            + `${ambiente}. Use uma série de ${ambiente} (Fiscal › Configuração › Numeração das notas).`
+          : `A série ${pedida} não está cadastrada e ativa para o modelo ${model} desta operação `
+            + `(ambiente: ${ambiente}). Cadastre em Fiscal › Configuração › Numeração das notas.`,
         400,
       );
     }
@@ -225,7 +243,7 @@ export function resolveSerie(companyId: string, model: string, pedida?: number):
   if (series.length === 0) {
     throw new ApiError(
       'CORE_FISCAL_SERIE_NAO_CONFIGURADA',
-      `Nenhuma série ativa para o modelo ${model} nesta operação. `
+      `Nenhuma série ativa para o modelo ${model} nesta operação (ambiente: ${ambiente}). `
         + 'Cadastre em Fiscal › Configuração › Numeração das notas antes de emitir.',
       400,
     );
@@ -243,25 +261,83 @@ export function resolveSerie(companyId: string, model: string, pedida?: number):
   return series[0].serie;
 }
 
-/** Situação atual da série, para a tela de configuração. */
-export function getSeries(
+export function rotuloDoAmbienteDaSerie(environment: FiscalEnvironment): string {
+  return environment === 'production' ? 'produção' : 'homologação';
+}
+
+/*
+  A SÉRIE TEM AMBIENTE (auditoria P0 da Preço Justo).
+
+  A chave única do documento é (empresa, modelo, série, número) — sem o
+  ambiente. Uma série só, servindo aos dois, fazia cada nota de TESTE da
+  homologação gastar um número que a produção nunca mais poderia usar: o
+  contador define "NFC-e série 1, nº inicial 1", a loja testa dez cupons na
+  homologação, e o primeiro cupom de verdade sai com o nº 11 — com a faixa de
+  1 a 10 nunca emitida em produção, esperando inutilização.
+
+  A coluna `environment` diz a que ambiente a série serve. NULO é o legado:
+  serve aos dois, como sempre serviu — quem nunca marcou nada continua
+  emitindo exatamente como antes. Uma série marcada nunca é usada no outro
+  ambiente, e as marcadas ganham das legadas quando as duas existem.
+*/
+export function seriesDoAmbiente(
   companyId: string,
   model: string,
-): { serie: number; nextNumber: number; active: boolean }[] {
+  environment: FiscalEnvironment,
+): SerieFiscal[] {
+  const ativas = getSeries(companyId, model).filter((s) => s.active);
+  const marcadas = ativas.filter((s) => s.environment === environment);
+  return marcadas.length > 0 ? marcadas : ativas.filter((s) => s.environment === null);
+}
+
+export interface SerieFiscal {
+  serie: number;
+  nextNumber: number;
+  active: boolean;
+  /** A que ambiente a série serve; `null` = aos dois (legado). */
+  environment: FiscalEnvironment | null;
+  /**
+   * Quantos documentos já usaram números desta série, por ambiente. É o que
+   * mostra, antes da virada, se a homologação andou gastando a numeração que
+   * a produção vai usar.
+   */
+  usadas: { homologation: number; production: number };
+}
+
+/** Situação atual da série, para a tela de configuração. */
+export function getSeries(companyId: string, model: string): SerieFiscal[] {
   ensureCoreSchema();
   const rows = getConnection()
     .prepare(
-      'SELECT serie, next_number, active FROM core_fiscal_series WHERE company_id = ? AND model = ? ORDER BY serie',
+      `SELECT s.serie, s.next_number, s.active, s.environment,
+              (SELECT COUNT(*) FROM core_fiscal_documents d
+                WHERE d.company_id = s.company_id AND d.model = s.model AND d.serie = s.serie
+                  AND d.environment = 'homologation') AS usadas_homologacao,
+              (SELECT COUNT(*) FROM core_fiscal_documents d
+                WHERE d.company_id = s.company_id AND d.model = s.model AND d.serie = s.serie
+                  AND d.environment = 'production') AS usadas_producao
+         FROM core_fiscal_series s
+        WHERE s.company_id = ? AND s.model = ?
+        ORDER BY s.serie`,
     )
     .all(companyId, model) as unknown as {
     serie: number;
     next_number: number;
     active: number;
+    environment: string | null;
+    usadas_homologacao: number;
+    usadas_producao: number;
   }[];
   return rows.map((r) => ({
     serie: Number(r.serie),
     nextNumber: Number(r.next_number),
     active: r.active === 1,
+    environment:
+      r.environment === 'production' || r.environment === 'homologation' ? r.environment : null,
+    usadas: {
+      homologation: Number(r.usadas_homologacao ?? 0),
+      production: Number(r.usadas_producao ?? 0),
+    },
   }));
 }
 
@@ -276,8 +352,27 @@ export function setSeriesNextNumber(input: {
   model: string;
   serie: number;
   nextNumber: number;
+  /**
+   * A que ambiente a série serve. Ausente = não mexe no que está gravado;
+   * `null` = serve aos dois (o legado).
+   */
+  environment?: FiscalEnvironment | null;
 }): void {
   ensureCoreSchema();
+
+  if (
+    input.environment !== undefined
+    && input.environment !== null
+    && input.environment !== 'homologation'
+    && input.environment !== 'production'
+  ) {
+    throw new ApiError(
+      'CORE_FISCAL_ENVIRONMENT_INVALID',
+      `Ambiente "${String(input.environment)}" não existe para a série. Os valores são `
+        + '"homologation", "production" ou vazio (a série serve aos dois ambientes).',
+      400,
+    );
+  }
 
   /*
     Os três campos são conferidos ANTES de abrir a transação, porque a partir
@@ -342,5 +437,33 @@ export function setSeriesNextNumber(input: {
     db.prepare(
       'UPDATE core_fiscal_series SET next_number = ? WHERE company_id = ? AND model = ? AND serie = ?',
     ).run(input.nextNumber, input.companyId, input.model, input.serie);
+
+    if (input.environment !== undefined) {
+      /*
+        Reservar para HOMOLOGAÇÃO uma série que já tem nota de PRODUÇÃO é
+        recusado: os próximos testes gastariam números de uma sequência que o
+        fisco já conhece desta loja, e a produção seguiria com buracos que só a
+        inutilização fecha. Para testar, outra série.
+      */
+      if (input.environment === 'homologation') {
+        const producao = db
+          .prepare(
+            `SELECT COUNT(*) AS n FROM core_fiscal_documents
+              WHERE company_id = ? AND model = ? AND serie = ? AND environment = 'production'`,
+          )
+          .get(input.companyId, input.model, input.serie) as { n: number };
+        if (Number(producao.n) > 0) {
+          throw new ApiError(
+            'CORE_FISCAL_SERIE_JA_USADA_EM_PRODUCAO',
+            `A série ${input.serie} do modelo ${input.model} já tem ${producao.n} nota(s) de `
+              + 'produção e não pode passar a servir à homologação. Cadastre outra série para os testes.',
+            409,
+          );
+        }
+      }
+      db.prepare(
+        'UPDATE core_fiscal_series SET environment = ? WHERE company_id = ? AND model = ? AND serie = ?',
+      ).run(input.environment, input.companyId, input.model, input.serie);
+    }
   });
 }

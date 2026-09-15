@@ -302,7 +302,9 @@ export function createNfceForSale(input: {
     a série 5 na tela, o checklist ficava verde porque existe série, e a nota
     saía na 1 — numeração que o contador não conhece.
   */
-  const serie = resolveSerie(input.companyId, MODEL_NFCE, input.serie);
+  // A série do AMBIENTE em que a nota sai: o teste da homologação não gasta a
+  // numeração da produção (auditoria P0 da Preço Justo).
+  const serie = resolveSerie(input.companyId, MODEL_NFCE, input.serie, config.environment);
   const chave = idempotencyFor(input.saleId, MODEL_NFCE);
 
   // VALIDA A VENDA ANTES DE NUMERAR.
@@ -509,7 +511,7 @@ export function createNfeForSale(input: {
     a série 5 na tela, o checklist ficava verde porque existe série, e a nota
     saía na 1 — numeração que o contador não conhece.
   */
-  const serie = resolveSerie(input.companyId, MODEL_NFE, input.serie);
+  const serie = resolveSerie(input.companyId, MODEL_NFE, input.serie, config.environment);
   const chave = idempotencyFor(input.saleId, MODEL_NFE);
 
   // Valida ANTES de numerar — inclusive o destinatário, que só a NF-e exige.

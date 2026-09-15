@@ -5362,6 +5362,16 @@ export const STATEMENTS: string[] = [
      next_number   INTEGER NOT NULL DEFAULT 1,
      active        INTEGER NOT NULL DEFAULT 1,
      created_at    TEXT NOT NULL,
+     -- A QUE AMBIENTE A SERIE SERVE (auditoria P0 da Preco Justo).
+     --
+     -- A chave unica do documento e (empresa, modelo, serie, numero), sem o
+     -- ambiente: com uma serie so servindo aos dois, cada nota de TESTE da
+     -- homologacao gastava um numero que a producao nunca mais usaria, e o
+     -- "numero inicial 1" do contador virava 11 no primeiro cupom de verdade.
+     -- 'homologation' ou 'production' reserva a serie para um ambiente; NULO e
+     -- o legado, que serve aos dois como sempre serviu. Coluna nova e anulavel:
+     -- o reconcile a acrescenta sem tocar em nenhuma linha.
+     environment   TEXT,
      UNIQUE (company_id, model, serie)
    );`,
 

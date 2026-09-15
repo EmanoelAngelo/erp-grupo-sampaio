@@ -607,9 +607,25 @@ function NumeracaoCard({
   onErro: (mensagem: string) => void;
 }) {
   const [modelos, setModelos] = useState<
-    { model: string; series: { serie: number; nextNumber: number }[] }[] | null
+    | {
+        model: string;
+        series: {
+          serie: number;
+          nextNumber: number;
+          environment?: 'homologation' | 'production' | null;
+          usadas?: { homologation: number; production: number };
+        }[];
+      }[]
+    | null
   >(null);
-  const [form, setForm] = useState({ model: '65', serie: '1', nextNumber: '1' });
+  /*
+    O AMBIENTE DA SÉRIE (auditoria P0 da Preço Justo). "Manter" não manda o
+    campo, e o servidor não mexe no que está gravado — é o caminho de quem só
+    avança o número. Os outros reservam a série: teste e produção em séries
+    separadas, para a nota de teste não gastar o número que o contador definiu
+    para a primeira nota de verdade.
+  */
+  const [form, setForm] = useState({ model: '65', serie: '1', nextNumber: '1', ambiente: 'manter' });
   const [busy, setBusy] = useState(false);
 
   const carregar = useCallback(async () => {
@@ -629,7 +645,13 @@ function NumeracaoCard({
     try {
       // O texto vira número AQUI, e o servidor confere de novo: campo vazio é
       // NaN, e NaN chegava até o banco como "NOT NULL constraint failed".
-      await coreApi.setFiscalSeries(form.model, Number(form.serie), Number(form.nextNumber));
+      const environment =
+        form.ambiente === 'manter'
+          ? undefined
+          : form.ambiente === 'ambos'
+            ? null
+            : (form.ambiente as 'homologation' | 'production');
+      await coreApi.setFiscalSeries(form.model, Number(form.serie), Number(form.nextNumber), environment);
       await carregar();
       await onSalvo(`Série ${form.serie} do modelo ${form.model} salva.`);
     } catch (err) {
@@ -659,6 +681,15 @@ function NumeracaoCard({
                 {m.series.map((s) => (
                   <li key={s.serie}>
                     Série {s.serie} — próxima nota número {s.nextNumber}
+                    {' · '}
+                    {s.environment === 'production'
+                      ? 'só produção'
+                      : s.environment === 'homologation'
+                        ? 'só homologação (testes)'
+                        : 'serve aos dois ambientes'}
+                    {s.usadas && (s.usadas.homologation > 0 || s.usadas.production > 0)
+                      ? ` · já usadas: ${s.usadas.homologation} em homologação, ${s.usadas.production} em produção`
+                      : ''}
                   </li>
                 ))}
               </ul>
@@ -666,7 +697,7 @@ function NumeracaoCard({
           </div>
         ))}
 
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <Field label="Modelo">
             {(props) => (
               <select
@@ -700,6 +731,26 @@ function NumeracaoCard({
                 value={form.nextNumber}
                 onChange={(e) => setForm((a) => ({ ...a, nextNumber: e.target.value }))}
               />
+            )}
+          </Field>
+          <Field
+            label="Ambiente da série"
+            hint="Teste e produção em séries separadas: a nota de teste não gasta o número da produção."
+          >
+            {(props) => (
+              <select
+                {...props}
+                value={form.ambiente}
+                onChange={(e) => setForm((a) => ({ ...a, ambiente: e.target.value }))}
+                className="w-full px-3 py-2 rounded-[var(--gs-radius)] border
+                  border-[var(--gs-border-strong)] bg-[var(--gs-surface)]
+                  text-[var(--gs-text)] text-[length:var(--gs-text-base)]"
+              >
+                <option value="manter">Manter como está (série nova: os dois)</option>
+                <option value="production">Só produção</option>
+                <option value="homologation">Só homologação (testes)</option>
+                <option value="ambos">Os dois ambientes</option>
+              </select>
             )}
           </Field>
         </div>

@@ -4761,14 +4761,31 @@ export const coreApi = {
     }>('/core/fiscal/classification/confirm', { method: 'POST', body: items ? { items } : {} }),
 
   getFiscalSeries: () =>
-    apiRequest<{ items: { model: string; series: { serie: number; nextNumber: number }[] }[] }>(
-      '/core/fiscal/series',
-    ).then(envelope('items')),
+    apiRequest<{
+      items: {
+        model: string;
+        series: {
+          serie: number;
+          nextNumber: number;
+          active?: boolean;
+          /** A que ambiente a série serve; `null` = aos dois (auditoria P0). */
+          environment?: 'homologation' | 'production' | null;
+          /** Quantas notas já usaram números da série, por ambiente. */
+          usadas?: { homologation: number; production: number };
+        }[];
+      }[];
+    }>('/core/fiscal/series').then(envelope('items')),
 
-  setFiscalSeries: (model: string, serie: number, nextNumber: number) =>
+  setFiscalSeries: (
+    model: string,
+    serie: number,
+    nextNumber: number,
+    /** Ausente = não mexe no ambiente gravado; `null` = a série serve aos dois. */
+    environment?: 'homologation' | 'production' | null,
+  ) =>
     apiRequest<{ items: { serie: number; nextNumber: number }[] }>('/core/fiscal/series', {
       method: 'POST',
-      body: { model, serie, nextNumber },
+      body: environment === undefined ? { model, serie, nextNumber } : { model, serie, nextNumber, environment },
     }).then(envelope('items')),
 
   /*

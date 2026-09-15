@@ -58,7 +58,11 @@ describe('POST /core/fiscal/series', () => {
     const lista = await request(app).get('/api/v1/core/fiscal/series').set(gerente);
     expect(lista.status).toBe(200);
     const nfce = lista.body.items.find((i: { model: string }) => i.model === '65');
-    expect(nfce.series).toEqual([{ serie: 1, nextNumber: 1, active: true }]);
+    // Sem ambiente pedido, a série serve aos dois (o legado) e nenhuma nota a
+    // usou ainda — os dois campos que a auditoria P0 acrescentou à listagem.
+    expect(nfce.series).toEqual([
+      { serie: 1, nextNumber: 1, active: true, environment: null, usadas: { homologation: 0, production: 0 } },
+    ]);
   });
 
   it('recusa série que não é número, com motivo, em vez de 500', async () => {

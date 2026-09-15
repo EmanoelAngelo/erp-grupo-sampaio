@@ -9482,6 +9482,19 @@ coreRouter.post('/fiscal/series', (req: AuthedRequest, res, next) => {
       model: String(req.body?.model ?? ''),
       serie: numeroOuNaN(req.body?.serie),
       nextNumber: numeroOuNaN(req.body?.nextNumber),
+      /*
+        O AMBIENTE DA SÉRIE (auditoria P0): só é mexido quando o corpo o traz.
+        Vazio ou nulo = a série serve aos dois; o valor cru vai ao serviço, que
+        tem a lista fechada e recusa o resto com motivo.
+      */
+      ...(req.body && typeof req.body === 'object' && 'environment' in req.body
+        ? {
+            environment:
+              req.body.environment === '' || req.body.environment == null
+                ? null
+                : (req.body.environment as 'homologation' | 'production'),
+          }
+        : {}),
     });
     recordAudit({
       companyId,
