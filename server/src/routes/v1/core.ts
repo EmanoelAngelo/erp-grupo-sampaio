@@ -459,10 +459,12 @@ import {
 import {
   addProductImage,
   resolverNomesDeFotos,
+  listImagesWithoutThumbnail,
   listProductImages,
   removeProductImage,
   reorderProductImages,
   setPrimaryImage,
+  setProductImageThumbnail,
 } from '../../services/core/ProductImageService.js';
 import {
   cancelQuote,
@@ -1177,6 +1179,27 @@ coreRouter.post('/products/fotos-em-lote/resolver', (req: AuthedRequest, res, ne
     const { companyId } = scope(req);
     const names = Array.isArray(req.body?.names) ? req.body.names : [];
     res.json({ items: resolverNomesDeFotos(companyId, names) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * A FILA DAS MINIATURAS QUE FALTAM (P0 da Preço Justo): as fotos desta empresa
+ * que ainda não têm a miniatura do balcão — as que existiam antes dela.
+ *
+ * Quem gera é quem gere o catálogo, no navegador (canvas), e grava por
+ * `PUT /products/:id/images/:imageId/thumbnail`. O caixa do balcão NÃO passa:
+ * ele só lê a miniatura pronta, pela busca (regra "PDV não administra").
+ *
+ * Antes de /products/:id pelo mesmo motivo da prontidão: declarada depois,
+ * "fotos-sem-miniatura" viraria um id de produto.
+ */
+coreRouter.get('/products/fotos-sem-miniatura', (req: AuthedRequest, res, next) => {
+  try {
+    requireCapability(req, 'products.manage');
+    const { companyId } = scope(req);
+    res.json(listImagesWithoutThumbnail(companyId, Number(req.query.limit ?? 200)));
   } catch (err) {
     next(err);
   }
@@ -2857,6 +2880,9 @@ coreRouter.post('/products/:id/images', (req: AuthedRequest, res, next) => {
       dataUrl: String(req.body?.dataUrl ?? ''),
       fileName: req.body?.fileName ?? null,
       mimeType: req.body?.mimeType,
+      // A miniatura do balcão, gerada no navegador junto com a foto (P0 da
+      // Preço Justo). Opcional: cliente antigo sobe só o original.
+      thumbDataUrl: req.body?.thumbDataUrl ? String(req.body.thumbDataUrl) : null,
     });
     recordAudit({
       companyId,
@@ -2864,7 +2890,7 @@ coreRouter.post('/products/:id/images', (req: AuthedRequest, res, next) => {
       action: 'product.image.add',
       entityType: 'product',
       entityId: String(req.params.id),
-      detail: { imageId: image.id, bytes: image.byte_size },
+      detail: { imageId: image.id, bytes: image.byte_size, thumbBytes: image.thumb_bytes },
     });
     res.status(201).json(image);
   } catch (err) {
@@ -2913,6 +2939,39 @@ coreRouter.post('/products/:id/images/reorder', (req: AuthedRequest, res, next) 
         (req.body?.orderedIds ?? []) as string[],
       ),
     });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * A miniatura de uma foto ANTIGA — o preenchimento (P0 da Preço Justo).
+ *
+ * Só preenche o vazio (409 se a foto já tem): trocar exigiria apagar o arquivo
+ * anterior, e esta porta não apaga imagem. Produto e foto são conferidos pela
+ * empresa da sessão: o id de uma foto de outra loja responde 404, igual a um
+ * id inventado. Guarda por capability, e não por perfil — o caixa do balcão
+ * não tem `products.manage` e não passa.
+ */
+coreRouter.put('/products/:id/images/:imageId/thumbnail', (req: AuthedRequest, res, next) => {
+  try {
+    requireCapability(req, 'products.manage');
+    const { companyId, userId } = scope(req);
+    const image = setProductImageThumbnail(
+      companyId,
+      String(req.params.id),
+      String(req.params.imageId),
+      String(req.body?.dataUrl ?? ''),
+    );
+    recordAudit({
+      companyId,
+      userId,
+      action: 'product.image.thumbnail',
+      entityType: 'product',
+      entityId: String(req.params.id),
+      detail: { imageId: image.id, bytes: image.thumb_bytes },
+    });
+    res.json(image);
   } catch (err) {
     next(err);
   }

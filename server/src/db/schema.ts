@@ -962,7 +962,17 @@ export const STATEMENTS: string[] = [
      byte_size   INTEGER,
      position    INTEGER NOT NULL DEFAULT 0,
      is_primary  INTEGER NOT NULL DEFAULT 0,
-     created_at  TEXT NOT NULL
+     created_at  TEXT NOT NULL,
+     -- A MINIATURA DO BALCÃO (P0 da Preço Justo). O PDV desenhava a lista sem
+     -- foto nenhuma, e o único caminho de mostrar uma seria baixar o ORIGINAL
+     -- (até 1600 px, centenas de KB) a cada linha da busca. A miniatura é
+     -- gerada no navegador de quem sobe a foto (canvas, sem biblioteca no
+     -- servidor), com lado de até 160 px e até 40 KB, e mora ao lado do
+     -- original. Nulas por desenho: foto antiga não tem miniatura até alguém
+     -- gerá-la (ver ProductImageService), e o balcão mostra o espaço neutro.
+     -- reconcileCoreSchema as acrescenta no banco que já existe.
+     thumb_url   TEXT,
+     thumb_bytes INTEGER
    );`,
   'CREATE INDEX IF NOT EXISTS ix_product_images_product ON core_product_images (product_id, position);',
 

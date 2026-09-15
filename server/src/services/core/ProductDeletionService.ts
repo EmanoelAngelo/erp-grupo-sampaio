@@ -296,13 +296,16 @@ export function excluirProduto(input: {
         .all(input.productId) as { barcode: string }[]
     ).map((b) => b.barcode);
     const imagens = db
-      .prepare(`SELECT url FROM core_product_images WHERE product_id IN (${marcas(ids)})`)
-      .all(...ids) as { url: string }[];
+      .prepare(`SELECT url, thumb_url FROM core_product_images WHERE product_id IN (${marcas(ids)})`)
+      .all(...ids) as { url: string; thumb_url: string | null }[];
     for (const imagem of imagens) {
       // Só o NOME do arquivo decide o caminho, como em `removeProductImage`:
-      // a URL gravada nunca vira caminho de disco inteira.
-      const arquivo = String(imagem.url ?? '').split('/').pop();
-      if (arquivo) arquivos.push(arquivo);
+      // a URL gravada nunca vira caminho de disco inteira. A miniatura do
+      // balcão sai junto com o original — sem a linha, nada mais a cita.
+      for (const caminho of [imagem.url, imagem.thumb_url]) {
+        const arquivo = String(caminho ?? '').split('/').pop();
+        if (arquivo) arquivos.push(arquivo);
+      }
     }
     const retratoDoProduto: ProdutoExcluido = {
       id: input.productId,

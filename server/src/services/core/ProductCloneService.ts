@@ -207,18 +207,36 @@ export function cloneProduct(
    * dono do próprio arquivo. Foto que não puder ser lida é PULADA: o clone não
    * deve falhar porque um arquivo antigo sumiu do disco.
    */
+  const comoDataUrl = (url: string): string => {
+    const nomeNoDisco = url.split('/').pop() ?? '';
+    const bytes = readFileSync(join(uploadsDir(), nomeNoDisco));
+    const extensao = nomeNoDisco.split('.').pop()?.toLowerCase() ?? 'jpg';
+    const mime =
+      extensao === 'png' ? 'image/png' : extensao === 'webp' ? 'image/webp' : 'image/jpeg';
+    return `data:${mime};base64,${bytes.toString('base64')}`;
+  };
   for (const foto of listProductImages(companyId, productId)) {
     try {
-      const nomeNoDisco = foto.url.split('/').pop() ?? '';
-      const bytes = readFileSync(join(uploadsDir(), nomeNoDisco));
-      const extensao = nomeNoDisco.split('.').pop()?.toLowerCase() ?? 'jpg';
-      const mime =
-        extensao === 'png' ? 'image/png' : extensao === 'webp' ? 'image/webp' : 'image/jpeg';
+      /*
+        A MINIATURA DO BALCÃO VAI JUNTO, também como arquivo próprio. Sem ela o
+        clone nasceria com foto e sem miniatura — e o PDV mostraria o espaço
+        neutro para um produto que tem foto. Miniatura que não puder ser lida
+        não impede a foto: o clone fica na fila do preenchimento.
+      */
+      let thumbDataUrl: string | null = null;
+      if (foto.thumb_url) {
+        try {
+          thumbDataUrl = comoDataUrl(foto.thumb_url);
+        } catch {
+          thumbDataUrl = null;
+        }
+      }
       addProductImage({
         companyId,
         productId: cloneId,
-        dataUrl: `data:${mime};base64,${bytes.toString('base64')}`,
+        dataUrl: comoDataUrl(foto.url),
         fileName: foto.file_name,
+        thumbDataUrl,
       });
     } catch {
       // Arquivo ausente ou ilegível não derruba o clone.
