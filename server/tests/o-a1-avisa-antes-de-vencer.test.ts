@@ -293,7 +293,17 @@ describe('GAP-V41 — os certificados do grupo lado a lado', () => {
     return { Authorization: `Bearer ${res.body.accessToken}` };
   }
 
+  /*
+    A Gringa tem o PRÓPRIO A1 (auditoria P0 da Preço Justo). O caso enviava
+    para a Gringa o arquivo da Preço Justo — cujo CNPJ é o emitente cadastrado
+    de outra operação —, e é exatamente isso que o envio passou a recusar: era
+    o A1 gravado na loja errada, com a operação errada selecionada no topo.
+    Gerado uma vez (a chave RSA é cara), fora do relógio de cada caso.
+  */
+  let a1DaGringa: string | null = null;
+
   beforeEach(() => {
+    a1DaGringa ??= pfx(daqui(400), 'GRINGA LTDA:11444777000161');
     gringa = upsertCompany({ slug: 'gringa', legalName: 'Gringa Ltda', tradeName: 'Gringa' });
     oficina = upsertCompany({ slug: 'oficina', legalName: 'Oficina Ltda', tradeName: 'Oficina' });
     // A Gringa também tem A1; a Oficina não tem nenhum — e é isso que o dono
@@ -301,10 +311,10 @@ describe('GAP-V41 — os certificados do grupo lado a lado', () => {
     upsertCertificateA1({
       companyId: gringa,
       operationalUnitId: 'unit-default',
-      pfxBase64: longo,
+      pfxBase64: a1DaGringa,
       password: SENHA,
     });
-  });
+  }, 120_000);
 
   it('quem tem vínculo nas três vê as três, com situação e validade de cada uma', async () => {
     const dono = await ator('DONOGRUPO', [

@@ -387,6 +387,41 @@ export function upsertCertificateA1(input: {
   }
 
   /*
+    O A1 DE OUTRA OPERAÇÃO DO GRUPO (auditoria P0 da Preço Justo).
+
+    O painel administrativo grava o certificado na operação selecionada no
+    topo, e o administrador do grupo alterna entre seis. Com a operação errada
+    selecionada e sem CNPJ de emitente cadastrado nela, a conferência abaixo
+    caía em "sem referência" e o A1 da Preço Justo era gravado, calado, em
+    outra loja: o upload dizia 201, e o PDV da Preço Justo continuava "fiscal
+    não configurado" sem ninguém entender por quê.
+
+    Quando o CNPJ do arquivo é o emitente cadastrado de OUTRA operação — e a
+    raiz não é a desta —, nada é gravado. Mesma raiz continua com a régua da
+    conferência (o A1 da matriz assina pela filial).
+  */
+  const documentoDoA1 = String(parsed.documentNumber ?? '').replace(/\D/g, '');
+  const cnpjDesta = cnpjDoEmitenteConfigurado(input.companyId);
+  if (documentoDoA1.length === 14 && cnpjDesta.slice(0, 8) !== documentoDoA1.slice(0, 8)) {
+    const cadastrados = getConnection()
+      .prepare(
+        `SELECT cnpj FROM core_fiscal_configs WHERE company_id <> ? AND cnpj IS NOT NULL
+         UNION ALL
+         SELECT cnpj FROM core_companies WHERE id <> ? AND cnpj IS NOT NULL`,
+      )
+      .all(input.companyId, input.companyId) as unknown as { cnpj: string }[];
+    if (cadastrados.some((c) => String(c.cnpj).replace(/\D/g, '') === documentoDoA1)) {
+      throw new ApiError(
+        'FISCAL_CERTIFICATE_DE_OUTRA_OPERACAO',
+        `Este certificado é do CNPJ ${formatarCnpj(documentoDoA1)}, que é o emitente cadastrado em `
+          + 'OUTRA operação do grupo — não nesta. Troque a operação no topo da tela para a empresa '
+          + 'dona do certificado e envie de novo. Nada foi gravado.',
+        409,
+      );
+    }
+  }
+
+  /*
     A CONFERÊNCIA DO CNPJ DEIXOU DE SER OPCIONAL (GAP-V39).
 
     Ela só acontecia quando quem chamava mandava `expectedCnpj` — e o campo na
