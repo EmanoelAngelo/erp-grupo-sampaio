@@ -37,7 +37,7 @@
  * controlado por unidade não tem campo de quantidade aqui: tem a lista das peças
  * daquela venda, para bipar o número que está na moto.
  */
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { prenderFoco } from '@/components/gs/armadilhaDeFoco';
 import { Link, useSearchParams } from 'react-router-dom';
 import { AppShell } from '@/components/gs/AppShell';
@@ -2091,7 +2091,14 @@ function PainelDoReembolso({
 
   // Outra devolução aberta, ou esta depois de um registro: a proposta volta ao
   // saldo de agora, e a tentativa seguinte é outra.
-  useEffect(() => {
+  //
+  // O reset corre NO COMMIT que desenha o painel. Num efeito passivo ele
+  // rodava depois de o painel já estar na tela: o meio escolhido, a referência
+  // do PIX ou o valor digitados nesse intervalo eram apagados pelo reset
+  // atrasado — o cartão voltava a "dinheiro" e o PIX saía sem a referência que
+  // a pessoa tinha escrito. O mesmo vale para o painel relido depois de um
+  // registro, que chega pela resposta do servidor.
+  useLayoutEffect(() => {
     const s = devolucao.reembolso?.sugestao?.[0];
     setMeio(s?.method ?? 'dinheiro');
     setValor(centavosNoCampo(s?.cents ?? devolucao.reembolso?.pendenteCents ?? 0));

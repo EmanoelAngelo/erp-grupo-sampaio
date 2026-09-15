@@ -15,7 +15,7 @@
  * A venda vai com chave de idempotência gerada na abertura do carrinho, então
  * reenvio por queda de rede não gera venda duplicada.
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { prenderFoco } from '@/components/gs/armadilhaDeFoco';
 import { useSearchParams } from 'react-router-dom';
@@ -2078,6 +2078,25 @@ export default function PdvPage() {
    * Se outra leitura já começou a chegar atrás desta, só o COMEÇO sai: os
    * dígitos do próximo produto ficam.
    */
+  /*
+    O CAMPO PERDE A LEITURA NO MESMO INSTANTE EM QUE ELA SAI DA FILA.
+
+    A leitura que termina sai de `leiturasPendentes` na hora (é uma ref), mas o
+    texto dela só saía do campo no render SEGUINTE — o `setTerm` era mais uma
+    atualização na fila do React. Nesse intervalo o campo ainda mostrava o
+    código de A sem que nada mais o descontasse: o bipe B escrito ali ia para
+    trás dele, o Enter buscava "AB" e B não entrava ("Nenhum produto
+    encontrado") — o D-pdv-teclado-01 de volta por outra porta. E a decisão
+    abaixo lia o campo NA TELA enquanto a mudança anterior ainda não tinha
+    chegado a ela: com "cabo usb" na tela e " usb" já pendente, a leitura de
+    " usb" caía no ramo errado e esvaziava o campo da lista por texto — o Enter
+    não escolhia mais nada (D-pdv-teclado-11). A suíte via os dois com a
+    máquina ocupada.
+
+    `flushSync`: a mudança do campo é desenhada ANTES de a próxima tecla poder
+    chegar. Chamado só do fim de uma leitura (depois da resposta), fora de
+    render e de efeito.
+  */
   const consumirLeitura = useCallback((lido: string, manter: boolean) => {
     if (!lido) return;
     const noCampo = searchRef.current?.value ?? '';
@@ -2086,10 +2105,10 @@ export default function PdvPage() {
         searchRef.current?.select();
         return;
       }
-      setTerm((t) => (t === lido ? '' : t.startsWith(lido) ? t.slice(lido.length) : t));
+      flushSync(() => setTerm((t) => (t === lido ? '' : t.startsWith(lido) ? t.slice(lido.length) : t)));
       return;
     }
-    setTerm((t) => (t.startsWith(lido) ? t.slice(lido.length) : t));
+    flushSync(() => setTerm((t) => (t.startsWith(lido) ? t.slice(lido.length) : t)));
   }, []);
 
   const runSearch = useCallback(
@@ -4398,7 +4417,25 @@ export default function PdvPage() {
     funciona é pior que não prometer: a pessoa aperta duas, três vezes antes
     de desconfiar.
   */
-  useEffect(() => {
+  /*
+    OS OUVINTES DE TECLA SE LIGAM NO COMMIT, E NÃO DEPOIS DELE.
+
+    Os ouvintes de `window` desta tela dependem de estado — o carrinho, a
+    pré-venda carregada, o diálogo aberto — e eram religados num `useEffect`.
+    O efeito passivo roda DEPOIS do commit, numa outra volta do agendador do
+    React; entre um e outro, a tela já mostrava o estado novo (a linha que a
+    busca trouxe, a pré-venda, o pagamento fechado pelo 409) e a tecla ainda
+    caía no ouvinte VELHO. O F6 com a pré-venda recém-carregada não perguntava
+    nada; o F8 logo depois de o pagamento fechar não achava ouvinte nenhum (com
+    o pagamento aberto os atalhos ficam desligados); e o ouvinte velho de F8
+    finalizava o carrinho de ANTES da resposta. A suíte via isso com a máquina
+    ocupada (D-pdv-teclado-12 ficou vermelho sem carga artificial nenhuma), e o
+    balcão vê o mesmo quando a resposta do servidor e a tecla chegam juntas.
+
+    `useLayoutEffect` liga o ouvinte no próprio commit: não existe tela nova
+    com ouvinte velho. Vale para os quatro ouvintes com estado abaixo.
+  */
+  useLayoutEffect(() => {
     if (!showQuotes) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return;
@@ -4411,8 +4448,9 @@ export default function PdvPage() {
   }, [showQuotes]);
 
   // A mesma regra para o diálogo da observação: Esc fecha SEM salvar — o
-  // rascunho morre e a observação que já existia continua valendo.
-  useEffect(() => {
+  // rascunho morre e a observação que já existia continua valendo. Ligado no
+  // commit, como o de cima.
+  useLayoutEffect(() => {
     if (!showNota) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return;
@@ -4426,7 +4464,9 @@ export default function PdvPage() {
 
   // Atalhos de balcão. Enquanto um modal está aberto ele é quem responde às
   // teclas — senão F5 dispararia a venda por baixo da tela de pagamento.
-  useEffect(() => {
+  // Ligados no commit (ver "OS OUVINTES DE TECLA SE LIGAM NO COMMIT"): cada
+  // atalho daqui lê o carrinho e os diálogos que estão NA TELA.
+  useLayoutEffect(() => {
     // `showCaixa` estava fora desta lista, e o diálogo do caixa é o único que
     // não trata tecla nenhuma: F8 finalizava a venda POR BAIXO dele. Desde
     // que a abertura sobe sozinha, esse é o estado mais comum da tela no
@@ -4517,7 +4557,12 @@ export default function PdvPage() {
   // posto por quem a produziu (`runSearch`, D-pdv-teclado-11): carimbar aqui,
   // com o termo que está na tela quando a lista chega, dava à resposta
   // atrasada o carimbo do termo novo — e o Enter escolhia da lista errada.
-  useEffect(() => {
+  //
+  // O destaque volta ao primeiro NO MESMO commit da lista. Num efeito passivo,
+  // o reset rodava depois de a lista já estar na tela: o ↓ apertado nesse
+  // intervalo destacava o segundo, o reset atrasado o desfazia, e o Enter punha
+  // no carrinho o PRIMEIRO item — não o que a pessoa escolheu.
+  useLayoutEffect(() => {
     setDestaque(0);
   }, [results]);
 
@@ -4654,7 +4699,8 @@ export default function PdvPage() {
   }, [chaveDoRascunho]);
 
   // Com a pergunta do F6 na tela, F6 de novo confirma (D-pdv-teclado-12).
-  useEffect(() => {
+  // Ligado no commit, como os atalhos: a pergunta na tela já responde ao F6.
+  useLayoutEffect(() => {
     if (!confirmarCancelamento) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'F6') return;
