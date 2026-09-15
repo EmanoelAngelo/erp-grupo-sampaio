@@ -261,6 +261,12 @@ export interface LabelItem {
   sku: string;
   /** A primeira linha da descrição PÚBLICA (a da loja online), curta. */
   shortDescription: string;
+  /** Validade do lote da etiqueta (AAAA-MM-DD) — só quando o formato imprime validade ou lote. */
+  validade?: string | null;
+  /** Código do lote da etiqueta. */
+  lote?: string | null;
+  /** O lote de onde saíram validade e código (auditoria e reimpressão). */
+  batchId?: string | null;
   /** Este lote gravou agora o código interno do produto — vai para a auditoria e para a tela. */
   codigoGerado?: boolean;
   /**
@@ -437,13 +443,14 @@ function quantidadeDoItem(bruta: unknown, nome: string, productId: string): numb
  */
 export function buildLabels(
   companyId: string,
-  requests: { productId: string; quantity?: unknown }[],
+  requests: { productId: string; quantity?: unknown; batchId?: unknown }[],
   opcoes: OpcoesDaFolha = {},
 ): LabelItem[] {
   ensureCoreSchema();
   const db = getConnection();
   const { campos, podeGerarCodigo = true } = opcoes;
   const precisaDeCodigo = !campos || campos.includes('barras') || campos.includes('ean');
+  const precisaDeLote = Boolean(campos && (campos.includes('validade') || campos.includes('lote')));
 
   const linhas = requests.map((request) => {
     const id = String(request?.productId ?? '');
@@ -468,7 +475,12 @@ export function buildLabels(
         { productId: id },
       );
     }
-    return { p, quantidade: quantidadeDoItem(request?.quantity, p.name, id) };
+    return {
+      p,
+      quantidade: quantidadeDoItem(request?.quantity, p.name, id),
+      // Conferido aqui, antes de qualquer escrita, como o resto do lote.
+      lote: loteDaEtiqueta(companyId, p.id, request?.batchId, precisaDeLote),
+    };
   });
 
   const total = linhas.reduce((t, l) => t + l.quantidade, 0);
@@ -483,7 +495,7 @@ export function buildLabels(
   }
 
   return withTransaction(() =>
-    linhas.map(({ p, quantidade }) => {
+    linhas.map(({ p, quantidade, lote }) => {
       let barcode = p.barcode ?? '';
       let codigoGerado = false;
       let codigoPendente: LabelItem['codigoPendente'] = null;
@@ -513,11 +525,55 @@ export function buildLabels(
         unit: p.unit ?? '',
         sku: p.sku ?? '',
         shortDescription: descricaoCurta(p.descricao_publica),
+        validade: lote?.expires_on ?? null,
+        lote: lote?.code ?? null,
+        batchId: lote?.id ?? null,
         codigoGerado,
         codigoPendente,
       };
     }),
   );
+}
+
+/**
+ * O LOTE da etiqueta, quando o formato imprime validade ou lote.
+ *
+ * Com `batchId`, é aquele lote — conferido contra o produto E a empresa (o id
+ * de outra operação é "não encontrado", nunca a validade de outra loja). Sem,
+ * o lote COM SALDO que vence primeiro: é o que está na prateleira para sair
+ * antes (FEFO), o critério da baixa. Produto sem lote declarado sai sem a
+ * linha — inventar validade seria pior que não ter.
+ */
+function loteDaEtiqueta(
+  companyId: string,
+  productId: string,
+  batchId: unknown,
+  precisa: boolean,
+): { id: string; code: string; expires_on: string | null } | null {
+  const db = getConnection();
+  const id = batchId === undefined || batchId === null || batchId === '' ? null : String(batchId);
+  if (id) {
+    const l = db
+      .prepare('SELECT id, code, expires_on FROM core_product_batches WHERE id = ? AND company_id = ? AND product_id = ?')
+      .get(id, companyId, productId) as { id: string; code: string; expires_on: string | null } | undefined;
+    if (!l) {
+      throw new ApiError('CORE_BATCH_NOT_FOUND', `O lote informado (${id}) não é deste produto nesta operação.`, 404, { productId, batchId: id });
+    }
+    return l;
+  }
+  if (!precisa) return null;
+  const l = db
+    .prepare(
+      `SELECT b.id, b.code, b.expires_on
+         FROM core_product_batches b
+        WHERE b.company_id = ? AND b.product_id = ?
+          AND (SELECT COALESCE(SUM(m.quantity), 0) FROM core_stock_movements m
+                WHERE m.batch_id = b.id AND m.company_id = b.company_id) > 0
+        ORDER BY (b.expires_on IS NULL), b.expires_on ASC, b.created_at ASC
+        LIMIT 1`,
+    )
+    .get(companyId, productId) as { id: string; code: string; expires_on: string | null } | undefined;
+  return l ?? null;
 }
 
 /** A primeira linha da descrição, até 60 caracteres. */
@@ -562,6 +618,9 @@ const AMOSTRA_DE_PIOR_CASO: Omit<LabelItem, 'quantity'> = {
   unit: 'UN',
   sku: 'SKU-0123',
   shortDescription: 'Descrição do produto na loja online',
+  // A amostra traz validade e lote: o modelo que os marca mostra a linha na prévia.
+  validade: '2026-12-31',
+  lote: 'L2409-0001',
 };
 
 /**
@@ -585,6 +644,8 @@ export function itemParaPrevia(
   const p = getConnection().prepare(SELECT_DA_ETIQUETA).get(productId, companyId) as LinhaDaEtiqueta | undefined;
   if (!p) throw new ApiError('CORE_PRODUCT_NOT_FOUND', 'Produto não encontrado.', 404);
   const vigente = effectivePriceCents(companyId, p.id, p.price_cents, p.category);
+  // O lote que a folha usaria (só leitura): a prévia mostra a validade que vai sair.
+  const lote = campos && (campos.includes('validade') || campos.includes('lote')) ? loteDaEtiqueta(companyId, p.id, null, true) : null;
   return {
     productId: p.id,
     name: tituloDaEtiqueta(p, campos),
@@ -599,6 +660,9 @@ export function itemParaPrevia(
     unit: p.unit ?? '',
     sku: p.sku ?? '',
     shortDescription: descricaoCurta(p.descricao_publica),
+    validade: lote?.expires_on ?? null,
+    lote: lote?.code ?? null,
+    batchId: lote?.id ?? null,
     codigoPendente: p.barcode ? null : 'ao_imprimir',
   };
 }

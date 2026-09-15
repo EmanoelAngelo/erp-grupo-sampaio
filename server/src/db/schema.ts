@@ -1033,8 +1033,57 @@ export const STATEMENTS: string[] = [
      created_by      TEXT,
      created_at      TEXT NOT NULL,
      updated_at      TEXT NOT NULL,
+     -- A SAÍDA E A IMPRESSORA FÍSICA (P0 das etiquetas da Preço Justo). Todas
+     -- anuláveis, sem DEFAULT e sem CHECK, e no FIM da tabela: o
+     -- reconcileCoreSchema as acrescenta em banco antigo com ALTER, sem
+     -- reescrever linha — um CHECK aqui faria a reparação do esquema
+     -- reconstruir a tabela. Nulo é "o padrão", decidido no código
+     -- (LabelTemplateService.daLinha); os valores aceitos, na validação.
+     --   output_profile  perfil de saída padrão (LabelProfiles: navegador, pdf, zpl…)
+     --   offset_x_mm/offset_y_mm  calibração: desloca a etiqueta no papel (−10 a 10)
+     --   darkness        escurecimento 0–30; print_speed em pol/s
+     --   cut_mode        nenhum | cada_etiqueta | fim_do_lote
+     --   media_type      vao | marca | continua; media_gap_mm o vão do rolo
+     --   feed_after_mm   avanço de papel depois do lote
+     output_profile  TEXT,
+     offset_x_mm     REAL,
+     offset_y_mm     REAL,
+     darkness        INTEGER,
+     print_speed     INTEGER,
+     cut_mode        TEXT,
+     media_type      TEXT,
+     media_gap_mm    REAL,
+     feed_after_mm   REAL,
      UNIQUE (company_id, name)
    );`,
+
+  // O HISTÓRICO DE IMPRESSÃO DAS ETIQUETAS (P0 da Preço Justo): quem imprimiu,
+  // o quê, quantas de cada, em que formato e por qual saída — e de qual lote a
+  // reimpressão saiu. A auditoria (`label.sheet`) diz que houve impressão; é
+  // daqui que a tela REIMPRIME o mesmo lote sem remontar a fila.
+  //   kind         lote | reimpressao | teste
+  //   items        JSON [{productId, name, quantity, priceCents, batchId}] — o
+  //                preço que SAIU no papel; nada de segredo
+  //   template_id  sem chave estrangeira: o histórico sobrevive ao modelo
+  //                apagado (format_name guarda o nome de então)
+  `CREATE TABLE IF NOT EXISTS core_label_print_jobs (
+     id           TEXT PRIMARY KEY,
+     company_id   TEXT NOT NULL REFERENCES core_companies(id) ON DELETE CASCADE,
+     user_id      TEXT,
+     kind         TEXT NOT NULL,
+     profile      TEXT NOT NULL,
+     format_id    TEXT NOT NULL,
+     template_id  TEXT,
+     format_name  TEXT NOT NULL,
+     items        TEXT NOT NULL,
+     labels       INTEGER NOT NULL,
+     pages        INTEGER NOT NULL,
+     start_at     INTEGER NOT NULL,
+     reprint_of   TEXT,
+     created_at   TEXT NOT NULL
+   );`,
+  `CREATE INDEX IF NOT EXISTS ix_label_print_jobs_empresa
+     ON core_label_print_jobs (company_id, created_at);`,
 
   // ---------------------------------------------------------------- impressão
 
@@ -5967,6 +6016,8 @@ export const CORE_TABLES_IN_DELETE_ORDER = [
   'core_mail_messages',
   'core_mail_inboxes',
   'core_print_jobs',
+  // O histórico de impressão de etiquetas só aponta para a empresa (a última).
+  'core_label_print_jobs',
   // Aponta para core_printers: sai antes dela.
   'core_label_templates',
   'core_printers',

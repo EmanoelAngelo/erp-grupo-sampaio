@@ -21,6 +21,7 @@ import {
   type CampoDeEtiqueta,
   type LabelFormatOption,
   type ModeloDeEtiqueta,
+  type PerfilDeImpressao,
   type Printer,
   type RascunhoDeModelo,
 } from '@/lib/api/core';
@@ -55,6 +56,17 @@ const NOVO: RascunhoDeModelo = {
   complementText: null,
   printerId: null,
   isDefault: false,
+  // A saída e a impressora física nascem no padrão: navegador, sem
+  // deslocamento, sem corte, sensor de vão, e o resto a cargo da impressora.
+  outputProfile: null,
+  offsetXmm: 0,
+  offsetYmm: 0,
+  darkness: null,
+  printSpeed: null,
+  cutMode: 'nenhum',
+  mediaType: 'vao',
+  mediaGapMm: null,
+  feedAfterMm: 0,
 };
 
 /** Um formato pronto vira rascunho de modelo — com a largura de papel que ele ocupa. */
@@ -97,10 +109,13 @@ export function ModelosDeEtiqueta({
   podeEditar,
   formatosProntos,
   onMudou,
+  perfis = [],
 }: {
   podeEditar: boolean;
   formatosProntos: LabelFormatOption[];
   onMudou?: (modelos: ModeloDeEtiqueta[]) => void;
+  /** As saídas de impressão (do catálogo) — para a saída padrão do modelo. */
+  perfis?: PerfilDeImpressao[];
 }) {
   const [modelos, setModelos] = useState<ModeloDeEtiqueta[]>([]);
   const [campos, setCampos] = useState<CampoDeEtiqueta[]>([]);
@@ -162,13 +177,14 @@ export function ModelosDeEtiqueta({
 
   const set = <K extends keyof RascunhoDeModelo>(chave: K, valor: RascunhoDeModelo[K]) =>
     setEditando((e) => (e ? { ...e, m: { ...e.m, [chave]: valor } } : e));
-  const num = (chave: keyof RascunhoDeModelo, rotulo: string, passo = 0.5, desabilitado = false) => (
+  // `minimo`: a calibração vai para os dois lados (−10 a 10 mm); o resto começa no zero.
+  const num = (chave: keyof RascunhoDeModelo, rotulo: string, passo = 0.5, desabilitado = false, minimo = 0) => (
     <label className="flex flex-col gap-1">
       <span className={ROTULO}>{rotulo}</span>
       <input
         type="number"
         step={passo}
-        min={0}
+        min={minimo}
         disabled={desabilitado}
         value={m ? String(m[chave] ?? '') : ''}
         onChange={(e) => set(chave, (e.target.value === '' ? null : Number(e.target.value)) as never)}
@@ -477,6 +493,73 @@ export function ModelosDeEtiqueta({
                 instalada no computador (USB, rede ou Windows); densidade e velocidade ficam no driver.
               </span>
             </label>
+
+            {/* A SAÍDA E A IMPRESSORA FÍSICA (P0 das etiquetas). A calibração
+                corrige a impressora que puxa o papel torto; densidade,
+                velocidade, corte, sensor e vão vão DENTRO do arquivo ZPL, EPL e
+                TSPL — no navegador e no driver, ficam no driver. */}
+            <fieldset
+              aria-label="Saída, calibração e mídia"
+              className="grid grid-cols-2 md:grid-cols-4 gap-3 border border-[var(--gs-border)] rounded-[var(--gs-radius)] p-3"
+            >
+              <legend className={`${ROTULO} px-1`}>Saída, calibração e mídia</legend>
+              <label className="flex flex-col gap-1 col-span-2">
+                <span className={ROTULO}>Saída padrão</span>
+                <select
+                  value={m.outputProfile ?? ''}
+                  onChange={(e) => set('outputProfile', e.target.value || null)}
+                  aria-label="Saída padrão"
+                  className={CAIXA}
+                >
+                  <option value="">Navegador (diálogo de impressão)</option>
+                  {perfis
+                    .filter((p) => p.id !== 'navegador')
+                    .map((p) => (
+                      <option key={p.id} value={p.id} disabled={m.midia === 'folha' && !p.aceitaFolha}>
+                        {p.rotulo}
+                        {m.midia === 'folha' && !p.aceitaFolha ? ' — só rolo' : ''}
+                      </option>
+                    ))}
+                </select>
+              </label>
+              {num('offsetXmm', 'Deslocamento horizontal (mm)', 0.25, false, -10)}
+              {num('offsetYmm', 'Deslocamento vertical (mm)', 0.25, false, -10)}
+              {num('darkness', 'Densidade (0 a 30)', 1)}
+              {num('printSpeed', 'Velocidade (pol/s)', 1)}
+              <label className="flex flex-col gap-1">
+                <span className={ROTULO}>Corte</span>
+                <select
+                  value={m.cutMode ?? 'nenhum'}
+                  onChange={(e) => set('cutMode', e.target.value as RascunhoDeModelo['cutMode'])}
+                  aria-label="Corte"
+                  className={CAIXA}
+                >
+                  <option value="nenhum">Sem corte (destacar)</option>
+                  <option value="cada_etiqueta">A cada etiqueta</option>
+                  <option value="fim_do_lote">Só no fim do lote</option>
+                </select>
+              </label>
+              <label className="flex flex-col gap-1">
+                <span className={ROTULO}>Sensor da mídia</span>
+                <select
+                  value={m.mediaType ?? 'vao'}
+                  onChange={(e) => set('mediaType', e.target.value as RascunhoDeModelo['mediaType'])}
+                  aria-label="Sensor da mídia"
+                  className={CAIXA}
+                >
+                  <option value="vao">Vão entre etiquetas</option>
+                  <option value="marca">Marca preta no verso</option>
+                  <option value="continua">Papel contínuo</option>
+                </select>
+              </label>
+              {num('mediaGapMm', 'Vão entre etiquetas (mm)', 0.5, m.mediaType === 'continua')}
+              {num('feedAfterMm', 'Avanço ao fim do lote (mm)', 1)}
+              <span className="col-span-2 md:col-span-4 text-[length:var(--gs-text-xs)] text-[var(--gs-muted)]">
+                Calibração: imprima a etiqueta de teste e desloque até a moldura ficar centrada no adesivo (positivo = para a
+                direita / para baixo). Densidade, velocidade, corte, sensor e vão vão dentro do arquivo ZPL, EPL e TSPL; no
+                navegador e no driver, ajuste no próprio driver.
+              </span>
+            </fieldset>
 
             <label className="flex items-center gap-2 text-[length:var(--gs-text-sm)]">
               <input type="checkbox" checked={m.isDefault} onChange={(e) => set('isDefault', e.target.checked)} />

@@ -29,15 +29,25 @@ import { useSession } from '@/hooks/useSession';
 import { useEmpresaTemPlaquinha } from '@/hooks/useEmpresaTemPlaquinha';
 import { useCan } from '@/hooks/useCan';
 import { ModelosDeEtiqueta } from '@/components/gs/ModelosDeEtiqueta';
+import {
+  HistoricoDeEtiquetas,
+  ResultadoDaImpressao,
+  SeletorDeSaida,
+  type ResultadoDaSaida,
+} from '@/components/gs/SaidaDaEtiqueta';
 import { ApiRequestError, apiRequest, exigirCampos } from '@/lib/api/client';
 import {
   coreApi,
+  type ImpressaoDeEtiquetas,
+  type ItemDeHomologacao,
   type LabelCandidate,
   type LabelCandidates,
   type LabelFormatOption,
   type LabelSourceOption,
   type ModeloDeEtiqueta,
+  type PerfilDeImpressao,
   type QuantityModeOption,
+  type RespostaDaImpressaoDeEtiquetas,
 } from '@/lib/api/core';
 
 /** O que a tela precisa conferir ANTES de gastar folha adesiva. */
@@ -137,6 +147,20 @@ export default function EtiquetasPage() {
   // só faz isso para quem tem products.manage. Quem só imprime precisa saber
   // disso ANTES de gerar a folha, e não pelo aviso depois do papel gasto.
   const podeGerarCodigo = useCan('products.manage');
+  /*
+    A SAÍDA DA IMPRESSÃO (P0 das etiquetas): navegador, driver, PDF ou os
+    comandos da térmica (ZPL, EPL, TSPL). Começa no padrão do catálogo (o
+    navegador) e segue a saída padrão do MODELO escolhido — a não ser que a
+    pessoa tenha escolhido à mão, que vale até ela trocar de novo.
+  */
+  const [perfis, setPerfis] = useState<PerfilDeImpressao[]>([]);
+  const [homologacao, setHomologacao] = useState<ItemDeHomologacao[]>([]);
+  const [perfilId, setPerfilId] = useState<PerfilDeImpressao['id']>('navegador');
+  const saidaEscolhidaAMao = useRef(false);
+  /** O que saiu pela última impressão fora do navegador: a prévia, o arquivo e os comandos. */
+  const [resultado, setResultado] = useState<ResultadoDaSaida | null>(null);
+  /** O histórico de impressão da operação — quem imprimiu o quê, e o botão de reimprimir. */
+  const [historico, setHistorico] = useState<ImpressaoDeEtiquetas[]>([]);
   /** A pessoa escolheu o formato no seletor — o padrão da loja não passa por cima dela. */
   const escolhidoAMao = useRef(false);
   /** O formato padrão do catálogo, para quando o modelo escolhido some. */
@@ -208,6 +232,10 @@ export default function EtiquetasPage() {
         setSources(c.sources);
         setFormats(c.formats);
         setModes(c.quantityModes);
+        // As saídas e o que falta conferir em papel. Servidor antigo não os
+        // manda: a tela fica só com o navegador, como sempre foi.
+        setPerfis(c.perfis ?? []);
+        setHomologacao(c.homologacao ?? []);
         padraoDoCatalogo.current = c.defaultFormat;
         // Só preenche o que está vazio: o modelo padrão pode ter chegado antes.
         setFormatId((atual) => atual || c.defaultFormat);
@@ -465,6 +493,147 @@ export default function EtiquetasPage() {
     return `${Math.round((f.columns * f.widthMm + (f.columns - 1) * (f.gapXmm ?? 0)) * 100) / 100} × ${f.heightMm} mm`;
   }
 
+  /*
+    A SAÍDA ESCOLHIDA SEGUE O MODELO. O modelo da loja pode dizer a saída
+    padrão dele (a térmica ZPL do balcão); a tela a escolhe sozinha — a não
+    ser que a pessoa tenha trocado à mão. E folha A4 não sai pela térmica: a
+    saída que só serve para rolo volta ao navegador aqui, em vez de o servidor
+    recusar depois do clique.
+  */
+  useEffect(() => {
+    if (saidaEscolhidaAMao.current) return;
+    setPerfilId((modeloAtual?.outputProfile as PerfilDeImpressao['id'] | null | undefined) ?? 'navegador');
+  }, [modeloAtual]);
+  useEffect(() => {
+    const p = perfis.find((x) => x.id === perfilId);
+    if (p && !p.aceitaFolha && geometria?.midia === 'folha') setPerfilId('navegador');
+  }, [perfis, perfilId, geometria]);
+
+  const perfilAtual = perfis.find((p) => p.id === perfilId);
+  /** Sem perfis (servidor antigo) ou com o navegador escolhido: a folha abre em janela, como sempre. */
+  const saidaNoNavegador = !perfilAtual || perfilAtual.saida === 'html';
+  const podeImprimir = useCan('labels.products.print');
+
+  const carregarHistorico = useCallback(async () => {
+    try {
+      setHistorico(await coreApi.labelPrints());
+    } catch {
+      // Sem o histórico a tela ainda imprime; ele só não aparece.
+      setHistorico([]);
+    }
+  }, []);
+  useEffect(() => {
+    if (tab === 'produtos' && podeImprimir) void carregarHistorico();
+  }, [tab, podeImprimir, carregarHistorico]);
+
+  /**
+   * Entrega o que o servidor montou.
+   *
+   * NAVEGADOR: a folha vai para a janela aberta no clique — ou desce como
+   * arquivo, se o navegador bloqueou a janela. OUTRA SAÍDA (PDF, ZPL, EPL,
+   * TSPL, driver): a prévia, desenhada pelo servidor na mesma geometria do
+   * arquivo, o arquivo e os comandos aparecem na tela; nenhuma janela abre.
+   */
+  function entregar(
+    r: { html: string; arquivo?: RespostaDaImpressaoDeEtiquetas['arquivo']; comandos?: string | null; avisos?: string[] },
+    janela: Window | null,
+    mensagens: string[],
+    titulo: string,
+  ) {
+    if (r.arquivo) {
+      setResultado({ titulo, html: r.html, arquivo: r.arquivo, comandos: r.comandos ?? null, avisos: r.avisos ?? [] });
+      mensagens.push(
+        `O arquivo ${r.arquivo.nome} está pronto logo abaixo, com a prévia: baixe e mande à impressora`
+          + (perfilAtual?.levaAjustesDaTermica ? ' (porta 9100 da rede, compartilhamento do Windows ou o utilitário do fabricante).' : '.'),
+      );
+      return;
+    }
+    if (janela) {
+      janela.document.open();
+      janela.document.write(r.html);
+      janela.document.close();
+      /*
+        A IMPRESSORA PREFERIDA É DITA NA HORA DE IMPRIMIR. Ela aparecia só no
+        subtítulo, e o diálogo do sistema abre na ÚLTIMA impressora usada —
+        a laser do orçamento, e o adesivo saía numa folha comum. Nenhum código
+        escolhe a impressora do diálogo; o que se pode é dizer qual escolher.
+      */
+      mensagens.push(
+        `Na janela de impressão, escolha ${modeloAtual?.printerName ? `"${modeloAtual.printerName}"` : 'a impressora de etiqueta'}, `
+          + `papel ${papelDaImpressao()}, escala 100 % e sem "ajustar à página".`,
+      );
+      janela.focus();
+      janela.print();
+      return;
+    }
+    // Sem janela, o arquivo desce como papel a abrir na mão. Melhor que
+    // perder a folha que o servidor já montou.
+    const url = URL.createObjectURL(new Blob([r.html], { type: 'text/html' }));
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `etiquetas-${formatId.replace(':', '-')}.html`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    mensagens.push(
+      'O navegador bloqueou a janela de impressão, então a folha foi BAIXADA: abra o arquivo e imprima — '
+        + 'ou libere pop-ups para este endereço. Não é preciso gerar de novo.',
+    );
+  }
+
+  /** A etiqueta de teste na saída escolhida: a amostra (EAN 040, de produto nenhum) com a moldura de calibração. */
+  async function imprimirTeste() {
+    if (!formatId) {
+      setError('Escolha o formato da etiqueta.');
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    setAvisos([]);
+    setResultado(null);
+    const janela = saidaNoNavegador ? window.open('', '_blank') : null;
+    try {
+      const r = await coreApi.labelTestPrint({
+        ...(modeloAtual ? { templateId: modeloAtual.id } : { formatId }),
+        ...(saidaNoNavegador ? {} : { perfil: perfilId }),
+      });
+      const mensagens = [
+        'Etiqueta de teste: confira se a moldura saiu centrada no adesivo. Se não, ajuste o deslocamento do modelo '
+          + '(Saída, calibração e mídia) e imprima o teste de novo.',
+      ];
+      entregar(r, janela, mensagens, 'Etiqueta de teste');
+      setAvisos(mensagens);
+      void carregarHistorico();
+    } catch (err) {
+      janela?.close();
+      setError(err instanceof ApiRequestError ? err.message : 'Falha ao imprimir a etiqueta de teste.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  /** Reimprime um lote do histórico na saída escolhida agora, com o preço de hoje. */
+  async function reimprimir(impressao: ImpressaoDeEtiquetas) {
+    setBusy(true);
+    setError(null);
+    setAvisos([]);
+    setResultado(null);
+    const janela = saidaNoNavegador ? window.open('', '_blank') : null;
+    try {
+      const r = await coreApi.reprintLabels(impressao.id, { perfil: perfilAtual ? perfilId : 'navegador' });
+      const mensagens: string[] = [`Reimpressão: ${r.etiquetas} etiqueta(s) com o preço de hoje.`];
+      entregar(r, janela, mensagens, `Reimpressão — ${r.etiquetas} etiqueta(s)`);
+      setAvisos([...mensagens, ...avisosDaFolha(r)]);
+      void carregarHistorico();
+    } catch (err) {
+      janela?.close();
+      setError(err instanceof ApiRequestError ? err.message : 'Falha ao reimprimir.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function gerarFolha() {
     const items = Object.entries(fila).map(([productId, quantity]) => ({ productId, quantity }));
     if (motivoParaNaoGerar) {
@@ -474,85 +643,27 @@ export default function EtiquetasPage() {
     setBusy(true);
     setError(null);
     setAvisos([]);
+    setResultado(null);
     /*
       A janela abre AGORA, ainda dentro do clique, e recebe o conteúdo depois.
       Abri-la após o `await` faz o navegador tratá-la como pop-up não pedido e
-      bloquear — o que acontecia em toda geração, não de vez em quando.
+      bloquear — o que acontecia em toda geração, não de vez em quando. Só no
+      navegador: as outras saídas mostram a prévia e o arquivo na própria tela.
     */
-    const janela = window.open('', '_blank');
+    const janela = saidaNoNavegador ? window.open('', '_blank') : null;
     try {
       const inicio = posicaoInicial && posicaoInicial > 1 ? { startAt: posicaoInicial } : {};
+      // A saída só vai quando não é o navegador: sem ela, o servidor faz a folha de sempre.
+      const saida = saidaNoNavegador ? {} : { perfil: perfilId };
       // Um modelo da loja vai pelo id dele; um formato pronto, pelo id do formato.
       const r = await coreApi.labelSheet(
-        modeloAtual ? { templateId: modeloAtual.id, items, ...inicio } : { formatId, items, ...inicio },
+        modeloAtual ? { templateId: modeloAtual.id, items, ...inicio, ...saida } : { formatId, items, ...inicio, ...saida },
       );
       // O que saiu de verdade, pelo servidor — e não o que a tela calculou.
       const mensagens: string[] = [`Saíram ${r.etiquetas} etiqueta(s) em ${r.folhas} folha(s).`];
-      if (janela) {
-        janela.document.open();
-        janela.document.write(r.html);
-        janela.document.close();
-        /*
-          A IMPRESSORA PREFERIDA É DITA NA HORA DE IMPRIMIR. Ela aparecia só no
-          subtítulo, e o diálogo do sistema abre na ÚLTIMA impressora usada —
-          a laser do orçamento, e o adesivo saía numa folha comum. Nenhum código
-          escolhe a impressora do diálogo; o que se pode é dizer qual escolher.
-        */
-        mensagens.push(
-          `Na janela de impressão, escolha ${modeloAtual?.printerName ? `"${modeloAtual.printerName}"` : 'a impressora de etiqueta'}, `
-            + `papel ${papelDaImpressao()}, escala 100 % e sem "ajustar à página".`,
-        );
-        janela.focus();
-        janela.print();
-      } else {
-        // Sem janela, o arquivo desce como papel a abrir na mão. Melhor que
-        // perder a folha que o servidor já montou.
-        const url = URL.createObjectURL(new Blob([r.html], { type: 'text/html' }));
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `etiquetas-${formatId.replace(':', '-')}.html`;
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-        setTimeout(() => URL.revokeObjectURL(url), 60_000);
-        mensagens.push(
-          'O navegador bloqueou a janela de impressão, então a folha foi BAIXADA: abra o arquivo e imprima — '
-            + 'ou libere pop-ups para este endereço. Não é preciso gerar de novo.',
-        );
-      }
-      if (r.codigosGerados?.length) {
-        mensagens.push(
-          `${r.codigosGerados.length} produto(s) ganharam código de barras interno agora: `
-            + `${r.codigosGerados.slice(0, 5).map((c) => `${c.name} (${c.barcode})`).join(', ')}.`,
-        );
-      }
-      if (r.semCodigo?.length) {
-        mensagens.push(
-          `${r.semCodigo.length} item(ns) saíram SEM código de barras: seu acesso não inclui gerar código no cadastro. `
-            + `Peça a quem cuida do cadastro para gerar: ${r.semCodigo.slice(0, 5).join(', ')}.`,
-        );
-      }
-      if (r.codigosSemDesenho?.length) {
-        mensagens.push(
-          `${r.codigosSemDesenho.length} código(s) não viraram barras: `
-            + `${r.codigosSemDesenho.slice(0, 5).map((p) => `${p.name} — ${p.motivo}`).join('; ')}`,
-        );
-      }
-      // Os avisos saem todos juntos: mostrar um e engolir o outro faria a
-      // pessoa corrigir metade do problema e imprimir de novo.
-      if (r.semPreco.length > 0) {
-        mensagens.push(
-          `${r.semPreco.length} item(ns) saíram com R$ 0,00 — o preço anunciado obriga a loja. ` +
-            `Confira o cadastro de: ${r.semPreco.slice(0, 5).join(', ')}.`,
-        );
-      }
-      if (r.promocoes.length > 0) {
-        mensagens.push(
-          `${r.promocoes.length} item(ns) estão em promoção e a etiqueta saiu com o preço promocional. ` +
-            `Quando a promoção acabar, o caixa vai cobrar mais que o papel — reimprima: ${r.promocoes.slice(0, 5).join(', ')}.`,
-        );
-      }
-      setAvisos(mensagens);
+      entregar(r, janela, mensagens, `Etiquetas — ${r.etiquetas} etiqueta(s) em ${r.folhas} página(s)`);
+      setAvisos([...mensagens, ...avisosDaFolha(r)]);
+      void carregarHistorico();
     } catch (err) {
       // A janela já foi aberta em branco; deixá-la aberta seria sujeira.
       janela?.close();
@@ -560,6 +671,44 @@ export default function EtiquetasPage() {
     } finally {
       setBusy(false);
     }
+  }
+
+  /** Os avisos que o servidor devolve com a folha — os mesmos para a folha nova e a reimpressão. */
+  function avisosDaFolha(r: RespostaDaImpressaoDeEtiquetas): string[] {
+    const mensagens: string[] = [];
+    if (r.codigosGerados?.length) {
+      mensagens.push(
+        `${r.codigosGerados.length} produto(s) ganharam código de barras interno agora: `
+          + `${r.codigosGerados.slice(0, 5).map((c) => `${c.name} (${c.barcode})`).join(', ')}.`,
+      );
+    }
+    if (r.semCodigo?.length) {
+      mensagens.push(
+        `${r.semCodigo.length} item(ns) saíram SEM código de barras: seu acesso não inclui gerar código no cadastro. `
+          + `Peça a quem cuida do cadastro para gerar: ${r.semCodigo.slice(0, 5).join(', ')}.`,
+      );
+    }
+    if (r.codigosSemDesenho?.length) {
+      mensagens.push(
+        `${r.codigosSemDesenho.length} código(s) não viraram barras: `
+          + `${r.codigosSemDesenho.slice(0, 5).map((p) => `${p.name} — ${p.motivo}`).join('; ')}`,
+      );
+    }
+    // Os avisos saem todos juntos: mostrar um e engolir o outro faria a
+    // pessoa corrigir metade do problema e imprimir de novo.
+    if (r.semPreco.length > 0) {
+      mensagens.push(
+        `${r.semPreco.length} item(ns) saíram com R$ 0,00 — o preço anunciado obriga a loja. ` +
+          `Confira o cadastro de: ${r.semPreco.slice(0, 5).join(', ')}.`,
+      );
+    }
+    if (r.promocoes.length > 0) {
+      mensagens.push(
+        `${r.promocoes.length} item(ns) estão em promoção e a etiqueta saiu com o preço promocional. ` +
+          `Quando a promoção acabar, o caixa vai cobrar mais que o papel — reimprima: ${r.promocoes.slice(0, 5).join(', ')}.`,
+      );
+    }
+    return mensagens;
   }
 
   async function gerarPlaquinhas() {
@@ -704,7 +853,7 @@ export default function EtiquetasPage() {
 
       {tab === 'produtos' && (
         <>
-          <ModelosDeEtiqueta podeEditar={podeConfigurar} formatosProntos={formats} onMudou={aoMudarModelos} />
+          <ModelosDeEtiqueta podeEditar={podeConfigurar} formatosProntos={formats} onMudou={aoMudarModelos} perfis={perfis} />
 
           <Card title="De onde vêm os produtos" subtitle={origemAtual?.hint} className="mb-5">
             <div className="flex flex-wrap gap-2 mb-4">
@@ -1008,6 +1157,35 @@ export default function EtiquetasPage() {
                     </span>
                   </label>
                 )}
+                {/* A SAÍDA: navegador, driver, PDF ou os comandos da térmica. Servidor
+                    antigo não manda perfis — aí não há o que escolher, e a folha sai no
+                    navegador como sempre. */}
+                {perfis.length > 0 && (
+                  <SeletorDeSaida
+                    perfis={perfis}
+                    valor={perfilId}
+                    onMudar={(id) => {
+                      saidaEscolhidaAMao.current = true;
+                      setPerfilId(id);
+                      setResultado(null);
+                    }}
+                    homologacao={homologacao}
+                    folha={geometria?.midia === 'folha'}
+                  />
+                )}
+                {podeImprimir && (
+                  <div>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => void imprimirTeste()}
+                      disabled={busy || !formatId}
+                      title="Uma etiqueta de amostra (código que não é de produto nenhum) com moldura, para conferir o alinhamento no papel."
+                    >
+                      Imprimir etiqueta de teste
+                    </Button>
+                  </div>
+                )}
               </div>
 
               <div className="flex flex-col gap-2">
@@ -1055,6 +1233,24 @@ export default function EtiquetasPage() {
               </p>
             )}
           </Card>
+
+          {/* O que saiu fora do navegador: a prévia na geometria do arquivo, o
+              arquivo para baixar e os comandos. */}
+          {resultado && (
+            <div className="mt-5">
+              <ResultadoDaImpressao resultado={resultado} onFechar={() => setResultado(null)} />
+            </div>
+          )}
+
+          {podeImprimir && (
+            <Card
+              title="Histórico de impressão"
+              subtitle="Quem imprimiu, quando, o quê e por qual saída. Reimprimir usa a saída escolhida acima e o preço de hoje."
+              className="mt-5"
+            >
+              <HistoricoDeEtiquetas itens={historico} perfis={perfis} onReimprimir={(i) => void reimprimir(i)} ocupado={busy} />
+            </Card>
+          )}
         </>
       )}
 

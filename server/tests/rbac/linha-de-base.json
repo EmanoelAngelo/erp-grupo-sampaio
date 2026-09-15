@@ -5,7 +5,7 @@
  "mudancas_permitidas": {
   "D1": "O legado operador_caixa (0 vínculos) passa a poder POST /core/print/jobs e POST /core/print/jobs/:id/reprint (conflitos.md, C1)."
  },
- "total": 708,
+ "total": 711,
  "rotas": {
   "DELETE /core/acquirers/rates/:id": {
    "arquivo": "core.ts",
@@ -1989,6 +1989,21 @@
     "mecanico"
    ],
    "capability": "labels.equipment.print",
+   "mudanca": null
+  },
+  "GET /core/labels/prints": {
+   "arquivo": "core.ts",
+   "linha": null,
+   "guarda_hoje": "requireCapability(req, 'labels.products.print')",
+   "perfis": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina",
+    "estoquista",
+    "operador_caixa_loja"
+   ],
+   "capability": "labels.products.print",
    "mudanca": null
   },
   "GET /core/labels/templates": {
@@ -6287,6 +6302,21 @@
    "capability": "labels.equipment.print",
    "mudanca": null
   },
+  "POST /core/labels/prints/:id/reprint": {
+   "arquivo": "core.ts",
+   "linha": null,
+   "guarda_hoje": "requireCapability(req, 'labels.products.print')",
+   "perfis": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina",
+    "estoquista",
+    "operador_caixa_loja"
+   ],
+   "capability": "labels.products.print",
+   "mudanca": null
+  },
   "POST /core/labels/products": {
    "arquivo": "core.ts",
    "linha": 10803,
@@ -6331,6 +6361,21 @@
    "mudanca": null
   },
   "POST /core/labels/templates/preview": {
+   "arquivo": "core.ts",
+   "linha": null,
+   "guarda_hoje": "requireCapability(req, 'labels.products.print')",
+   "perfis": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina",
+    "estoquista",
+    "operador_caixa_loja"
+   ],
+   "capability": "labels.products.print",
+   "mudanca": null
+  },
+  "POST /core/labels/test": {
    "arquivo": "core.ts",
    "linha": null,
    "guarda_hoje": "requireCapability(req, 'labels.products.print')",
