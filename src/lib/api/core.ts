@@ -1804,9 +1804,94 @@ export interface ModeloDeEtiqueta {
   printerId: string | null;
   printerName: string | null;
   isDefault: boolean;
+  /*
+    A saída e a impressora física (P0 das etiquetas). Opcionais: um servidor
+    antigo não os manda, e o modelo sem eles vale o padrão (navegador, sem
+    deslocamento, sem corte, sensor de vão).
+  */
+  /** Perfil de saída que a tela escolhe por padrão (id de `PerfilDeImpressao`). */
+  outputProfile?: string | null;
+  /** Calibração em mm (−10 a 10). */
+  offsetXmm?: number;
+  offsetYmm?: number;
+  /** Escurecimento 0–30; nulo = o da impressora. */
+  darkness?: number | null;
+  /** Velocidade em pol/s; nula = a da impressora. */
+  printSpeed?: number | null;
+  cutMode?: 'nenhum' | 'cada_etiqueta' | 'fim_do_lote';
+  mediaType?: 'vao' | 'marca' | 'continua';
+  /** Vão (ou marca preta) entre etiquetas do rolo, em mm; nulo = não informado. */
+  mediaGapMm?: number | null;
+  /** Avanço de papel depois do lote, em mm. */
+  feedAfterMm?: number;
 }
 
 export type RascunhoDeModelo = Omit<ModeloDeEtiqueta, 'id' | 'printerName'>;
+
+/** Por onde a etiqueta sai: navegador, driver, PDF ou comandos da térmica (ZPL, EPL, TSPL). */
+export interface PerfilDeImpressao {
+  id: 'navegador' | 'driver_windows' | 'termica_generica' | 'pdf' | 'zpl' | 'epl' | 'tspl';
+  rotulo: string;
+  dica: string;
+  saida: 'html' | 'html_exato' | 'pdf' | 'zpl' | 'epl' | 'tspl';
+  mime: string;
+  extensao: string;
+  aceitaFolha: boolean;
+  levaAjustesDaTermica: boolean;
+}
+
+/** O que precisa ser conferido numa impressora de verdade antes de confiar na saída. */
+export interface ItemDeHomologacao {
+  saida: string;
+  item: string;
+  como: string;
+}
+
+/** O arquivo da saída, em base64 (PDF, ZPL, EPL, TSPL ou HTML exato). */
+export interface ArquivoDaEtiqueta {
+  nome: string;
+  mime: string;
+  base64: string;
+}
+
+/** Uma impressão de etiquetas do histórico da operação. */
+export interface ImpressaoDeEtiquetas {
+  id: string;
+  kind: 'lote' | 'reimpressao' | 'teste';
+  profile: string;
+  formatId: string;
+  templateId: string | null;
+  formatName: string;
+  items: { productId: string; name: string; quantity: number; priceCents: number; batchId: string | null }[];
+  labels: number;
+  pages: number;
+  startAt: number;
+  reprintOf: string | null;
+  userId: string | null;
+  userName: string | null;
+  createdAt: string;
+}
+
+/** A resposta de imprimir (folha, reimpressão): a folha/prévia, o arquivo da saída e os avisos. */
+export interface RespostaDaImpressaoDeEtiquetas {
+  html: string;
+  etiquetas: number;
+  folhas: number;
+  promocoes: string[];
+  semPreco: string[];
+  /** Produtos que ganharam código de barras interno nesta folha. */
+  codigosGerados?: { productId: string; name: string; barcode: string }[];
+  /** Sem código e sem permissão para gerar: saíram sem barras. */
+  semCodigo?: string[];
+  /** Código cadastrado que não virou barra (verificador errado, longo demais…). */
+  codigosSemDesenho?: { name: string; motivo: string }[];
+  /** A saída usada; ausente num servidor antigo (era sempre o navegador). */
+  perfil?: PerfilDeImpressao['id'];
+  arquivo?: ArquivoDaEtiqueta | null;
+  comandos?: string | null;
+  avisos?: string[];
+  impressaoId?: string;
+}
 
 export interface QuantityModeOption {
   id: 'manual' | 'saldo' | 'documento';
@@ -5260,6 +5345,11 @@ export const coreApi = {
       formats: LabelFormatOption[];
       defaultFormat: string;
       quantityModes: QuantityModeOption[];
+      /** As saídas de impressão; ausentes num servidor antigo (só havia o navegador). */
+      perfis?: PerfilDeImpressao[];
+      perfilPadrao?: PerfilDeImpressao['id'];
+      /** O que cada saída ainda precisa conferir numa impressora de verdade. */
+      homologacao?: ItemDeHomologacao[];
     }>('/core/labels/catalog').then((r) => exigirCampos(r, 'sources', 'formats', 'defaultFormat', 'quantityModes')),
 
   labelCandidates: (query: {
@@ -5291,21 +5381,31 @@ export const coreApi = {
     templateId?: string;
     /** Posição da primeira folha onde a impressão começa (reaproveitar folha já usada). */
     startAt?: number;
+    /** A saída (perfil de impressão). Sem ela, o navegador — o comportamento de sempre. */
+    perfil?: PerfilDeImpressao['id'];
     items: { productId: string; quantity: number }[];
-  }) =>
+  }) => apiRequest<RespostaDaImpressaoDeEtiquetas>('/core/labels/sheet', { method: 'POST', body: input }),
+
+  /** O histórico de impressão de etiquetas da operação: quem, quando, o quê, por qual saída. */
+  labelPrints: async () => {
+    const r = await apiRequest<{ items?: unknown }>('/core/labels/prints');
+    return Array.isArray(r?.items) ? (r.items as ImpressaoDeEtiquetas[]) : [];
+  },
+  /** Reimprime um lote do histórico: os mesmos produtos e quantidades, com o preço de hoje. */
+  reprintLabels: (id: string, input: { perfil?: PerfilDeImpressao['id']; startAt?: number } = {}) =>
+    apiRequest<RespostaDaImpressaoDeEtiquetas>(`/core/labels/prints/${encodeURIComponent(id)}/reprint`, { method: 'POST', body: input }),
+  /** A etiqueta de teste (amostra que não é de produto nenhum + moldura de calibração) na saída escolhida. */
+  labelTestPrint: (input: { templateId?: string; formatId?: string; perfil?: PerfilDeImpressao['id'] }) =>
     apiRequest<{
       html: string;
       etiquetas: number;
       folhas: number;
-      promocoes: string[];
-      semPreco: string[];
-      /** Produtos que ganharam código de barras interno nesta folha. */
-      codigosGerados?: { productId: string; name: string; barcode: string }[];
-      /** Sem código e sem permissão para gerar: saíram sem barras. */
-      semCodigo?: string[];
-      /** Código cadastrado que não virou barra (verificador errado, longo demais…). */
-      codigosSemDesenho?: { name: string; motivo: string }[];
-    }>('/core/labels/sheet', { method: 'POST', body: input }),
+      perfil: PerfilDeImpressao['id'];
+      arquivo: ArquivoDaEtiqueta | null;
+      comandos: string | null;
+      avisos: string[];
+      impressaoId: string;
+    }>('/core/labels/test', { method: 'POST', body: input }),
 
   // ------------------------------------------------ modelos de etiqueta (Preço Justo)
 
