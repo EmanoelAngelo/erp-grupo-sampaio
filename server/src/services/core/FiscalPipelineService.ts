@@ -30,6 +30,7 @@ import {
   createNfceForSale,
   getDocument,
   getDocumentBySale,
+  outroDocumentoVivoDaVenda,
   transition,
   type FiscalDocument,
 } from './FiscalDocumentService.js';
@@ -606,6 +607,19 @@ export function emissionReadinessForSale(
       canEmit: false,
       alreadyEmitted: true,
       reasons: ['Esta venda já tem NFC-e.'],
+    };
+  }
+  // A venda documentada por NF-e não ganha também o cupom (P0 fiscal): o botão
+  // não aparece, e a tela diz por quê em vez de recusar depois do clique.
+  const nfeDaVenda = outroDocumentoVivoDaVenda(companyId, saleId, MODEL_NFCE);
+  if (nfeDaVenda) {
+    return {
+      canEmit: false,
+      alreadyEmitted: false,
+      reasons: [
+        `Esta venda já tem NF-e (modelo 55) nº ${nfeDaVenda.number}. Para emitir a NFC-e, cancele a `
+          + 'NF-e antes — as duas juntas documentariam a mesma mercadoria duas vezes.',
+      ],
     };
   }
 

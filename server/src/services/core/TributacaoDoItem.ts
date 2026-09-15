@@ -76,7 +76,91 @@ import {
   NOME_DO_CST_ICMS,
   percentualDoLeiaute,
 } from './TabelasDoIcms.js';
-import type { NfceSale } from './FiscalXmlNfce.js';
+// UF_CODE é lido só dentro das funções: o ciclo com FiscalXmlNfce (que importa
+// este módulo) não o toca durante a carga.
+import { UF_CODE, type NfceSale } from './FiscalXmlNfce.js';
+
+/**
+ * ============================================================================
+ * O CFOP TEM DE BATER COM O DESTINO DA NOTA (P0 fiscal — Preço Justo)
+ * ============================================================================
+ *
+ * O primeiro dígito do CFOP diz o alcance da operação: 5 interna, 6
+ * interestadual, 7 exterior (saídas); 1, 2 e 3 nas entradas. O `idDest` do XML
+ * diz a mesma coisa pela UF do destinatário — e a SEFAZ recusa a nota em que os
+ * dois discordam.
+ *
+ * O defeito: o CFOP do PRODUTO vencia o do grupo sem olhar o destino. Um
+ * cadastro com 5102 no produto (o CFOP interno do grupo, copiado para o
+ * produto) fazia a NF-e para outra UF — a do pedido online entregue em Santa
+ * Catarina, a do cliente atacadista de Curitiba — sair com 5102 e idDest 2. O
+ * grupo tinha o 6102 que o contador informou, e ninguém o lia; e o XML
+ * escrevia `item.cfop`, não o CFOP que a tributação resolveu.
+ *
+ * A regra agora:
+ *  - o CFOP do produto vale quando o alcance dele é o da nota;
+ *  - quando não é e ele é só o CFOP do grupo do outro alcance (o 5102 do
+ *    grupo copiado no produto), vale o do grupo para ESTE alcance (6102);
+ *  - quando não é e ele é uma EXCEÇÃO do produto (um 5405, por exemplo), o
+ *    sistema não adivinha o equivalente interestadual: recusa, nomeando os
+ *    dois, antes de numerar — é pendência para o contador.
+ */
+export type DirecaoDaNota = 'saida' | 'entrada';
+
+/** O primeiro dígito que o CFOP precisa ter para o destino e a direção da nota. */
+export function digitoDoCfopEsperado(
+  ufEmitente: string | null | undefined,
+  ufDestino: string | null | undefined,
+  direcao: DirecaoDaNota = 'saida',
+): '1' | '2' | '3' | '5' | '6' | '7' {
+  const emitente = String(ufEmitente ?? '').trim().toUpperCase();
+  const destino = String(ufDestino ?? '').trim().toUpperCase();
+  const alcance = !destino || destino === emitente ? 'interno' : UF_CODE[destino] ? 'interestadual' : 'exterior';
+  if (direcao === 'entrada') return alcance === 'interno' ? '1' : alcance === 'interestadual' ? '2' : '3';
+  return alcance === 'interno' ? '5' : alcance === 'interestadual' ? '6' : '7';
+}
+
+const ALCANCE_DO_DIGITO: Record<string, string> = {
+  '1': 'entrada interna',
+  '2': 'entrada interestadual',
+  '3': 'entrada do exterior',
+  '5': 'saída interna',
+  '6': 'saída interestadual',
+  '7': 'saída para o exterior',
+};
+
+/** O alcance que o CFOP declara, por extenso — para a recusa nomear. */
+export function alcanceDoCfop(cfop: string): string {
+  return ALCANCE_DO_DIGITO[String(cfop).trim().charAt(0)] ?? 'alcance desconhecido';
+}
+
+/**
+ * O CFOP da linha para o alcance da nota — sem recusar nada (quem chama decide).
+ *
+ * `daOperacao` é o CFOP que a OPERAÇÃO declara (devolução, por exemplo) e vence
+ * produto e grupo: numa devolução o CFOP é o da devolução, não o da venda.
+ */
+export function escolherCfop(input: {
+  esperado: string;
+  doProduto: string | null | undefined;
+  grupoInterno: string | null | undefined;
+  grupoExterno: string | null | undefined;
+  daOperacao?: string | null;
+}): string {
+  const limpo = (v: string | null | undefined) => String(v ?? '').trim();
+  const daOperacao = limpo(input.daOperacao);
+  if (daOperacao) return daOperacao;
+  const interno = limpo(input.grupoInterno);
+  const externo = limpo(input.grupoExterno);
+  const doGrupo = input.esperado === '5' || input.esperado === '1' ? interno : externo;
+  const doProduto = limpo(input.doProduto);
+  if (!doProduto) return doGrupo;
+  if (doProduto.startsWith(input.esperado)) return doProduto;
+  // O produto só repete o CFOP do grupo do OUTRO alcance: vale o do grupo para este.
+  if (doGrupo && (doProduto === interno || doProduto === externo)) return doGrupo;
+  // Exceção do produto em outro alcance: devolve como está, e a régua recusa.
+  return doProduto;
+}
 
 /**
  * ============================================================================
@@ -357,6 +441,8 @@ function destaqueDaContribuicao(
     contribuicao: 'pis' | 'cofins';
     cst: string;
     juiz: Juiz;
+    /** Na nota de ENTRADA (devolução de venda) a recusa do CST de crédito fala outra língua. */
+    direcao?: DirecaoDaNota;
   },
 ): { percentual: string | null; bcCents: number; valorCents: number } {
   const { produto, grupo, cst, juiz } = input;
@@ -380,6 +466,21 @@ function destaqueDaContribuicao(
         com as vendas já feitas — a mesma recusa que o CST de IPI de entrada já
         leva, e pelo mesmo motivo.
       */
+      if (input.direcao === 'entrada') {
+        /*
+          Na nota de ENTRADA que a loja emite (devolução de venda) o CST de
+          crédito seria o certo para quem apura crédito — e este sistema não
+          calcula crédito de PIS/COFINS. Dizer "nota de saída" aqui mandaria o
+          contador corrigir o que não está errado.
+        */
+        juiz.falha(
+          `o grupo ${grupo.code} declara CST de ${nome} ${cst}, de crédito na entrada, e este sistema não `
+            + 'calcula crédito de PIS/COFINS',
+          'Escolha, no grupo tributário da operação de devolução, o CST que o contador indicar para a '
+            + 'devolução sem crédito (pendência contábil).',
+        );
+        return SEM_DESTAQUE;
+      }
       juiz.falha(
         `o grupo ${grupo.code} declara CST de ${nome} ${cst}, que é de entrada (apuração de `
           + 'crédito) — esta é uma nota de saída',
@@ -647,8 +748,25 @@ function acharGrupo(db: Db, companyId: string, taxProfile: string | null | undef
  * Descobre como este item é tributado nesta operação — com o juiz dizendo o
  * que acontece com cada falta.
  */
+/** O que a régua recebe: o item, o destino e, quando a operação manda, direção, CFOP e grupo. */
+export interface EntradaDaTributacao {
+  companyId: string;
+  produto: ProdutoParaTributar;
+  /**
+   * Decide o alcance do CFOP (interno, interestadual, exterior). Ausente é o
+   * cupom do balcão, que é sempre interno — o cliente leva a mercadoria na mão.
+   */
+  ufDestinatario?: string | null;
+  /** 'entrada' nas notas de entrada que a própria loja emite (devolução de venda). */
+  direcao?: DirecaoDaNota;
+  /** O CFOP que a OPERAÇÃO declara (devolução) — vence o do produto e o do grupo. */
+  cfopDaOperacao?: { interno: string | null; interestadual: string | null } | null;
+  /** O grupo tributário que a OPERAÇÃO manda usar no lugar do perfil do produto. */
+  grupoDaOperacao?: string | null;
+}
+
 function avaliar(
-  input: { companyId: string; produto: ProdutoParaTributar; ufDestinatario?: string | null },
+  input: EntradaDaTributacao,
   juiz: Juiz,
   aoAcharOGrupo?: (code: string) => void,
 ): TributacaoDoItem {
@@ -656,7 +774,7 @@ function avaliar(
   const { companyId, produto } = input;
   const db = getConnection();
 
-  const achado = acharGrupo(db, companyId, produto.taxProfile);
+  const achado = acharGrupo(db, companyId, String(input.grupoDaOperacao ?? '').trim() || produto.taxProfile);
   if (!('grupo' in achado)) juiz.pare(achado.oQue, achado.onde);
   const grupo = achado.grupo;
   aoAcharOGrupo?.(grupo.code);
@@ -779,7 +897,15 @@ function avaliar(
     não fazer.
   */
   const pis = cstPis
-    ? destaqueDaContribuicao(db, { companyId, produto, grupo, contribuicao: 'pis', cst: cstPis, juiz })
+    ? destaqueDaContribuicao(db, {
+        companyId,
+        produto,
+        grupo,
+        contribuicao: 'pis',
+        cst: cstPis,
+        juiz,
+        direcao: input.direcao,
+      })
     : SEM_DESTAQUE;
   const cofins = cstCofins
     ? destaqueDaContribuicao(db, {
@@ -789,6 +915,7 @@ function avaliar(
         contribuicao: 'cofins',
         cst: cstCofins,
         juiz,
+        direcao: input.direcao,
       })
     : SEM_DESTAQUE;
 
@@ -801,14 +928,35 @@ function avaliar(
   const uf = String(config.uf ?? '').toUpperCase();
   const destino = String(input.ufDestinatario ?? '').toUpperCase();
   const interestadual = Boolean(destino) && destino !== uf;
-  const doGrupo = interestadual ? grupo.cfop_external : grupo.cfop_internal;
-  const cfop = String(produto.cfop ?? '').trim() || doGrupo || '';
+  // O alcance que o CFOP precisa ter (ver `digitoDoCfopEsperado`): o CFOP do
+  // produto não vence mais o destino da nota.
+  const esperado = digitoDoCfopEsperado(uf, destino, input.direcao ?? 'saida');
+  const daOperacao = input.cfopDaOperacao
+    ? esperado === '5' || esperado === '1'
+      ? input.cfopDaOperacao.interno
+      : input.cfopDaOperacao.interestadual
+    : null;
+  const cfop = escolherCfop({
+    esperado,
+    doProduto: produto.cfop,
+    grupoInterno: grupo.cfop_internal,
+    grupoExterno: grupo.cfop_external,
+    daOperacao,
+  });
 
   if (!cfop) {
     juiz.falha(
       `não tem CFOP, e o grupo ${grupo.code} não tem CFOP `
         + `${interestadual ? 'interestadual' : 'interno'}`,
       'Preencha no produto ou em Catálogo › Grupos tributários.',
+      'classificacao',
+    );
+  } else if (!cfop.startsWith(esperado)) {
+    juiz.falha(
+      `o CFOP ${cfop} é de ${alcanceDoCfop(cfop)} e esta nota é de ${alcanceDoCfop(esperado)} — o `
+        + 'sistema não adivinha o CFOP equivalente de outro alcance',
+      'Informe o CFOP deste alcance no produto ou no grupo tributário — quem diz qual é o contador '
+        + '(pendência contábil).',
       'classificacao',
     );
   }
@@ -933,11 +1081,7 @@ function avaliar(
  * @param ufDestinatario decide entre CFOP interno e interestadual. Ausente é o
  * cupom do balcão, que é sempre interno — o cliente leva a mercadoria na mão.
  */
-export function tributacaoDoItem(input: {
-  companyId: string;
-  produto: ProdutoParaTributar;
-  ufDestinatario?: string | null;
-}): TributacaoDoItem {
+export function tributacaoDoItem(input: EntradaDaTributacao): TributacaoDoItem {
   return avaliar(input, juizQueRecusa(input.produto));
 }
 
@@ -955,11 +1099,7 @@ export interface DiagnosticoDaTributacao {
  * receber a lista inteira de uma vez. Só para quando não há grupo — sem ele,
  * não existe regra nenhuma para conferir.
  */
-export function diagnosticarTributacao(input: {
-  companyId: string;
-  produto: ProdutoParaTributar;
-  ufDestinatario?: string | null;
-}): DiagnosticoDaTributacao {
+export function diagnosticarTributacao(input: EntradaDaTributacao): DiagnosticoDaTributacao {
   const faltas: FaltaDeTributacao[] = [];
   let grupo: string | null = null;
   try {
@@ -990,9 +1130,9 @@ export function diagnosticarTributacao(input: {
 export function completarPeloGrupo(sale: NfceSale, ufDestinatario: string | null): NfceSale {
   ensureCoreSchema();
   const db = getConnection();
-  const uf = String(getFiscalConfig(sale.companyId).uf ?? '').toUpperCase();
-  const destino = String(ufDestinatario ?? '').toUpperCase();
-  const interestadual = Boolean(destino) && destino !== uf;
+  // O mesmo alcance que a régua cobra: o 5102 copiado no produto não vai para
+  // a nota interestadual quando o grupo tem o 6102 (ver `escolherCfop`).
+  const esperado = digitoDoCfopEsperado(getFiscalConfig(sale.companyId).uf, ufDestinatario);
   const vazio = (v: string | null | undefined) => !String(v ?? '').trim();
 
   const cache = new Map<string, Grupo | null>();
@@ -1015,7 +1155,13 @@ export function completarPeloGrupo(sale: NfceSale, ufDestinatario: string | null
         ncm: vazio(item.ncm) ? g.ncm : item.ncm,
         cest: vazio(item.cest) ? g.cest : item.cest,
         origin: vazio(item.origin) ? g.origin : item.origin,
-        cfop: vazio(item.cfop) ? (interestadual ? g.cfop_external : g.cfop_internal) : item.cfop,
+        cfop:
+          escolherCfop({
+            esperado,
+            doProduto: item.cfop,
+            grupoInterno: g.cfop_internal,
+            grupoExterno: g.cfop_external,
+          }) || item.cfop,
       };
     }),
   };

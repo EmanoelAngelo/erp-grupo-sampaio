@@ -39,6 +39,7 @@ import {
   reasonFromOutcome,
 } from './FiscalContingencyService.js';
 import { avisarNotaDoPedido } from '../notifications/AvisoDaNotaDoPedido.js';
+import { aoAutorizarNotaDeDevolucao } from './SituacaoFiscalDaDevolucao.js';
 import {
   abrirPeriodo,
   emitidaOffline,
@@ -87,6 +88,41 @@ function encerrarPeriodoPelaResposta(companyId: string, model: string, cStat: st
     cStat,
     motivo: 'A SEFAZ respondeu a uma autorização.',
   });
+}
+
+/**
+ * OS CÓDIGOS DE UMA TENTATIVA CUJO DESTINO NÃO SE SABE (P0 fiscal — fila).
+ *
+ * O defeito: a consulta antes do reenvio só acontecia DENTRO da tentativa que
+ * sofreu o timeout. Se a própria consulta também ficava sem resposta (a rede
+ * caída derruba as duas), o item ia para `retry` e a tentativa SEGUINTE
+ * chamava `authorize` direto — sem perguntar se a SEFAZ já tinha autorizado a
+ * primeira. O mesmo com o item `RECOVERED` (processo morto no meio do envio):
+ * o comentário de `recoverStaleItems` prometia "voltam para CONSULTA, não para
+ * reenvio", e o código reenviava.
+ *
+ * Com a mesma chave a SEFAZ costuma responder 204 e a consulta resolve — mas
+ * "costuma" não é garantia (a reemissão de uma rejeição muda a chave), e a
+ * regra desta fila é consultar ANTES. Por isso a tentativa que herda um
+ * destes códigos consulta primeiro e só transmite com a resposta "não consta".
+ */
+export const CODIGOS_DE_ENTREGA_INCERTA: readonly string[] = [
+  'TIMEOUT',
+  'NETWORK_ERROR',
+  'TRANSPORT_ERROR',
+  'RECOVERED',
+  // Duplicidade e lote em processamento sem desfecho na consulta.
+  'DUPLICATE',
+  'PROCESSING',
+  '204',
+  '105',
+  '106',
+];
+
+function entregaIncerta(item: QueueItem): boolean {
+  // Sem olhar `attempts`: o item RECOVERED volta com zero tentativas contadas
+  // (a recuperação não conta tentativa) e é justamente o caso mais incerto.
+  return CODIGOS_DE_ENTREGA_INCERTA.includes(String(item.errorCode ?? ''));
 }
 
 /** Espera entre tentativas, em minutos. Cresce para não martelar o serviço. */
@@ -167,7 +203,32 @@ export function enqueue(input: {
     const existente = db
       .prepare('SELECT * FROM core_fiscal_queue WHERE company_id = ? AND idempotency_key = ?')
       .get(input.companyId, chave) as Record<string, unknown> | undefined;
-    if (existente) return toItem(existente);
+    if (existente) {
+      /*
+        O DOCUMENTO ASSINADO DE NOVO VOLTA À FILA (P0 fiscal — reemissão).
+
+        O defeito: com o item já existente, `enqueue` devolvia o item e NÃO
+        movia o documento de SIGNED para QUEUED. Na reemissão de uma rejeitada
+        (mesmo número, chave nova) o documento ficava SIGNED com um item
+        `done` — nunca transmitido, e a transição SIGNED→AUTHORIZED explodia
+        se alguém o forçasse. Documento assinado que pede fila entra na fila:
+        o item encerrado reabre (sem tentativas nem erro herdados) e o
+        documento vai para QUEUED.
+      */
+      const docExistente = getDocument(input.companyId, input.documentId);
+      if (docExistente?.status === 'SIGNED') {
+        const agora = new Date().toISOString();
+        db.prepare(
+          `UPDATE core_fiscal_queue
+              SET status = 'pending', attempts = 0, next_attempt_at = ?, error_code = NULL,
+                  error_message = NULL, locked_until = NULL, locked_by = NULL, updated_at = ?
+            WHERE id = ? AND status IN ('done', 'dead')`,
+        ).run(agora, agora, String(existente.id));
+        transition({ companyId: input.companyId, documentId: input.documentId, to: 'QUEUED', userId: input.userId });
+        return toItem(db.prepare('SELECT * FROM core_fiscal_queue WHERE id = ?').get(String(existente.id)) as Record<string, unknown>);
+      }
+      return toItem(existente);
+    }
 
     const doc = getDocument(input.companyId, input.documentId);
     if (!doc) {
@@ -406,6 +467,8 @@ function applyResponse(input: {
     // A NF-e do pedido online vai ao cliente (GAP-PRD-037, domínio EML). Nunca
     // lança: o aviso não desfaz a autorização.
     avisarNotaDoPedido(input.companyId, autorizado.id);
+    // A devolução de compra passa a "emitida" com a chave (P0 fiscal). Nunca lança.
+    aoAutorizarNotaDeDevolucao(input.companyId, autorizado.id);
     return autorizado;
   }
 
@@ -478,6 +541,71 @@ export async function processNext(input: {
   if (!xml.xml_signed) {
     releaseFailed(item.id, item.attempts + 1, 'NOT_SIGNED', 'Documento não assinado.', now);
     return { processed: true, outcome: 'NOT_SIGNED' };
+  }
+
+  /*
+    A RETOMADA CONSULTA ANTES DE REENVIAR (ver CODIGOS_DE_ENTREGA_INCERTA).
+
+    A tentativa anterior terminou sem saber o destino da nota — timeout com a
+    consulta também sem resposta, processo morto no meio do envio, duplicidade
+    ou lote em processamento sem desfecho. Transmitir de novo agora pode criar
+    a segunda nota da mesma venda; consultar resolve:
+
+      - consta autorizada (ou denegada) → o desfecho é aplicado, sem reenvio;
+      - não consta → aí sim é seguro transmitir, logo abaixo;
+      - a consulta de novo sem resposta conclusiva → NADA é transmitido: o item
+        volta a esperar, e o documento continua fora de AUTHORIZED.
+  */
+  if (entregaIncerta(item)) {
+    const sinalDaRetomada = { consultaFalhou: false, inconclusiva: false };
+    const resolvidoAntes = await consultAndReconcile({
+      adapter: input.adapter,
+      companyId: item.companyId,
+      documentId: doc.id,
+      userId: input.userId,
+      sinal: sinalDaRetomada,
+    });
+    if (resolvidoAntes) {
+      if (doc.contingencyMode) {
+        finishContingency({ companyId: item.companyId, documentId: doc.id, userId: input.userId });
+      }
+      encerrarPeriodoPelaResposta(item.companyId, doc.model, resolvidoAntes.cStat);
+      releaseDone(item.id);
+      return {
+        processed: true,
+        documentId: doc.id,
+        outcome: 'RESOLVED_BY_CONSULT',
+        status: resolvidoAntes.status,
+      };
+    }
+    if (sinalDaRetomada.consultaFalhou || sinalDaRetomada.inconclusiva) {
+      const offlineNaRetomada = emitidaOffline(doc.accessKey);
+      releaseFailed(
+        item.id,
+        item.attempts + 1,
+        // A rede fora continua sendo indisponibilidade para o trabalhador (a
+        // sondagem da SEFAZ antecipa estes itens quando ela voltar).
+        sinalDaRetomada.consultaFalhou ? 'NETWORK_ERROR' : String(item.errorCode),
+        'A consulta da nota antes do reenvio ficou sem resposta conclusiva — nada foi '
+          + 'retransmitido; a próxima tentativa consulta de novo.',
+        now,
+        offlineNaRetomada,
+      );
+      recordAudit({
+        companyId: item.companyId,
+        userId: input.userId ?? null,
+        action: 'fiscal.resend_withheld',
+        entityType: 'fiscal_document',
+        entityId: doc.id,
+        detail: { errorCodeAnterior: item.errorCode, consultaFalhou: sinalDaRetomada.consultaFalhou },
+      });
+      return {
+        processed: true,
+        documentId: doc.id,
+        outcome: sinalDaRetomada.consultaFalhou ? 'NETWORK_ERROR' : 'CONSULT_INCONCLUSIVE',
+      };
+    }
+    // "Não consta": a nota nunca chegou — transmitir é seguro.
   }
 
   if (doc.status === 'QUEUED' || doc.status === 'CONTINGENCY') {
@@ -571,11 +699,13 @@ export async function processNext(input: {
 
   // Duplicidade também exige consulta: a nota pode já estar autorizada.
   if (requiresConsultBeforeRetry(response.outcome)) {
+    const sinalDaDuplicidade = { consultaFalhou: false, inconclusiva: false };
     const resolvido = await consultAndReconcile({
       adapter: input.adapter,
       companyId: item.companyId,
       documentId: doc.id,
       userId: input.userId,
+      sinal: sinalDaDuplicidade,
     });
     if (resolvido) {
       if (doc.contingencyMode) {
@@ -584,6 +714,44 @@ export async function processNext(input: {
       encerrarPeriodoPelaResposta(item.companyId, doc.model, resolvido.cStat);
       releaseDone(item.id);
       return { processed: true, documentId: doc.id, outcome: 'RESOLVED_BY_CONSULT', status: resolvido.status };
+    }
+
+    /*
+      DUPLICIDADE OU LOTE EM PROCESSAMENTO SEM DESFECHO NÃO É REJEIÇÃO.
+
+      O defeito: sem resposta conclusiva da consulta, o código caía em
+      `applyResponse`, que marca REJECTED tudo que não é autorização. Uma 204
+      ("esta chave já existe na SEFAZ" — quase sempre a PRIMEIRA transmissão,
+      autorizada) com a consulta fora do ar virava "NFC-e rejeitada"; a
+      rejeição volta ao rascunho e sai de novo — a segunda nota da mesma venda.
+      O mesmo com o 105/106 (lote em processamento: a resposta ainda não
+      existe).
+
+      Só a 539 com a chave NÃO CONSTANDO é conclusiva: o número foi usado por
+      OUTRA chave na SEFAZ, e esta nota nunca será aceita com ele. Todo o resto
+      espera na fila — e a próxima tentativa consulta antes de transmitir.
+    */
+    const numeroTomadoPorOutraChave =
+      response.cStat === '539' && !sinalDaDuplicidade.consultaFalhou && !sinalDaDuplicidade.inconclusiva;
+    if (!numeroTomadoPorOutraChave) {
+      const offlineNaDuplicidade = emitidaOffline(doc.accessKey);
+      releaseFailed(
+        item.id,
+        item.attempts + 1,
+        response.cStat ?? response.outcome,
+        `${response.xMotivo ?? response.outcome} — sem desfecho na consulta; a nota espera e a próxima `
+          + 'tentativa consulta antes de transmitir.',
+        now,
+        offlineNaDuplicidade,
+      );
+      transition({
+        companyId: item.companyId,
+        documentId: doc.id,
+        to: offlineNaDuplicidade ? 'CONTINGENCY' : 'QUEUED',
+        detail: { cStat: response.cStat, outcome: response.outcome, motivo: 'sem desfecho na consulta' },
+        userId: input.userId,
+      });
+      return { processed: true, documentId: doc.id, outcome: response.outcome };
     }
   }
 
@@ -690,8 +858,13 @@ export async function consultAndReconcile(input: {
   companyId: string;
   documentId: string;
   userId?: string | null;
-  /** Preenchido quando a CONSULTA não obteve resposta (rede fora) — diferente de "não conheço a chave". */
-  sinal?: { consultaFalhou: boolean };
+  /**
+   * `consultaFalhou`: a CONSULTA não obteve resposta (rede fora) — diferente de
+   * "não conheço a chave". `inconclusiva`: a SEFAZ respondeu, mas nada que
+   * decida a sorte da nota (serviço paralisado, processamento, código que não
+   * é autorização, denegação nem "não consta").
+   */
+  sinal?: { consultaFalhou: boolean; inconclusiva?: boolean };
 }): Promise<FiscalDocument | null> {
   const doc = getDocument(input.companyId, input.documentId);
   if (!doc?.accessKey) return null;
@@ -736,6 +909,29 @@ export async function consultAndReconcile(input: {
   });
 
   if (response.outcome === 'NOT_FOUND') return null;
+
+  /*
+    SÓ AUTORIZAÇÃO E DENEGAÇÃO DECIDEM A NOTA PELA CONSULTA.
+
+    O defeito: qualquer resposta que não fosse "não consta" ia para
+    `applyResponse` — e ali tudo que não é autorização vira REJECTED. Uma
+    consulta respondida com 108 (serviço paralisado), 105 (em processamento) ou
+    656 (consumo indevido) marcava como REJEITADA uma nota que a SEFAZ pode ter
+    autorizado; a rejeição volta ao rascunho e sai de novo — nota em dobro.
+    Resposta da consulta que não fala da nota não decide nada: o item espera.
+  */
+  if (response.outcome !== 'AUTHORIZED' && response.outcome !== 'DENIED') {
+    if (input.sinal) input.sinal.inconclusiva = true;
+    recordAudit({
+      companyId: input.companyId,
+      userId: input.userId ?? null,
+      action: 'fiscal.consult_inconclusive',
+      entityType: 'fiscal_document',
+      entityId: doc.id,
+      detail: { cStat: response.cStat, outcome: response.outcome },
+    });
+    return null;
+  }
 
   // O documento pode ter ficado em QUEUED se o processo morreu entre
   // reivindicar o item e marcar o envio. A consulta acabou de descobrir que a

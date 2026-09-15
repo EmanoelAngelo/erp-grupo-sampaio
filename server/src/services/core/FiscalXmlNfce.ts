@@ -29,7 +29,8 @@ import {
 } from '../nfce/NfceCscService.js';
 import { UNIDADE_FISCAL } from './UnidadeFiscal.js';
 import { DIGEST_PROVISORIO, qrCodeOffline } from './NfceQrOffline.js';
-import { impostoXml, totaisDoIcms, tributacaoDoItem } from './TributacaoDoItem.js';
+import { alcanceDoCfop, impostoXml, totaisDoIcms, tributacaoDoItem } from './TributacaoDoItem.js';
+import { natOpDaOperacao } from './FiscalOperacoes.js';
 import { momentoFiscal } from './MomentoFiscal.js';
 import { getConnection } from '../../db/sqlite.js';
 import { ensureCoreSchema } from '../../db/schema.js';
@@ -397,6 +398,16 @@ export function problemasFiscaisDoCadastro(
   }
   if (digits(item.cfop).length !== 4) {
     problemas.push({ campo: 'CFOP', message: 'CFOP ausente ou fora do formato (4 dígitos).' });
+  } else if (!digits(item.cfop).startsWith('5')) {
+    // A NFC-e é sempre operação interna com o consumidor presente (idDest 1):
+    // CFOP de outro alcance é rejeição certa, com o número já reservado. Aqui,
+    // e não só no laço da nota, para o selo do balcão avisar a mesma coisa.
+    problemas.push({
+      campo: 'CFOP',
+      message:
+        `A NFC-e é sempre operação interna: o CFOP ${digits(item.cfop)} é de `
+        + `${alcanceDoCfop(digits(item.cfop))}. Use o CFOP interno (5xxx) do grupo tributário.`,
+    });
   }
   if (!item.origin || !/^[0-8]$/.test(String(item.origin).trim())) {
     problemas.push({ campo: 'origem', message: 'Origem da mercadoria ausente ou inválida (0 a 8).' });
@@ -445,6 +456,8 @@ export function validateNfce(sale: NfceSale, config: FiscalConfig): ValidationPr
 
   sale.items.forEach((item, index) => {
     const onde = `det[${index + 1}] ${item.description}`;
+    // A régua do CADASTRO é uma só — a da nota e a do selo de fiscal incompleto
+    // do balcão —, e a regra "NFC-e só com CFOP interno" mora nela (junção P0).
     for (const p of problemasFiscaisDoCadastro(item)) {
       problems.push({ field: `${onde} > ${p.campo}`, message: p.message, itemIndex: index });
     }
@@ -656,6 +669,8 @@ export function buildNfceXml(input: {
   contingency?: { dhCont: string; xJust: string };
   numericCode?: string;
   issuedAt?: Date;
+  /** A natureza da operação. Ausente: a da operação "venda_nfce" desta empresa. */
+  natOp?: string;
 }): BuiltNfce {
   const { sale, config, serie, number } = input;
 
@@ -743,7 +758,7 @@ export function buildNfceXml(input: {
             ? `\n        <cBenef>${xmlEscape(tributacoes[index].cBenef!)}</cBenef>`
             : ''
         }
-        <CFOP>${digits(item.cfop)}</CFOP>
+        <CFOP>${digits(tributacoes[index].cfop)}</CFOP>
         <uCom>${xmlEscape(unidade)}</uCom>
         <qCom>${qty(item.quantity)}</qCom>
         <vUnCom>${money(item.unitPriceCents)}</vUnCom>
@@ -868,7 +883,11 @@ ${impostoDoItem}${
     <ide>
       <cUF>${ufCode}</cUF>
       <cNF>${numericCode}</cNF>
-      <natOp>VENDA AO CONSUMIDOR</natOp>
+      <natOp>${
+        // A natureza da operação era literal para toda empresa; agora é a que
+        // o contador desta empresa confirmar (o padrão continua o mesmo texto).
+        xmlEscape(input.natOp ?? natOpDaOperacao(sale.companyId, 'venda_nfce'))
+      }</natOp>
       <mod>${MODEL_NFCE}</mod>
       <serie>${serie}</serie>
       <nNF>${number}</nNF>

@@ -139,14 +139,19 @@ describe('criação da NF-e 55', () => {
     expect(nfe.document.model).toBe('55');
   });
 
-  it('a MESMA venda pode ter cupom e nota sem um atropelar o outro', () => {
+  /*
+    A MESMA VENDA NÃO FICA COM CUPOM E NOTA VALENDO (P0 fiscal).
+
+    Este teste afirmava o contrário ("pode ter cupom e nota sem um atropelar o
+    outro") — e as duas autorizadas documentariam a mesma mercadoria duas
+    vezes. A numeração continua separada por modelo; o que mudou é que a troca
+    de documento passa pelo cancelamento do outro.
+  */
+  it('a MESMA venda não fica com cupom e nota valendo: a NF-e espera o cupom ser cancelado', () => {
     const saleId = criarVenda('v4');
     const nfce = createNfceForSale({ companyId, saleId });
-    const nfe = createNfeForSale({ companyId, saleId, recipient: DEST });
-
-    expect(nfce.document.id).not.toBe(nfe.document.id);
     expect(nfce.document.model).toBe('65');
-    expect(nfe.document.model).toBe('55');
+    expect(() => createNfeForSale({ companyId, saleId, recipient: DEST })).toThrow(/já tem NFC-e/);
   });
 
   it('cem tentativas produzem UMA NF-e', () => {

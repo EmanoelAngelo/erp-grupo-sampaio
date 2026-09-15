@@ -673,7 +673,10 @@ describe('a varredura enxerga o roteador inteiro', () => {
     // 544 com as 3 do P0 das etiquetas: o histórico (GET /labels/prints), a
     // reimpressão (POST /labels/prints/:id/reprint) e a etiqueta de teste
     // (POST /labels/test) — TODAS fechadas ao contador: ele não imprime etiqueta.
-    expect(rotas).toHaveLength(544);
+    // 550 com as 6 da P0 fiscal: POST /fiscal/documents/:id/reemitir, GET e PUT
+    // /fiscal/operacoes, GET /fiscal/pendencias-contabeis e as duas NF-e de
+    // devolução (venda e compra) — TODAS fechadas ao contador.
+    expect(rotas).toHaveLength(550);
   });
 
   it('as portas do contador existem no roteador com esse nome exato', () => {
@@ -724,7 +727,9 @@ describe('o contador é recusado em TODAS as rotas do núcleo, menos nas abertas
     // 537 com as 2 das miniaturas do PDV (auditoria P0): o contador não mexe em foto.
     // 540 com as 3 do P0 das etiquetas (histórico, reimpressão e etiqueta de
     // teste): o contador não imprime etiqueta.
-    expect(fechadas).toHaveLength(540);
+    // 546 com as 6 da P0 fiscal: o contador não reemite, não emite devolução e
+    // não grava nem lê pelas rotas da gerência as operações fiscais.
+    expect(fechadas).toHaveLength(546);
 
     /*
       O relatório é a lista de quem DIVERGIU, com o status medido e a linha do

@@ -215,6 +215,17 @@ export function renderDanfe(
 
   const carrier = block(transp, 'transporta');
   const carrierName = tag(carrier, 'xNome');
+  /*
+    ENTRADA OU SAÍDA, E A NOTA DEVOLVIDA (P0 fiscal — devolução).
+
+    O quadro dizia "1 — SAÍDA" cravado. A NF-e de devolução de venda é nota de
+    ENTRADA (tpNF 0) emitida pela loja, e o papel dela dizia saída — o
+    contrário do documento. E a nota devolvida (NFref), que é o que dá sentido
+    à devolução, não aparecia em lugar nenhum do papel.
+  */
+  const entrada = tag(ide, 'tpNF') === '0';
+  const notaReferenciada = tag(block(ide, 'NFref'), 'refNFe');
+  const devolucao = tag(ide, 'finNFe') === '4';
 
   return `<!doctype html>
 <html lang="pt-BR"><head><meta charset="utf-8">
@@ -258,7 +269,9 @@ ${tarjas.map((t) => `<div class="tarja">${t}</div>`).join('\n')}
   <div class="caixa doc">
     <span class="danfe">DANFE</span><br>
     <span class="titulo">Documento Auxiliar da Nota Fiscal Eletrônica</span>
-    <strong>ENTRADA / SAÍDA: 1 — SAÍDA</strong><br>
+    <strong>ENTRADA / SAÍDA: ${entrada ? '0 — ENTRADA' : '1 — SAÍDA'}</strong><br>${
+      devolucao ? '\n    <strong>FINALIDADE: DEVOLUÇÃO</strong><br>' : ''
+    }
     Nº <strong>${doc.number}</strong><br>
     Série <strong>${doc.serie}</strong><br>
     Modelo <strong>${esc(doc.model)}</strong>
@@ -281,6 +294,10 @@ ${tarjas.map((t) => `<div class="tarja">${t}</div>`).join('\n')}
     doc.protocol
       ? `&nbsp;|&nbsp; <span class="titulo" style="display:inline">Protocolo</span> <strong>${esc(doc.protocol)}</strong>`
       : '&nbsp;|&nbsp; <strong>SEM PROTOCOLO DE AUTORIZAÇÃO</strong>'
+  }${
+    notaReferenciada
+      ? `<br><span class="titulo" style="display:inline">Nota referenciada</span> <strong>${formatKey(notaReferenciada)}</strong>`
+      : ''
   }
 </div>
 

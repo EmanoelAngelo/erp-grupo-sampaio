@@ -17,7 +17,14 @@
  * Trocar apenas o número do modelo na NFC-e produziria um XML que a SEFAZ
  * recusa — e a recusa viria depois da venda.
  */
-import { impostoXml, totaisDoIcms, tributacaoDoItem } from './TributacaoDoItem.js';
+import {
+  alcanceDoCfop,
+  digitoDoCfopEsperado,
+  impostoXml,
+  totaisDoIcms,
+  tributacaoDoItem,
+  type DirecaoDaNota,
+} from './TributacaoDoItem.js';
 import { momentoFiscal } from './MomentoFiscal.js';
 import { infAdProdXml, problemaDaIdentidadeNoItem } from './IdentidadeDaUnidadeFiscal.js';
 import { mensagemVendaSoDeServico } from './FiscalVendaDaOficina.js';
@@ -27,8 +34,10 @@ import {
   MODEL_NFE,
   buildAccessKey,
   environmentCode,
+  isValidAccessKey,
   randomNumericCode,
 } from './FiscalKeyService.js';
+import { lerOperacao, natOpDaOperacao } from './FiscalOperacoes.js';
 import {
   TPAG,
   UF_CODE,
@@ -52,6 +61,16 @@ export interface NfeRecipient {
    */
   ieIndicator: '1' | '2' | '9';
   ie?: string | null;
+  /**
+   * A mercadoria é para USO/CONSUMO do destinatário (indFinal 1), e não para
+   * revenda ou industrialização (indFinal 0)?
+   *
+   * O defeito: o indFinal era deduzido só do indIEDest (contribuinte → 0). O
+   * contribuinte que compra para uso próprio — a oficina que compra o
+   * compressor que vai usar — é consumidor final, e a nota dizia revenda.
+   * Ausente, vale a dedução de sempre; não contribuinte é sempre 1.
+   */
+  consumidorFinal?: boolean | null;
   street: string;
   number: string;
   complement?: string | null;
@@ -115,6 +134,27 @@ export function validateRecipient(dest: NfeRecipient | null): ValidationProblem[
       field: 'dest.IE',
       message: 'Destinatário marcado como contribuinte precisa da inscrição estadual.',
     });
+  } else if (dest.ieIndicator === '1' && !digits(dest.ie)) {
+    /*
+      A IE VAI SÓ COM DÍGITOS (no RS, o CGC/TE). O defeito: "ISENTO" (ou
+      qualquer texto sem dígito) passava pela conferência de "tem IE" e o XML
+      saía com <IE></IE> — recusado pelo leiaute com o número já reservado.
+    */
+    problems.push({
+      field: 'dest.IE',
+      message:
+        'A inscrição estadual do contribuinte vai só com dígitos na nota (no RS, o CGC/TE). '
+        + '"ISENTO" não é inscrição: destinatário isento usa o indicador 2.',
+    });
+  }
+  // Não contribuinte é sempre consumidor final (a SEFAZ recusa o contrário).
+  if (dest.ieIndicator === '9' && dest.consumidorFinal === false) {
+    problems.push({
+      field: 'ide.indFinal',
+      message:
+        'Destinatário não contribuinte (indicador 9) é sempre consumidor final — a operação não '
+        + 'pode ser marcada como revenda.',
+    });
   }
   if (!dest.street?.trim() || !dest.number?.trim() || !dest.district?.trim()) {
     problems.push({ field: 'dest.enderDest', message: 'Endereço do destinatário incompleto.' });
@@ -146,6 +186,19 @@ export function destinationIndicator(emitUf: string, destUf: string): '1' | '2' 
   return a === b ? '1' : '2';
 }
 
+/**
+ * O indFinal da nota: 1 consumidor final, 0 normal (revenda/industrialização).
+ * Não contribuinte é sempre 1; o resto segue a declaração do destinatário e,
+ * sem ela, a dedução de sempre (contribuinte → 0).
+ */
+export function indicadorDeConsumidorFinal(
+  dest: Pick<NfeRecipient, 'ieIndicator' | 'consumidorFinal'>,
+): '0' | '1' {
+  if (dest.ieIndicator === '9') return '1';
+  if (typeof dest.consumidorFinal === 'boolean') return dest.consumidorFinal ? '1' : '0';
+  return dest.ieIndicator === '1' ? '0' : '1';
+}
+
 export interface BuiltNfe {
   xml: string;
   accessKey: string;
@@ -163,6 +216,8 @@ export function validateNfe(input: {
   sale: NfceSale;
   config: FiscalConfig;
   recipient: NfeRecipient | null;
+  /** 'entrada' na nota de entrada emitida pela loja (devolução de venda). Padrão: saída. */
+  direcao?: DirecaoDaNota;
 }): ValidationProblem[] {
   const problems: ValidationProblem[] = [];
 
@@ -214,6 +269,20 @@ export function validateNfe(input: {
     }
     if (digits(item.cfop).length !== 4) {
       problems.push({ field: `${onde} > CFOP`, message: 'CFOP ausente ou fora do formato.', itemIndex: index });
+    } else if (input.recipient?.uf) {
+      // O alcance do CFOP e o idDest dizem a mesma coisa — e a SEFAZ recusa
+      // quando discordam. Conferido antes de numerar.
+      const esperado = digitoDoCfopEsperado(input.config.uf, input.recipient.uf, input.direcao ?? 'saida');
+      if (!digits(item.cfop).startsWith(esperado)) {
+        problems.push({
+          field: `${onde} > CFOP`,
+          message:
+            `CFOP ${digits(item.cfop)} é de ${alcanceDoCfop(digits(item.cfop))}, e esta nota é de `
+            + `${alcanceDoCfop(esperado)} (idDest ${destinationIndicator(input.config.uf ?? '', input.recipient.uf)}). `
+            + 'Informe o CFOP deste alcance no produto ou no grupo tributário.',
+          itemIndex: index,
+        });
+      }
     }
     if (!item.origin || !/^[0-8]$/.test(String(item.origin).trim())) {
       problems.push({ field: `${onde} > origem`, message: 'Origem ausente ou inválida.', itemIndex: index });
@@ -247,10 +316,29 @@ export function buildNfeXml(input: {
   numericCode?: string;
   issuedAt?: Date;
   additionalInfo?: string;
+  /** A natureza da operação. Ausente: a da operação desta empresa (venda ou devolução). */
+  natOp?: string;
+  /**
+   * A NF-e de DEVOLUÇÃO (finNFe 4) — P0 fiscal. A devolução de VENDA é nota de
+   * ENTRADA emitida pela loja (tpNF 0, CFOP 1202/2202 por padrão); a de COMPRA
+   * é de saída (tpNF 1, 5202/6202). O CFOP, a natureza e o grupo tributário
+   * vêm da operação fiscal da empresa (`FiscalOperacoes`), e a chave da nota
+   * devolvida vai no NFref.
+   */
+  devolucao?: { operacao: 'devolucao_venda' | 'devolucao_compra'; chaveReferenciada: string };
 }): BuiltNfe {
   const { sale, config, recipient, serie, number } = input;
 
-  const problems = validateNfe({ sale, config, recipient });
+  const operacaoDaDevolucao = input.devolucao ? lerOperacao(sale.companyId, input.devolucao.operacao) : null;
+  const direcao = operacaoDaDevolucao?.direcao ?? 'saida';
+  const problems = validateNfe({ sale, config, recipient, direcao });
+  if (input.devolucao && !isValidAccessKey(digits(input.devolucao.chaveReferenciada))) {
+    problems.push({
+      field: 'ide.NFref',
+      message:
+        'A chave da nota devolvida não é uma chave de acesso válida (44 dígitos, com o dígito verificador certo).',
+    });
+  }
   if (problems.length > 0) {
     throw new ApiError(
       'CORE_FISCAL_DOCUMENT_INVALID',
@@ -308,6 +396,12 @@ export function buildNfeXml(input: {
     tributacaoDoItem({
       companyId: sale.companyId,
       ufDestinatario: destUf,
+      // Na devolução, o CFOP e o grupo são os da OPERAÇÃO, e a direção decide o alcance (1/2 ou 5/6).
+      direcao,
+      cfopDaOperacao: operacaoDaDevolucao
+        ? { interno: operacaoDaDevolucao.cfopInterno, interestadual: operacaoDaDevolucao.cfopInterestadual }
+        : null,
+      grupoDaOperacao: operacaoDaDevolucao?.grupoTributario ?? null,
       produto: {
         id: item.productId ?? item.internalCode ?? String(index + 1),
         description: item.description,
@@ -347,7 +441,7 @@ export function buildNfeXml(input: {
             ? `\n        <cBenef>${xmlEscape(tributacoes[index].cBenef!)}</cBenef>`
             : ''
         }
-        <CFOP>${digits(item.cfop)}</CFOP>
+        <CFOP>${digits(tributacoes[index].cfop)}</CFOP>
         <uCom>${xmlEscape(unidade)}</uCom>
         <qCom>${qty(item.quantity)}</qCom>
         <vUnCom>${money(item.unitPriceCents)}</vUnCom>
@@ -424,23 +518,31 @@ ${impostoDoItem}${infAdProdXml(item.unidades, xmlEscape)}
     <ide>
       <cUF>${ufCode}</cUF>
       <cNF>${numericCode}</cNF>
-      <natOp>VENDA DE MERCADORIA</natOp>
+      <natOp>${xmlEscape(input.natOp ?? natOpDaOperacao(sale.companyId, input.devolucao?.operacao ?? 'venda_nfe'))}</natOp>
       <mod>${MODEL_NFE}</mod>
       <serie>${serie}</serie>
       <nNF>${number}</nNF>
       <dhEmi>${dhEmi}</dhEmi>
-      <tpNF>1</tpNF>
+      <tpNF>${direcao === 'entrada' ? '0' : '1'}</tpNF>
       <idDest>${destinationIndicator(uf, destUf)}</idDest>
       <cMunFG>${digits(config.cityIbge)}</cMunFG>
       <tpImp>1</tpImp>
       <tpEmis>${emissionType}</tpEmis>
       <cDV>${accessKey.slice(-1)}</cDV>
       <tpAmb>${environmentCode(config.environment)}</tpAmb>
-      <finNFe>1</finNFe>
-      <indFinal>${recipient.ieIndicator === '1' ? '0' : '1'}</indFinal>
+      <finNFe>${input.devolucao ? '4' : '1'}</finNFe>
+      <indFinal>${indicadorDeConsumidorFinal(recipient)}</indFinal>
       <indPres>${presence}</indPres>
       <procEmi>0</procEmi>
-      <verProc>GrupoSampaio-1.0</verProc>
+      <verProc>GrupoSampaio-1.0</verProc>${
+        // O NFref é o último filho do <ide> no leiaute 4.00.
+        input.devolucao
+          ? `
+      <NFref>
+        <refNFe>${digits(input.devolucao.chaveReferenciada)}</refNFe>
+      </NFref>`
+          : ''
+      }
     </ide>
     <emit>
       <CNPJ>${digits(config.cnpj)}</CNPJ>

@@ -5,7 +5,7 @@
  "mudancas_permitidas": {
   "D1": "O legado operador_caixa (0 vínculos) passa a poder POST /core/print/jobs e POST /core/print/jobs/:id/reprint (conflitos.md, C1)."
  },
- "total": 711,
+ "total": 717,
  "rotas": {
   "DELETE /core/acquirers/rates/:id": {
    "arquivo": "core.ts",
@@ -1638,6 +1638,19 @@
    "capability": "fiscal.view",
    "mudanca": null
   },
+  "GET /core/fiscal/operacoes": {
+   "arquivo": "core.ts",
+   "linha": null,
+   "guarda_hoje": "requireCapability(req, 'fiscal.view')",
+   "perfis": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina"
+   ],
+   "capability": "fiscal.view",
+   "mudanca": null
+  },
   "GET /core/fiscal/pdv-summary": {
    "arquivo": "core.ts",
    "linha": 8077,
@@ -1652,6 +1665,19 @@
     "operador_caixa_oficina"
    ],
    "capability": "qualquer(fiscal.sale.emit, fiscal.view)",
+   "mudanca": null
+  },
+  "GET /core/fiscal/pendencias-contabeis": {
+   "arquivo": "core.ts",
+   "linha": null,
+   "guarda_hoje": "requireCapability(req, 'fiscal.view')",
+   "perfis": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina"
+   ],
+   "capability": "fiscal.view",
    "mudanca": null
   },
   "GET /core/fiscal/product-pendencies": {
@@ -5952,6 +5978,32 @@
    "capability": "fiscal.manage",
    "mudanca": null
   },
+  "POST /core/fiscal/devolucoes/compra/:returnId/nfe": {
+   "arquivo": "core.ts",
+   "linha": null,
+   "guarda_hoje": "requireCapability(req, 'fiscal.manage')",
+   "perfis": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina"
+   ],
+   "capability": "fiscal.manage",
+   "mudanca": null
+  },
+  "POST /core/fiscal/devolucoes/venda/:returnId/nfe": {
+   "arquivo": "core.ts",
+   "linha": null,
+   "guarda_hoje": "requireCapability(req, 'fiscal.manage')",
+   "perfis": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina"
+   ],
+   "capability": "fiscal.manage",
+   "mudanca": null
+  },
   "POST /core/fiscal/documents/:id/cancel": {
    "arquivo": "core.ts",
    "linha": 8348,
@@ -5976,6 +6028,19 @@
     "gerente_oficina"
    ],
    "capability": "fiscal.documents.cancel",
+   "mudanca": null
+  },
+  "POST /core/fiscal/documents/:id/reemitir": {
+   "arquivo": "core.ts",
+   "linha": null,
+   "guarda_hoje": "requireCapability(req, 'fiscal.manage')",
+   "perfis": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina"
+   ],
+   "capability": "fiscal.manage",
    "mudanca": null
   },
   "POST /core/fiscal/documents/:id/reenfileirar": {
@@ -9208,6 +9273,17 @@
    "arquivo": "core.ts",
    "linha": 8198,
    "guarda_hoje": "requireProfile(req)",
+   "perfis": [
+    "admin_geral",
+    "gestor"
+   ],
+   "capability": "fiscal.policy.manage",
+   "mudanca": null
+  },
+  "PUT /core/fiscal/operacoes/:operacao": {
+   "arquivo": "core.ts",
+   "linha": null,
+   "guarda_hoje": "requireCapability(req, 'fiscal.policy.manage')",
    "perfis": [
     "admin_geral",
     "gestor"

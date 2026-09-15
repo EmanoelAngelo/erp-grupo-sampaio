@@ -322,10 +322,15 @@ import {
   listFiscalDocuments,
 } from '../../services/core/FiscalDocumentService.js';
 import {
+  advanceDocument,
   emitNfceForSale,
   fiscalStatusForSale,
   emissionReadinessForSale,
 } from '../../services/core/FiscalPipelineService.js';
+import { reemitirRejeitada } from '../../services/core/FiscalReemissao.js';
+import { gravarOperacao, listarOperacoes } from '../../services/core/FiscalOperacoes.js';
+import { pendenciasContabeis } from '../../services/core/PendenciasContabeis.js';
+import { emitirNfeDeDevolucao } from '../../services/core/FiscalDevolucao.js';
 import { renderDanfce } from '../../services/core/DanfceRenderer.js';
 import { renderDanfe } from '../../services/core/DanfeRenderer.js';
 import {
@@ -9116,6 +9121,174 @@ coreRouter.post('/fiscal/documents/:id/transmitir', (req: AuthedRequest, res, ne
       requireProfile(req, 'gerente_loja', 'gerente_oficina');
       const { companyId, userId } = scope(req);
       res.json(await transmitirAgora({ companyId, documentId: String(req.params.id), userId }));
+    } catch (err) {
+      next(err);
+    }
+  })();
+});
+
+// ------------------------------------------------ P0 fiscal (Preço Justo)
+//
+// Rotas novas nascem pela capability (catraca das guardas legadas). Toda regra
+// mora no domínio; o companyId vem SEMPRE do token.
+
+type DestinatarioDaNota = NonNullable<Parameters<typeof reemitirRejeitada>[0]['recipient']>;
+
+/**
+ * O destinatário que o corpo manda — só a FORMA; a validação (documento, IE,
+ * endereço, município) é do domínio, que nomeia o campo errado.
+ */
+function destinatarioDoCorpo(valor: unknown): DestinatarioDaNota | null {
+  if (!valor || typeof valor !== 'object') return null;
+  const o = valor as Record<string, unknown>;
+  const s = (k: string): string | null => (o[k] === undefined || o[k] === null ? null : String(o[k]));
+  return {
+    document: s('document') ?? '',
+    name: s('name') ?? '',
+    ieIndicator: (s('ieIndicator') ?? '') as DestinatarioDaNota['ieIndicator'],
+    ie: s('ie'),
+    consumidorFinal: typeof o.consumidorFinal === 'boolean' ? o.consumidorFinal : null,
+    street: s('street') ?? '',
+    number: s('number') ?? '',
+    complement: s('complement'),
+    district: s('district') ?? '',
+    cityName: s('cityName') ?? '',
+    cityIbge: s('cityIbge') ?? '',
+    uf: s('uf') ?? '',
+    zip: s('zip'),
+    phone: s('phone'),
+    email: s('email'),
+  };
+}
+
+/** O modo de desenvolvimento só atravessa fora de produção — a trava final é do domínio. */
+function desenvolvimentoPedido(req: AuthedRequest): boolean {
+  return req.body?.developmentMode === true && loadEnv().DEVORA_API_ENV !== 'production';
+}
+
+/**
+ * A NOTA REJEITADA SE CORRIGE E SAI COM O MESMO NÚMERO (rejeição não consome
+ * número na SEFAZ): remonta do cadastro corrigido, com chave nova, e segue o
+ * pipeline. Denegada, duplicidade, erro de nota já transmitida e número
+ * inutilizado são recusados pelo domínio, com o motivo.
+ */
+coreRouter.post('/fiscal/documents/:id/reemitir', (req: AuthedRequest, res, next) => {
+  void (async () => {
+    try {
+      requireCapability(req, 'fiscal.manage');
+      const { companyId, userId } = scope(req);
+      const dev = desenvolvimentoPedido(req);
+      const reemissao = reemitirRejeitada({
+        companyId,
+        documentId: String(req.params.id),
+        userId,
+        recipient: destinatarioDoCorpo(req.body?.recipient),
+      });
+      const resultado = await advanceDocument(
+        reemissao.document.id,
+        {
+          companyId,
+          userId,
+          certificatePassword:
+            typeof req.body?.certificatePassword === 'string' ? req.body.certificatePassword : undefined,
+          developmentMode: dev,
+        },
+        dev,
+      );
+      res.json({
+        ...resultado,
+        reemissao: { chaveAnterior: reemissao.chaveAnterior, serie: reemissao.serie, numero: reemissao.numero },
+      });
+    } catch (err) {
+      next(err);
+    }
+  })();
+});
+
+/** As operações fiscais da empresa — natureza, CFOP e grupo da devolução, prazo de cancelamento. */
+coreRouter.get('/fiscal/operacoes', (req: AuthedRequest, res, next) => {
+  try {
+    requireCapability(req, 'fiscal.view');
+    const { companyId } = scope(req);
+    res.json({ items: listarOperacoes(companyId) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * Gravar é decisão do DONO com o contador — a mesma régua da política de
+ * contingência: é o que libera a devolução em produção.
+ */
+coreRouter.put('/fiscal/operacoes/:operacao', (req: AuthedRequest, res, next) => {
+  try {
+    requireCapability(req, 'fiscal.policy.manage');
+    const { companyId, userId } = scope(req);
+    res.json(
+      gravarOperacao({
+        companyId,
+        userId,
+        operacao: String(req.params.operacao),
+        natOp: req.body?.natOp,
+        cfopInterno: req.body?.cfopInterno,
+        cfopInterestadual: req.body?.cfopInterestadual,
+        grupoTributario: req.body?.grupoTributario,
+        prazoCancelamentoMinutos: req.body?.prazoCancelamentoMinutos,
+        confirmadaPeloContador: req.body?.confirmadaPeloContador,
+        observacao: req.body?.observacao,
+      }),
+    );
+  } catch (err) {
+    next(err);
+  }
+});
+
+/** O que ainda depende do contador, por empresa — o que impede a emissão, a produção, ou nada. */
+coreRouter.get('/fiscal/pendencias-contabeis', (req: AuthedRequest, res, next) => {
+  try {
+    requireCapability(req, 'fiscal.view');
+    const { companyId } = scope(req);
+    res.json({ items: pendenciasContabeis(companyId) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/** A NF-e de devolução de um registro de devolução — de venda (entrada) ou de compra (saída). */
+async function notaDeDevolucaoPelaRota(req: AuthedRequest, operacao: 'devolucao_venda' | 'devolucao_compra') {
+  const { companyId, userId } = scope(req);
+  const recipient = destinatarioDoCorpo(req.body?.recipient);
+  if (!recipient) {
+    throw new ApiError('CORE_FISCAL_RETURN_RECIPIENT_REQUIRED', 'Informe o destinatário da NF-e de devolução.', 400);
+  }
+  return emitirNfeDeDevolucao({
+    companyId,
+    userId,
+    operacao,
+    returnId: String(req.params.returnId),
+    recipient,
+    certificatePassword:
+      typeof req.body?.certificatePassword === 'string' ? req.body.certificatePassword : undefined,
+    developmentMode: desenvolvimentoPedido(req),
+  });
+}
+
+coreRouter.post('/fiscal/devolucoes/venda/:returnId/nfe', (req: AuthedRequest, res, next) => {
+  void (async () => {
+    try {
+      requireCapability(req, 'fiscal.manage');
+      res.json(await notaDeDevolucaoPelaRota(req, 'devolucao_venda'));
+    } catch (err) {
+      next(err);
+    }
+  })();
+});
+
+coreRouter.post('/fiscal/devolucoes/compra/:returnId/nfe', (req: AuthedRequest, res, next) => {
+  void (async () => {
+    try {
+      requireCapability(req, 'fiscal.manage');
+      res.json(await notaDeDevolucaoPelaRota(req, 'devolucao_compra'));
     } catch (err) {
       next(err);
     }

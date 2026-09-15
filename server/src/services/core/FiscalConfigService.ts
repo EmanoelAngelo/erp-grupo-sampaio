@@ -54,6 +54,7 @@ import { FIXTURE_SIGNATURE_MARK } from './FiscalPipelineService.js';
 import { itemDeProntidaoDaContingencia } from './FiscalContingenciaOffline.js';
 import { CRTS_DO_LEIAUTE } from './TabelasDoIcms.js';
 import { itemDeProntidaoDaTributacao } from './ProntidaoTributaria.js';
+import { itemDePendenciasContabeis } from './PendenciasContabeis.js';
 import { municipioDoEmitenteQueNaoConfere } from './MunicipiosIbge.js';
 
 export interface FiscalConfig {
@@ -1164,6 +1165,10 @@ export function buildReadiness(
     tudo o que falta — dono: o contador.
   */
   items.push(itemDeProntidaoDaTributacao(companyId));
+
+  // As pendências contábeis por empresa (P0 fiscal): informam, nunca travam —
+  // PENDING ou PASS, dono o contador. O valor que falta não é inventado aqui.
+  items.push(itemDePendenciasContabeis(companyId));
 
   // SEFAZ: PENDING de propósito. Só vira PASS com resposta real registrada.
   const autorizado = getConnection()
