@@ -667,7 +667,10 @@ describe('a varredura enxerga o roteador inteiro', () => {
     // /catalog/scale-label (etiqueta da balança) — TODAS fechadas ao contador.
     // 539 com POST /sale-returns/:id/refunds (o reembolso da devolução em duas
     // etapas da Preço Justo) — FECHADA ao contador.
-    expect(rotas).toHaveLength(539);
+    // 542 com as 3 do P0 das etiquetas: o histórico (GET /labels/prints), a
+    // reimpressão (POST /labels/prints/:id/reprint) e a etiqueta de teste
+    // (POST /labels/test) — TODAS fechadas ao contador: ele não imprime etiqueta.
+    expect(rotas).toHaveLength(542);
   });
 
   it('as portas do contador existem no roteador com esse nome exato', () => {
@@ -715,7 +718,9 @@ describe('o contador é recusado em TODAS as rotas do núcleo, menos nas abertas
     // cupom, leitura e declaração da etiqueta da balança): o contador não opera balcão
     // nem cadastro.
     // 535 com o reembolso da devolução em duas etapas: o contador não devolve dinheiro.
-    expect(fechadas).toHaveLength(535);
+    // 538 com as 3 do P0 das etiquetas (histórico, reimpressão e etiqueta de
+    // teste): o contador não imprime etiqueta.
+    expect(fechadas).toHaveLength(538);
 
     /*
       O relatório é a lista de quem DIVERGIU, com o status medido e a linha do

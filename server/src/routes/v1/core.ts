@@ -99,10 +99,19 @@ import {
 } from '../../services/core/LabelFormats.js';
 import {
   avisosDoFormato,
-  problemasDosCodigos,
   renderLabelSheet,
   resumoDaFolha,
 } from '../../services/core/LabelSheet.js';
+import {
+  formatoDoPedido,
+  imprimirEtiquetas,
+  imprimirTeste,
+  listarImpressoes,
+  perfilPedido,
+  posicaoInicial,
+  reimprimirEtiquetas,
+} from '../../services/core/LabelPrintService.js';
+import { HOMOLOGACAO_FISICA, PERFIL_PADRAO, PERFIS_DE_IMPRESSAO } from '../../services/core/LabelProfiles.js';
 import {
   atualizarModelo,
   criarModelo,
@@ -11564,6 +11573,11 @@ coreRouter.get('/labels/catalog', (req: AuthedRequest, res, next) => {
       campos: CAMPOS_DA_ETIQUETA,
       defaultFormat: FORMATO_PADRAO,
       quantityModes: QUANTITY_MODES,
+      // As saídas (navegador, driver, PDF, ZPL, EPL, TSPL) e o que cada uma
+      // ainda precisa conferir em papel — também tabela fixa, sem dado da empresa.
+      perfis: PERFIS_DE_IMPRESSAO,
+      perfilPadrao: PERFIL_PADRAO,
+      homologacao: HOMOLOGACAO_FISICA,
     });
   } catch (err) {
     next(err);
@@ -11628,12 +11642,15 @@ coreRouter.post('/labels/candidates/codes', (req: AuthedRequest, res, next) => {
 });
 
 /**
- * A folha pronta, em HTML medido em milímetro.
+ * A folha pronta — em HTML medido em milímetro (a saída de sempre, o
+ * navegador) ou, com `perfil`, no arquivo da saída escolhida: PDF, ZPL, EPL,
+ * TSPL ou a página exata para o driver, com a prévia na mesma geometria.
  *
  * ESCREVE NO CADASTRO: `buildLabels` grava EAN-13 interno em quem não tinha.
  * Um clique com a origem "estoque" pode carimbar código em centenas de
  * produtos de uma vez e consumir a sequência da empresa — por isso a auditoria
- * abaixo registra quantos itens passaram, e não é enfeite.
+ * registra quem imprimiu, quais itens, quantas de cada e quais códigos
+ * nasceram, e o histórico guarda o lote para a reimpressão.
  */
 coreRouter.post('/labels/sheet', (req: AuthedRequest, res, next) => {
   try {
@@ -11653,28 +11670,11 @@ coreRouter.post('/labels/sheet', (req: AuthedRequest, res, next) => {
         400,
       );
     }
-    // Um MODELO da loja (templateId) ou um dos formatos prontos (formatId).
-    const format = body.templateId
-      ? formatoDoModelo(obterModelo(companyId, String(body.templateId)))
-      : findLabelFormat(String(body.formatId ?? FORMATO_PADRAO));
-    if (!format) {
-      throw new ApiError('CORE_LABEL_FORMAT_UNKNOWN', 'Formato de etiqueta desconhecido.', 400);
-    }
-
-    /*
-      "Começar na posição N" da primeira folha: a folha já usada volta à
-      impressora e as etiquetas saem nas células livres, em vez de gastar uma
-      folha nova para cada punhado de produtos.
-    */
-    const cabemNaFolha = format.columns * (format.rows ?? 1);
-    const comecarEm = body.startAt === undefined || body.startAt === null || body.startAt === '' ? 1 : Number(body.startAt);
-    if (!Number.isInteger(comecarEm) || comecarEm < 1 || comecarEm > cabemNaFolha) {
-      throw new ApiError(
-        'CORE_LABEL_START_INVALID',
-        `Posição inicial: informe um número de 1 a ${cabemNaFolha} (as etiquetas desta folha).`,
-        400,
-      );
-    }
+    // Um MODELO da loja (templateId) ou um dos formatos prontos (formatId), a
+    // posição inicial da primeira folha e a SAÍDA — sem ela, o navegador.
+    const { format, templateId } = formatoDoPedido(companyId, body);
+    const comecarEm = posicaoInicial(format, body.startAt);
+    const perfil = perfilPedido(body.perfil);
 
     /*
       QUEM PODE CARIMBAR CÓDIGO NO CADASTRO. Reimprimir etiqueta é operacional
@@ -11684,52 +11684,9 @@ coreRouter.post('/labels/sheet', (req: AuthedRequest, res, next) => {
       gerar o código no cadastro.
     */
     const podeGerarCodigo = Boolean(req.auth?.acesso?.capabilities.has('products.manage'));
-    /*
-      MONTAR, DESENHAR E AUDITAR NUMA TRANSAÇÃO SÓ.
-
-      DEFEITO QUE ISTO CORRIGE: `buildLabels` conferia o lote antes de gravar,
-      mas fechava a PRÓPRIA transação ao voltar — e o desenho ainda pode recusar
-      a folha (o preço que não cabe nem no corpo mínimo, 400). Os EANs recém
-      gravados ficavam no cadastro, sem folha e sem a auditoria que diz quais
-      nasceram: o mesmo buraco do lote sem transação. Com o desenho e a
-      auditoria aqui dentro, a recusa desfaz os códigos (a transação de
-      `buildLabels` vira SAVEPOINT desta).
-    */
-    const { built, html, resumo, codigosGerados } = withTransaction(() => {
-      const montadas = buildLabels(companyId, items, { campos: format.campos, podeGerarCodigo });
-      const desenho = renderLabelSheet({ format, items: montadas, companyId, comecarEm });
-      const contas = resumoDaFolha(format, montadas, comecarEm);
-      const gerados = montadas
-        .filter((i) => i.codigoGerado)
-        .map((i) => ({ productId: i.productId, name: i.name, barcode: i.barcode }));
-      recordAudit({
-        companyId,
-        userId,
-        action: 'label.sheet',
-        entityType: 'label_batch',
-        entityId: format.id,
-        // QUAIS produtos ganharam código neste lote, e não só quantos passaram:
-        // sem a lista, não havia como saber de onde veio um EAN interno.
-        detail: {
-          produtos: montadas.length,
-          ...contas,
-          codigosGerados: gerados.map(({ productId, barcode }) => ({ productId, barcode })),
-        },
-      });
-      return { built: montadas, html: desenho, resumo: contas, codigosGerados: gerados };
-    });
-    res.json({
-      html,
-      ...resumo,
-      codigosGerados,
-      semCodigo: built.filter((i) => i.codigoPendente === 'sem_permissao').map((i) => i.name),
-      codigosSemDesenho: problemasDosCodigos(format, built),
-      promocoes: built.filter((i) => i.onSale).map((i) => i.name),
-      // Etiqueta com R$ 0,00 na prateleira é pior que etiqueta nenhuma: o
-      // preço anunciado obriga a loja. Não recusamos a impressão — há caso
-      // legítimo, como brinde —, mas quem clicou precisa ser avisado.
-      semPreco: built.filter((i) => i.priceCents <= 0).map((i) => i.name),
-    });
+    // Montar, desenhar, registrar no histórico e auditar numa transação só: a
+    // recusa do desenho desfaz os códigos que o lote gravaria (LabelPrintService).
+    res.json(imprimirEtiquetas({ companyId, userId, format, templateId, items, perfil, comecarEm, podeGerarCodigo, tipo: 'lote' }));
   } catch (err) {
     next(err);
   }
@@ -11824,6 +11781,66 @@ coreRouter.post('/labels/templates/preview', (req: AuthedRequest, res, next) => 
       ...resumoDaFolha(format, [item]),
       avisos: avisosDoFormato(format),
     });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/*
+  O HISTÓRICO, A REIMPRESSÃO E A ETIQUETA DE TESTE (P0 das etiquetas da Preço
+  Justo). Mesmo alcance de quem imprime a folha (labels.products.print): quem
+  imprime precisa reimprimir o lote de ontem e testar a calibração da
+  impressora. O guarda é a primeira instrução — o :id de outra operação
+  responde 404 depois dele, nunca antes.
+*/
+coreRouter.get('/labels/prints', (req: AuthedRequest, res, next) => {
+  try {
+    requireCapability(req, 'labels.products.print');
+    const { companyId } = scope(req);
+    res.json({ items: listarImpressoes(companyId, Number(req.query.limit) || 30) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * Reimprime um lote do histórico: os mesmos produtos e quantidades, o mesmo
+ * formato ou modelo, com o preço e o cadastro de HOJE (ver LabelPrintService).
+ * A saída e a posição inicial podem mudar. Grava EAN interno como a folha — e
+ * só para quem tem products.manage.
+ */
+coreRouter.post('/labels/prints/:id/reprint', (req: AuthedRequest, res, next) => {
+  try {
+    requireCapability(req, 'labels.products.print');
+    const { companyId, userId } = scope(req);
+    const body = req.body ?? {};
+    res.json(
+      reimprimirEtiquetas({
+        companyId,
+        userId,
+        id: String(req.params.id),
+        perfil: body.perfil,
+        startAt: body.startAt,
+        podeGerarCodigo: Boolean(req.auth?.acesso?.capabilities.has('products.manage')),
+      }),
+    );
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * A etiqueta de teste na saída escolhida: a amostra de pior caso (EAN 040,
+ * que não é de produto nenhum) com uma moldura para conferir a calibração X/Y.
+ * Não grava nada no cadastro; fica no histórico e na auditoria.
+ */
+coreRouter.post('/labels/test', (req: AuthedRequest, res, next) => {
+  try {
+    requireCapability(req, 'labels.products.print');
+    const { companyId, userId } = scope(req);
+    const body = req.body ?? {};
+    const { format, templateId } = formatoDoPedido(companyId, body);
+    res.json(imprimirTeste({ companyId, userId, format, templateId, perfil: perfilPedido(body.perfil) }));
   } catch (err) {
     next(err);
   }
