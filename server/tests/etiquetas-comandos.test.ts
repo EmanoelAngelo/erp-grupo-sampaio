@@ -286,7 +286,14 @@ describe('PDF', () => {
     const pdf = gerarPdf(trabalho(formato('rolo_60x40'), [item('Pão (francês)')])).toString('latin1');
     expect(pdf).toContain('(P\\343o \\(franc\\352s\\))');
     const corpo = pdf.slice(pdf.indexOf('\n') + 1 + pdf.slice(pdf.indexOf('\n') + 1).indexOf('\n') + 1);
-    expect(/[^\x09\x0a\x0d\x20-\x7e]/.test(corpo)).toBe(false);
+    // Só ASCII imprimível, mais TAB, LF e CR — conferido pelo código de cada
+    // caractere: a regra no-control-regex recusa o intervalo de controle numa
+    // expressão regular, e a pergunta é a mesma.
+    const foraDoAscii = [...corpo].some((c) => {
+      const n = c.charCodeAt(0);
+      return !(n === 0x09 || n === 0x0a || n === 0x0d || (n >= 0x20 && n <= 0x7e));
+    });
+    expect(foraDoAscii).toBe(false);
   });
 });
 

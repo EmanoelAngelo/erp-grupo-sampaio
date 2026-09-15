@@ -118,7 +118,8 @@ describe('o modelo guarda a saída, a calibração e os ajustes da térmica', ()
     const id = String(criado.body.id);
 
     // A tela antiga manda só o que conhecia: nada da impressora muda.
-    const { outputProfile: _o, ...semSaida } = ROLO_ZPL;
+    const semSaida: Record<string, unknown> = { ...ROLO_ZPL };
+    delete semSaida.outputProfile;
     const antiga = await request(app).patch(`/api/v1/core/labels/templates/${id}`).set(gerente).send(semSaida);
     expect(antiga.status, JSON.stringify(antiga.body)).toBe(200);
     expect(antiga.body).toMatchObject({ outputProfile: 'zpl', offsetXmm: 1.25, cutMode: 'fim_do_lote', mediaGapMm: 3 });
