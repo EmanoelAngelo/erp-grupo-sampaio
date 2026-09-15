@@ -583,9 +583,14 @@ describe('a política em si', () => {
       cashWithdrawalLimitCents: false,
       // Faturar OS a prazo (GAP-PRD-104): a tela de Política de venda mostra.
       workshopCreditEnabled: false,
+      // Motivo obrigatório na liberação de desconto (P0 da Preço Justo): a
+      // tela mostra a caixa de marcar ao lado dos limites por perfil.
+      discountReasonRequired: false,
     });
     // E o padrão do fiado da OS é o seguro: desligado.
     expect(p.workshopCreditEnabled).toBe(false);
+    // O motivo da liberação continua opcional para quem nunca configurou.
+    expect(p.discountReasonRequired).toBe(false);
   });
 
   it('o que o dono definiu aparece como definido; o resto segue padrão', () => {

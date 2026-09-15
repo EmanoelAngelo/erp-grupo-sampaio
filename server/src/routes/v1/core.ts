@@ -834,10 +834,15 @@ import {
 } from '../../services/core/AuthorizationService.js';
 import {
   fluxoDaDevolucao,
+  gravarLimitesPorPerfil,
+  limitesPorPerfil,
+  normalizarLimitesPorPerfil,
+  PERFIS_COM_LIMITE_DE_DESCONTO,
   politicaDaEmpresa,
   salvarPolitica,
   validadeDaReserva,
 } from '../../services/core/SalePolicyService.js';
+import { limiteDosPerfis, semTeto } from '../../services/core/LimiteDeDesconto.js';
 import {
   confirmNfe,
   conferirItem,
@@ -6031,6 +6036,12 @@ function vendaDoCorpo(
   opcoes: {
     perfisDaAlcada?: string[];
     /**
+     * Os perfis de quem VENDEU a venda guardada, quando não é quem envia: o
+     * LIMITE de desconto passa a ser o mais estreito das duas pessoas (P0 da
+     * Preço Justo). Ver `alcadaDaVendaGuardada`.
+     */
+    perfisDoVendedor?: string[] | null;
+    /**
      * A hora em que a venda guardada aconteceu no balcão (G-offline-sync-14) —
      * só `POST /sales`, e só com `vendaGuardada` no corpo. `createSale`
      * confere e decide se ela vira a hora da venda.
@@ -6079,8 +6090,43 @@ function vendaDoCorpo(
     alcada: {
       profileCodes: opcoes.perfisDaAlcada ?? scope(req).profiles,
       authorizationId: corpo?.authorizationId ?? null,
+      // Do SERVIDOR (o vínculo de quem vendeu, conferido no banco) — nunca um
+      // perfil que o corpo declare.
+      perfisDeQuemVendeu: opcoes.perfisDoVendedor ?? null,
     },
   });
+}
+
+/**
+ * QUEM VENDEU A PENDÊNCIA ESTREITA O LIMITE DE QUEM A RELANÇA (P0 da Preço
+ * Justo).
+ *
+ * O DEFEITO: com limite por perfil, a venda guardada da atendente (5%) recusada
+ * pela alçada ia para "Regularizar", e o caixa (10%) a relançava sem liberação
+ * nenhuma — o relançamento media os 8% dela contra os 10% dele. A pendência já
+ * guarda quem vendeu (o PDV entrega o corpo com `vendaGuardada`), e a mesma
+ * régua do reenvio automático vale aqui: o mais ESTREITO das duas pessoas.
+ *
+ * Quem TEM alçada e relança é outra coisa: é a regularização explícita que a
+ * G-offline-sync-11 desenhou — o gerente decide, com a própria alçada (e o
+ * próprio limite, quando o dono configurou um), e a trilha da venda diz que foi
+ * ele. Nulo nesse caso, e nulo quando a pendência não diz quem vendeu (PDV
+ * anterior a esta rodada): a régua é a de quem relança, como antes.
+ */
+function perfisDoVendedorNoRelancamento(
+  req: AuthedRequest,
+  corpo: Record<string, unknown>,
+): string[] | null {
+  const { companyId, userId, profiles } = scope(req);
+  if (temAlcadaParaLiberar(profiles)) return null;
+  return (
+    alcadaDaVendaGuardada({
+      companyId,
+      userId,
+      perfisDoToken: profiles,
+      vendaGuardada: corpo.vendaGuardada,
+    })?.perfisDoVendedor ?? null
+  );
 }
 
 /**
@@ -6220,6 +6266,9 @@ coreRouter.post('/sales', (req: AuthedRequest, res, next) => {
     });
     const result = vendaDoCorpo(req, req.body ?? {}, idempotencyKey, {
       perfisDaAlcada: guardada?.perfis,
+      // O limite de desconto da venda guardada é o mais estreito de quem
+      // vendeu e de quem reenvia (P0 da Preço Justo).
+      perfisDoVendedor: guardada?.perfisDoVendedor ?? null,
       // A venda guardada entra com a hora em que aconteceu, quando ela passa
       // pelas conferências do serviço (G-offline-sync-14).
       vendidaEm: guardada ? String(req.body?.vendaGuardada?.queuedAt ?? '') : null,
@@ -6240,7 +6289,15 @@ coreRouter.post('/sales', (req: AuthedRequest, res, next) => {
         detail: {
           total: result.sale.total_cents,
           concessao: result.concessao,
-          authorizationId: req.body?.authorizationId ?? null,
+          /*
+            A LIBERAÇÃO GASTA, e não a que o corpo disse (P0 da Preço Justo).
+            Era `req.body.authorizationId`: venda dentro do limite com um id
+            qualquer no corpo ficava na trilha como "liberada pelo gestor". A
+            `alcada` diz quem aplicou, o limite com que foi medida, o que
+            passou dele, quem assinou e o motivo — tudo lido do servidor.
+          */
+          authorizationId: result.alcada?.liberacao?.id ?? null,
+          alcada: result.alcada,
           // A venda guardada sem servidor: quem vendeu, quem enviou e quando
           // ela aconteceu no balcão (G-offline-sync-M03 / 14).
           ...(guardada
@@ -6386,7 +6443,11 @@ coreRouter.post('/offline-sales/:id/relaunch', (req: AuthedRequest, res, next) =
         perfis: scope(req).profiles,
         corpo,
         pedido: req.body?.ajusteDePreco,
-        vender: (c) => vendaDoCorpo(req, c, guardada.idempotencyKey),
+        // O limite é o mais estreito de quem vendeu e de quem relança (P0).
+        vender: (c) =>
+          vendaDoCorpo(req, c, guardada.idempotencyKey, {
+            perfisDoVendedor: perfisDoVendedorNoRelancamento(req, guardada.corpo),
+          }),
       });
       result = relancado.result;
       ajusteDePreco = relancado.ajusteDePreco;
@@ -6404,7 +6465,9 @@ coreRouter.post('/offline-sales/:id/relaunch', (req: AuthedRequest, res, next) =
         detail: {
           total: result.sale.total_cents,
           concessao: result.concessao,
-          authorizationId,
+          // A liberação GASTA no relançamento, lida do servidor (P0).
+          authorizationId: result.alcada?.liberacao?.id ?? null,
+          alcada: result.alcada,
           // A venda nasceu de uma venda guardada offline: a trilha aponta a
           // pendência, que guarda quando ela foi feita e em que gaveta.
           offlinePendingId: id,
@@ -6487,7 +6550,10 @@ coreRouter.post('/offline-sales/:id/relaunch-as-new', (req: AuthedRequest, res, 
         perfis: scope(req).profiles,
         corpo,
         pedido: req.body?.ajusteDePreco,
-        vender: (c) => vendaDoCorpo(req, c, nova.chaveNova),
+        vender: (c) =>
+          vendaDoCorpo(req, c, nova.chaveNova, {
+            perfisDoVendedor: perfisDoVendedorNoRelancamento(req, nova.corpo),
+          }),
       });
       result = relancado.result;
       ajusteDePreco = relancado.ajusteDePreco;
@@ -6506,7 +6572,8 @@ coreRouter.post('/offline-sales/:id/relaunch-as-new', (req: AuthedRequest, res, 
         detail: {
           total: result.sale.total_cents,
           concessao: result.concessao,
-          authorizationId,
+          authorizationId: result.alcada?.liberacao?.id ?? null,
+          alcada: result.alcada,
           offlinePendingId: id,
           relancadaComoVendaNova: true,
           chaveOriginal: nova.chaveOriginal,
@@ -6638,6 +6705,9 @@ coreRouter.post('/authorizations', async (req: AuthedRequest, res, next) => {
         concedidoCents: req.body?.concedidoCents,
         brutoCents: req.body?.brutoCents,
       },
+      // O motivo digitado (P0 da Preço Justo): obrigatório no desconto onde a
+      // operação exige. A senha não vai para a trilha em lugar nenhum.
+      justificativa: req.body?.justificativa,
       /*
         ONDE A SENHA FOI DIGITADA — e este é o campo que era montado e perdido.
 
@@ -6665,6 +6735,7 @@ coreRouter.post('/authorizations', async (req: AuthedRequest, res, next) => {
       detail: {
         authorizedBy: result.authorizedBy,
         reason: req.body?.reason,
+        justificativa: result.justificativa,
         grantedConcessionCents: result.grantedConcessionCents,
         grantedGrossCents: result.grantedGrossCents,
         // O ALVO na trilha: sem ele, duas liberações de cancelamento no mesmo
@@ -6732,9 +6803,20 @@ coreRouter.get('/sales/discount-policy', (req: AuthedRequest, res, next) => {
     */
     abertaAo(req, 'balcao', 'escritorio');
     const { companyId, profiles } = scope(req);
+    const politica = politicaDaEmpresa(companyId);
+    /*
+      O LIMITE DE QUEM PERGUNTA, e não só o da operação (P0 da Preço Justo).
+      `operatorLimitPercent` continua o da operação, para a tela de hoje não
+      mudar de leitura; `limiteDoPerfil` traz os quatro tetos DESTA pessoa
+      (venda e item, % e R$). `canAuthorizeSelf` passou a ser alçada SEM teto:
+      o gerente com limite configurado também pede liberação acima dele.
+    */
+    const limiteDoPerfil = limiteDosPerfis(companyId, profiles);
     res.json({
-      operatorLimitPercent: politicaDaEmpresa(companyId).discountLimitPercent,
-      canAuthorizeSelf: temAlcadaParaLiberar(profiles),
+      operatorLimitPercent: politica.discountLimitPercent,
+      canAuthorizeSelf: temAlcadaParaLiberar(profiles) && semTeto(limiteDoPerfil),
+      limiteDoPerfil,
+      motivoObrigatorio: politica.discountReasonRequired,
     });
   } catch (err) {
     next(err);
@@ -6759,7 +6841,14 @@ coreRouter.get('/sales/discount-policy', (req: AuthedRequest, res, next) => {
 coreRouter.get('/sale-policies', (req: AuthedRequest, res, next) => {
   try {
     requireProfile(req, 'gerente_loja', 'gerente_oficina');
-    res.json(politicaDaEmpresa(scope(req).companyId));
+    const { companyId } = scope(req);
+    // Os limites por perfil vêm junto (P0 da Preço Justo): é a mesma tela, e
+    // a mesma decisão — quanto cada pessoa concede sem chamar ninguém.
+    res.json({
+      ...politicaDaEmpresa(companyId),
+      limitesPorPerfil: limitesPorPerfil(companyId),
+      perfisComLimite: PERFIS_COM_LIMITE_DE_DESCONTO,
+    });
   } catch (err) {
     next(err);
   }
@@ -6771,18 +6860,39 @@ coreRouter.put('/sale-policies', (req: AuthedRequest, res, next) => {
     const { companyId, userId } = scope(req);
     const corpo = req.body ?? {};
 
+    /*
+      OS LIMITES POR PERFIL SÃO CONFERIDOS ANTES DE QUALQUER ESCRITA (P0 da
+      Preço Justo). Ausente = a lista fica como está (cliente antigo da tela
+      não apaga a configuração de ninguém); presente = é o estado final. Um
+      valor recusado não pode deixar a política gravada pela metade.
+    */
+    const limitesPedidos =
+      corpo.limitesPorPerfil === undefined ? null : normalizarLimitesPorPerfil(corpo.limitesPorPerfil);
+    const limitesAntes = limitesPorPerfil(companyId);
+
     // Ausente e nulo são coisas diferentes para uma tela parcial, mas aqui a
     // tela manda os três campos sempre — e o campo apagado chega como null ou
     // string vazia, que salvarPolitica lê como "volta ao padrão do sistema".
-    const politica = salvarPolitica({
-      companyId,
-      userId,
-      discountLimitPercent: corpo.discountLimitPercent ?? null,
-      creditSaleDueDays: corpo.creditSaleDueDays ?? null,
-      reservationValidDays: corpo.reservationValidDays ?? null,
-      cashWithdrawalLimitReais: corpo.cashWithdrawalLimitReais ?? null,
-      // Faturar a OS a prazo (GAP-PRD-104): ausente volta ao padrão, desligado.
-      workshopCreditEnabled: corpo.workshopCreditEnabled ?? null,
+    const { politica, limites } = withTransaction(() => {
+      const gravada = salvarPolitica({
+        companyId,
+        userId,
+        discountLimitPercent: corpo.discountLimitPercent ?? null,
+        creditSaleDueDays: corpo.creditSaleDueDays ?? null,
+        reservationValidDays: corpo.reservationValidDays ?? null,
+        cashWithdrawalLimitReais: corpo.cashWithdrawalLimitReais ?? null,
+        // Faturar a OS a prazo (GAP-PRD-104): ausente volta ao padrão, desligado.
+        workshopCreditEnabled: corpo.workshopCreditEnabled ?? null,
+        // Motivo obrigatório na liberação de desconto: AUSENTE MANTÉM — é trava
+        // de segurança, e cliente antigo não a desliga em silêncio.
+        discountReasonRequired: corpo.discountReasonRequired,
+      });
+      return {
+        politica: gravada,
+        limites: limitesPedidos
+          ? gravarLimitesPorPerfil({ companyId, userId, limites: limitesPedidos })
+          : limitesAntes,
+      };
     });
 
     // Auditoria obrigatória: mudar o limite de desconto é mudar quanto a loja
@@ -6800,11 +6910,16 @@ coreRouter.put('/sale-policies', (req: AuthedRequest, res, next) => {
         reservationValidDays: politica.reservationValidDays,
         cashWithdrawalLimitCents: politica.cashWithdrawalLimitCents,
         workshopCreditEnabled: politica.workshopCreditEnabled,
+        discountReasonRequired: politica.discountReasonRequired,
         definidos: politica.definidos,
+        // O estado final dos limites por perfil — e o de antes, quando mudou:
+        // "por que a atendente passou a dar 15%?" só se responde com os dois.
+        limitesPorPerfil: limites,
+        ...(limitesPedidos ? { limitesPorPerfilAntes: limitesAntes } : {}),
       },
     });
 
-    res.json(politica);
+    res.json({ ...politica, limitesPorPerfil: limites, perfisComLimite: PERFIS_COM_LIMITE_DE_DESCONTO });
   } catch (err) {
     next(err);
   }
@@ -10959,7 +11074,9 @@ coreRouter.post('/workshop/orders/:id/checkout', (req: AuthedRequest, res, next)
           // A concessão fica registrada mesmo quando passou — como na venda
           // do balcão, é a que passou que o dono precisa poder revisar.
           concessao: resultado.concessao,
-          authorizationId: req.body?.authorizationId ?? null,
+          // A liberação GASTA e a trilha da alçada, lidas do servidor (P0).
+          authorizationId: resultado.alcada?.liberacao?.id ?? null,
+          alcada: resultado.alcada,
           fiado: (Array.isArray(req.body?.payments) ? req.body.payments : []).length === 0,
         },
       });

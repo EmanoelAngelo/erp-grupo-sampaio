@@ -26,15 +26,20 @@ import { priceTableForCustomer } from './CatalogAuxService.js';
 import {
   origemDoPrecoDaGestao,
   pisoDoPreco,
-  politicaDaEmpresa,
   validadeDaReserva,
 } from './SalePolicyService.js';
 import {
   consumirLiberacaoDeConcessao,
-  discountNeedsAuthorization,
   percentualDaConcessao,
   temAlcadaParaLiberar,
 } from './AuthorizationService.js';
+import {
+  conferirAlcadaDoAutorizador,
+  excessosDaConcessao,
+  fraseDoExcesso,
+  limiteDaAlcada,
+  type MedidaDaConcessao,
+} from './LimiteDeDesconto.js';
 import { createSale, exigirVendedorDaCasa } from './SalesService.js';
 import { recordAudit } from '../audit/AuditService.js';
 import { emReais } from './Money.js';
@@ -585,17 +590,35 @@ function cobrarAlcadaDoDocumento(input: {
    * porta da concessão, com a mesma liberação, como na venda do balcão.
    */
   abaixoDoPiso: LinhaAbaixoDoPiso[];
+  /**
+   * As linhas precificadas, para o teto POR ITEM (P0 da Preço Justo). No
+   * documento a linha concede o preço rebaixado — não há desconto de linha.
+   */
+  linhas: LinhaPrecificada[];
   alcada?: { profileCodes: string[]; authorizationId?: string | null };
   now: string;
 }): string | null {
   if (!input.alcada) return null;
-  const limite = politicaDaEmpresa(input.companyId).discountLimitPercent;
-  const precisaPelaConcessao = discountNeedsAuthorization(
-    input.concessao.brutoCents,
-    input.concessao.concedidoCents,
-    input.alcada.profileCodes,
-    limite,
-  );
+  /*
+    A MESMA RÉGUA DA VENDA (P0 da Preço Justo): o limite do PERFIL de quem
+    escreve, em % e em R$, no documento inteiro e em cada linha. Uma régua mais
+    frouxa aqui reabriria a venda em duas etapas — escrever no orçamento o que
+    o balcão recusaria e converter depois.
+  */
+  const limiteDoDocumento = limiteDaAlcada(input.companyId, input.alcada);
+  const medida: MedidaDaConcessao = {
+    brutoCents: input.concessao.brutoCents,
+    concedidoCents: input.concessao.concedidoCents,
+    linhas: input.linhas.map((l) => ({
+      productId: l.product.id,
+      nome: l.product.name,
+      brutoCents: l.brutoLinha,
+      concedidoCents: l.rebaixado,
+    })),
+  };
+  const excessos = excessosDaConcessao(limiteDoDocumento, medida);
+  const limite = limiteDoDocumento.percentual;
+  const precisaPelaConcessao = excessos.length > 0;
   // Quem tem alçada não pede a si mesmo — a mesma regra do piso na venda.
   const precisaPeloPiso =
     input.abaixoDoPiso.length > 0 && !temAlcadaParaLiberar(input.alcada.profileCodes);
@@ -617,6 +640,16 @@ function cobrarAlcadaDoDocumento(input: {
         now: input.now,
       })
     : null;
+
+  // Quem assinou só libera dentro da própria alçada — a mesma conferência da
+  // venda, dentro da transação do documento (P0 da Preço Justo).
+  if (consumida) {
+    conferirAlcadaDoAutorizador({
+      companyId: input.companyId,
+      authorizedBy: consumida.authorizedBy,
+      medida,
+    });
+  }
 
   if (!consumida) {
     const de: string[] = [];
@@ -659,10 +692,18 @@ function cobrarAlcadaDoDocumento(input: {
     if (input.abaixoDoPiso.some((l) => l.precoDoCadastroCents !== null)) {
       semLiberacao.push('corrija em Produtos o preço de venda que está abaixo do piso');
     }
+    // Os tetos nomeados, como na venda: o percentual com a frase de sempre, os
+    // novos (valor, por linha) depois, cada um com os números.
+    const excessoDoDocumento = excessos.find((e) => e.regra === 'percentual_venda');
+    const outrosTetos = excessos.filter((e) => e.regra !== 'percentual_venda').map(fraseDoExcesso);
+    const deQuem = limiteDoDocumento.doPerfil ? 'do seu perfil nesta operação' : 'desta operação';
     const mensagem = precisaPelaConcessao
       ? `${documento} concede ${emReais(input.concessao.concedidoCents)} sobre `
-        + `${emReais(input.concessao.brutoCents)} (${input.concessao.percentual}%), acima do `
-        + `limite de ${limite}% desta operação. `
+        + `${emReais(input.concessao.brutoCents)} (${input.concessao.percentual}%)`
+        + (excessoDoDocumento ? `, acima do limite de ${excessoDoDocumento.limite}% ${deQuem}. ` : '. ')
+        + (outrosTetos.length > 0
+          ? `Passa ${excessoDoDocumento ? 'também ' : ''}dos tetos ${deQuem}: ${outrosTetos.join('; ')}. `
+          : '')
         + (de.length > 0 ? `Vem de ${de.join(', ')}. ` : '')
         + (doPiso.length > 0 ? `Além disso, ${doPiso.join('; ')}. ` : '')
         + 'Peça a liberação de um gestor agora — depois de aprovado, o documento fecha '
@@ -683,6 +724,8 @@ function cobrarAlcadaDoDocumento(input: {
         brutoCents: input.concessao.brutoCents,
         origens: input.concessao.origens,
         limite,
+        limites: limiteDoDocumento,
+        ...(excessos.length > 0 ? { excessos } : {}),
         kind: input.kind,
         ...(input.abaixoDoPiso.length > 0 ? { abaixoDoPiso: input.abaixoDoPiso } : {}),
       },
@@ -896,6 +939,7 @@ export function createQuote(input: {
       kind,
       concessao,
       abaixoDoPiso,
+      linhas: precificados,
       alcada: input.alcada,
       now,
     });
@@ -1217,6 +1261,7 @@ export function updateQuote(input: {
       kind,
       concessao,
       abaixoDoPiso,
+      linhas,
       alcada: input.alcada,
       now,
     });

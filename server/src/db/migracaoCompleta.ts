@@ -22,7 +22,10 @@ import {
 } from './core-migrations.js';
 import { closeConnection, resolveDatabasePath } from './sqlite.js';
 import { ensurePermissionTemplates } from '../services/auth/AcessoService.js';
-import { ativarDevolucaoEmDuasEtapasNaPrecoJusto } from '../services/core/SalePolicyService.js';
+import {
+  ativarDevolucaoEmDuasEtapasNaPrecoJusto,
+  exigirMotivoDaLiberacaoNaPrecoJusto,
+} from '../services/core/SalePolicyService.js';
 import { fraseDaSituacao, versoesDoArquivo, versoesDoBancoEmUso, type VersoesDoEsquema } from './versaoDoEsquema.js';
 import { BancoOcupado, assumirInstanciaAgora, type Trava } from '../services/implantacao/instanciaUnica.js';
 
@@ -34,6 +37,10 @@ export function prepararBanco(opcoes: OpcoesDaMigracao = {}): { nucleo: { de: nu
   // A devolução em duas etapas nasce ligada só na Preço Justo, e só onde o
   // dono ainda não escolheu (ver SalePolicyService).
   ativarDevolucaoEmDuasEtapasNaPrecoJusto();
+  // O motivo da liberação de desconto passa a ser obrigatório na Preço Justo,
+  // e só onde o dono ainda não escolheu (P0 — ver SalePolicyService). Não cria
+  // limite por perfil nenhum: esses números são do dono.
+  exigirMotivoDaLiberacaoNaPrecoJusto();
   // Os modelos de permissão de sistema (RBAC granular): semeados a cada
   // subida, sem sobrescrever o que o dono editou — ver `AcessoService.ts`.
   ensurePermissionTemplates();

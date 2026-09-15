@@ -347,7 +347,14 @@ export function EstadoConexao() {
               const entrega = await vendasOfflineApi.entregar({
                 idempotencyKey: item.idempotencyKey,
                 label: item.label,
-                body: item.body,
+                /*
+                  O CORPO VAI COM QUEM VENDEU (P0 da Preço Justo). Era o corpo
+                  cru: a pendência perdia a pessoa, e o relançamento em
+                  "Regularizar" media o desconto da atendente contra o limite de
+                  quem clicou. Com `vendaGuardada`, o servidor mede pela régua
+                  mais estreita das duas — e o campo só estreita, nunca abre.
+                */
+                body: corpoDoReenvio(item),
                 queuedAt: item.queuedAt,
                 errorCode: e.code ?? null,
                 errorMessage: e.message ?? null,

@@ -33,6 +33,7 @@ import {
   type Concessao,
   type SalePaymentInput,
   type SaleRecord,
+  type TrilhaDaAlcada,
 } from './SalesService.js';
 import { getOrder, searchOrders, settleOrder, type ServiceOrder } from './WorkshopCoreService.js';
 import { consumirPromessasDaOs } from './WorkshopPartsReservation.js';
@@ -140,6 +141,11 @@ export interface RecebimentoDaOs {
   replay: boolean;
   /** A concessão medida — nula no replay, como em `createSale`. */
   concessao: Concessao | null;
+  /**
+   * A trilha da alçada (limite, excessos, quem liberou e por quê) — a mesma da
+   * venda do balcão, lida do servidor. Nula no replay (P0 da Preço Justo).
+   */
+  alcada: TrilhaDaAlcada | null;
 }
 
 type VendaComChave = SaleRecord & { idempotency_key: string; idempotency_fingerprint: string | null };
@@ -255,7 +261,7 @@ export function receberOs(input: ReceberOsInput): RecebimentoDaOs {
     ) {
       throw chaveReusada(`a venda #${anterior.number} desta OS`, { saleId: anterior.id, saleNumber: anterior.number });
     }
-    return { order, sale: semChave(anterior), replay: true, concessao: null };
+    return { order, sale: semChave(anterior), replay: true, concessao: null, alcada: null };
   }
 
   if (order.status !== 'aguardando_pagamento') {
@@ -384,6 +390,7 @@ export function receberOs(input: ReceberOsInput): RecebimentoDaOs {
       sale: result.sale,
       replay: result.duplicated,
       concessao: result.concessao,
+      alcada: result.alcada,
     };
   });
 }

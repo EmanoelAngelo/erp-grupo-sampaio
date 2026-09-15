@@ -1407,6 +1407,15 @@ export interface PoliticaDeVenda {
    * servidor anterior ao campo não o devolve — e ausente lê como desligado.
    */
   workshopCreditEnabled?: boolean;
+  /**
+   * A liberação de desconto exige MOTIVO digitado (P0 da Preço Justo).
+   * Opcional porque servidor anterior ao campo não o devolve.
+   */
+  discountReasonRequired?: boolean;
+  /** Os limites de desconto por perfil gravados nesta operação (P0). */
+  limitesPorPerfil?: LimiteDeDescontoDoPerfil[];
+  /** Os perfis que ACEITAM limite próprio — é a lista de linhas da tela. */
+  perfisComLimite?: string[];
   definidos: {
     discountLimitPercent: boolean;
     creditSaleDueDays: boolean;
@@ -1419,7 +1428,31 @@ export interface PoliticaDeVenda {
      */
     cashWithdrawalLimitCents: boolean;
     workshopCreditEnabled?: boolean;
+    discountReasonRequired?: boolean;
   };
+}
+
+/**
+ * O LIMITE DE DESCONTO DE UM PERFIL (P0 da Preço Justo) — como o servidor
+ * guarda: percentuais em pontos, valores em CENTAVOS. Nulo = sem este teto,
+ * com a exceção que o servidor aplica: `maxPercent` nulo num perfil sem alçada
+ * é o limite da operação.
+ */
+export interface LimiteDeDescontoDoPerfil {
+  profileCode: string;
+  maxPercent: number | null;
+  maxCents: number | null;
+  itemMaxPercent: number | null;
+  itemMaxCents: number | null;
+}
+
+/** Os quatro tetos que valem para QUEM está logado (GET /sales/discount-policy). */
+export interface LimiteEfetivoDeDesconto {
+  percentual: number | null;
+  valorCents: number | null;
+  itemPercentual: number | null;
+  itemValorCents: number | null;
+  doPerfil: boolean;
 }
 
 /**
@@ -1436,7 +1469,12 @@ export interface DetalheDeConcessao {
   concedidoCents: number;
   brutoCents: number;
   origens: { cabecalho: number; itens: number; precoRebaixado: number };
-  limite: number;
+  /**
+   * O teto em % de quem está no balcão. NULO quando o perfil não tem teto em
+   * percentual — só em valor ou por item (P0 da Preço Justo). Era lido como
+   * zero, e a tela mostraria "limite 0%" para quem não tem limite em %.
+   */
+  limite: number | null;
 }
 
 /**
@@ -1463,7 +1501,8 @@ export function detalheDeConcessao(details: unknown): DetalheDeConcessao | null 
       itens: numero(origens.itens),
       precoRebaixado: numero(origens.precoRebaixado),
     },
-    limite: numero(d.limite),
+    // Ausente ou nulo NÃO é zero: quem lê cai no limite que já conhece.
+    limite: typeof d.limite === 'number' && Number.isFinite(d.limite) ? d.limite : null,
   };
 }
 
@@ -3520,6 +3559,8 @@ export interface Authorization {
   ip: string | null;
   /** Até quando o bilhete vale — derivado, não gravado. */
   expiresAt: string;
+  /** O motivo digitado na liberação (P0 da Preço Justo). Opcional: servidor antigo não manda. */
+  justificativa?: string | null;
 }
 
 /**
@@ -3539,6 +3580,8 @@ export interface LiberacaoDeGestor {
   authorized_by: string;
   authorized_by_name: string | null;
   reason: string | null;
+  /** O motivo digitado por gente (P0); `reason` é a frase montada pela tela. */
+  justification?: string | null;
   reference_id: string | null;
   granted_concession_cents: number | null;
   consumed_ref_type: string | null;
@@ -6183,9 +6226,14 @@ export const coreApi = {
    * gerente (é lá que se EDITA a política), e por isso não serve ao PDV.
    */
   discountPolicy: () =>
-    apiRequest<{ operatorLimitPercent: number; canAuthorizeSelf: boolean }>(
-      '/core/sales/discount-policy',
-    ),
+    apiRequest<{
+      operatorLimitPercent: number;
+      canAuthorizeSelf: boolean;
+      /** Os tetos DESTA pessoa (P0). Opcional: servidor antigo não manda. */
+      limiteDoPerfil?: LimiteEfetivoDeDesconto;
+      /** A liberação de desconto exige motivo nesta operação (P0). */
+      motivoObrigatorio?: boolean;
+    }>('/core/sales/discount-policy'),
 
   // ------------------------------------------- política comercial do balcão
 
@@ -6242,6 +6290,24 @@ export const coreApi = {
      * recusa texto, e ausente volta ao padrão, que é desligado.
      */
     workshopCreditEnabled?: boolean;
+    /**
+     * Exigir motivo na liberação de desconto (P0). Ausente MANTÉM o gravado —
+     * é trava de segurança, e o servidor não a desliga por omissão.
+     */
+    discountReasonRequired?: boolean;
+    /**
+     * A lista INTEIRA de limites por perfil (P0), em TEXTO como os campos de
+     * cima e com a mesma razão: `''` é "sem este teto", e o erro de digitação
+     * é recusado pelo servidor com o nome do campo. Valores em REAIS.
+     * Ausente = a lista gravada fica como está.
+     */
+    limitesPorPerfil?: {
+      profileCode: string;
+      maxPercent: string;
+      maxReais: string;
+      itemMaxPercent: string;
+      itemMaxReais: string;
+    }[];
   }) => apiRequest<PoliticaDeVenda>('/core/sale-policies', { method: 'PUT', body: input }),
 
   /**
@@ -6282,6 +6348,12 @@ export const coreApi = {
     concedidoCents?: number;
     /** O denominador: sem ele o teto não vira percentual e não compara. */
     brutoCents?: number;
+    /**
+     * O MOTIVO digitado por gente (P0 da Preço Justo) — obrigatório na
+     * liberação de desconto onde a operação exige. `reason` continua sendo a
+     * frase com os números, montada pela tela.
+     */
+    justificativa?: string;
   }) => apiRequest<Authorization>('/core/authorizations', { method: 'POST', body: input }),
 
   /**

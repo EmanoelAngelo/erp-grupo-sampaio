@@ -192,7 +192,7 @@ export function RecebimentoOsDialog({
   );
 
   const autorizar = useCallback(
-    async (login: string, password: string) => {
+    async (login: string, password: string, justificativa?: string) => {
       if (!pedindoGestor) return;
       setOcupado(true);
       setErroGestor(null);
@@ -206,6 +206,8 @@ export function RecebimentoOsDialog({
           reason:
             `Desconto de ${formatCents(pedindoGestor.concedidoCents ?? desconto)} `
             + `na OS #${os.number} (${formatCents(os.total_cents)})`,
+          // O PORQUÊ digitado (P0 da Preço Justo); vazio não viaja.
+          justificativa: justificativa || undefined,
         });
         const corpo = { ...pedindoGestor.corpo, authorizationId: bilhete.id };
         setPedindoGestor(null);
@@ -222,7 +224,10 @@ export function RecebimentoOsDialog({
   const gestor = pedindoGestor && (
     <AutorizacaoGerenteDialog
       motivo={pedindoGestor.motivo}
-      onConfirm={(login, password) => void autorizar(login, password)}
+      // O motivo aparece sempre; quem decide se é obrigatório é o servidor, e a
+      // recusa dele chega pelo `error` com a frase que diz o que falta.
+      justificativa={{ obrigatorio: false }}
+      onConfirm={(login, password, justificativa) => void autorizar(login, password, justificativa)}
       onCancel={() => setPedindoGestor(null)}
       busy={ocupado}
       error={erroGestor}

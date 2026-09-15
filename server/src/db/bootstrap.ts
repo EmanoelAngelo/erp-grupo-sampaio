@@ -60,7 +60,10 @@ import {
 import { hashPassword } from '../services/auth/PasswordService.js';
 import { recordAudit } from '../services/audit/AuditService.js';
 import { PRESET_OFICIAL } from '../services/core/StorefrontPresets.js';
-import { ativarDevolucaoEmDuasEtapasNaPrecoJusto } from '../services/core/SalePolicyService.js';
+import {
+  ativarDevolucaoEmDuasEtapasNaPrecoJusto,
+  exigirMotivoDaLiberacaoNaPrecoJusto,
+} from '../services/core/SalePolicyService.js';
 import { logInfo, logWarn } from '../utils/errors.js';
 import {
   LOGIN_DO_ADMINISTRADOR_INICIAL,
@@ -201,6 +204,8 @@ export function garantirEstruturaDoGrupo(): string[] {
   // E pelo mesmo motivo: num banco novo a Preço Justo nasce aqui, depois da
   // subida — a devolução em duas etapas é ligada nela agora.
   ativarDevolucaoEmDuasEtapasNaPrecoJusto();
+  // E o motivo obrigatório da liberação de desconto, pelo mesmo motivo (P0).
+  exigirMotivoDaLiberacaoNaPrecoJusto();
   return criadas;
 }
 

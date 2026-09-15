@@ -142,6 +142,69 @@ function temTeto(cents: number | null | undefined): cents is number {
   return typeof cents === 'number';
 }
 
+/**
+ * O nome de cada perfil que aceita limite próprio (P0 da Preço Justo) — o
+ * mesmo vocabulário da tela de Equipe. A LISTA vem do servidor
+ * (`perfisComLimite`); aqui mora só o rótulo, e perfil sem rótulo aparece com
+ * o código em vez de sumir.
+ */
+const ROTULO_DO_PERFIL: Record<string, string> = {
+  operador_caixa_loja: 'Operador de caixa (loja)',
+  operador_caixa_oficina: 'Caixa da oficina',
+  operador_caixa: 'Operador de caixa',
+  atendente: 'Atendente',
+  estoquista: 'Estoquista',
+  mecanico: 'Mecânico / técnico',
+  gerente_loja: 'Gerente de loja',
+  gerente_oficina: 'Gerente de oficina',
+  gerente_operacao_loja: 'Gerente de operação',
+  gestor: 'Gestor',
+};
+
+/**
+ * Quem tem alçada: para eles o % da venda em branco é SEM TETO — para os
+ * outros, é o limite de cima. É o espelho de `AUTHORIZERS` do servidor, só
+ * para a dica do campo; quem decide é o servidor.
+ */
+const PERFIS_COM_ALCADA = new Set(['gerente_loja', 'gerente_oficina', 'gestor']);
+
+type CampoDoLimite = 'maxPercent' | 'maxReais' | 'itemMaxPercent' | 'itemMaxReais';
+
+const ROTULO_DO_CAMPO: Record<CampoDoLimite, string> = {
+  maxPercent: 'desconto da venda (%)',
+  maxReais: 'desconto da venda (R$)',
+  itemMaxPercent: 'desconto por item (%)',
+  itemMaxReais: 'desconto por item (R$)',
+};
+
+/** Uma linha da tabela de limites, em TEXTO — como os outros campos da tela. */
+interface LinhaDeLimite {
+  profileCode: string;
+  maxPercent: string;
+  maxReais: string;
+  itemMaxPercent: string;
+  itemMaxReais: string;
+}
+
+/**
+ * As linhas da tabela: um perfil por linha, na ordem do servidor, com o que
+ * está gravado — e vazio onde não há teto. Percentual como número cru ("7.5"),
+ * valor em reais no formato brasileiro, como o teto da sangria.
+ */
+function linhasDeLimite(p: PoliticaDeVenda): LinhaDeLimite[] {
+  const porPerfil = new Map((p.limitesPorPerfil ?? []).map((l) => [l.profileCode, l]));
+  return (p.perfisComLimite ?? []).map((perfil) => {
+    const l = porPerfil.get(perfil);
+    return {
+      profileCode: perfil,
+      maxPercent: l?.maxPercent == null ? '' : String(l.maxPercent),
+      maxReais: tetoParaOCampo(l?.maxCents),
+      itemMaxPercent: l?.itemMaxPercent == null ? '' : String(l.itemMaxPercent),
+      itemMaxReais: tetoParaOCampo(l?.itemMaxCents),
+    };
+  });
+}
+
 /** Um número da política, com o rótulo que diz de onde ele veio. */
 function ValorVigente({
   valor,
@@ -175,6 +238,10 @@ export default function PoliticaVendaPage() {
   const [tetoSangria, setTetoSangria] = useState('');
   /** Faturar OS a prazo (GAP-PRD-104). Desmarcado é o padrão seguro. */
   const [faturaOs, setFaturaOs] = useState(false);
+  /** Exigir motivo na liberação de desconto (P0 da Preço Justo). */
+  const [motivoObrigatorio, setMotivoObrigatorio] = useState(false);
+  /** Os limites por perfil, em texto, uma linha por perfil (P0). */
+  const [limites, setLimites] = useState<LinhaDeLimite[]>([]);
   const [erro, setErro] = useState<string | null>(null);
   /**
    * Recusa de PERMISSÃO é estado próprio, e não uma mensagem de erro qualquer.
@@ -195,6 +262,12 @@ export default function PoliticaVendaPage() {
     setTetoSangria(tetoParaOCampo(p.cashWithdrawalLimitCents));
     // Servidor anterior ao campo não o devolve: lê como desligado, o padrão.
     setFaturaOs(p.workshopCreditEnabled === true);
+    setMotivoObrigatorio(p.discountReasonRequired === true);
+    setLimites(linhasDeLimite(p));
+  }, []);
+
+  const mudarLimite = useCallback((perfil: string, campo: CampoDoLimite, valor: string) => {
+    setLimites((ls) => ls.map((l) => (l.profileCode === perfil ? { ...l, [campo]: valor } : l)));
   }, []);
 
   const carregar = useCallback(async () => {
@@ -225,12 +298,32 @@ export default function PoliticaVendaPage() {
     setAviso(null);
     try {
       const tetoPedido = paraOServidor(tetoSangria);
+      /*
+        Os dois campos do P0 só viajam para o servidor que os conhece — o que
+        devolveu `perfisComLimite`. Durante um deploy a tela nova conversa com a
+        API antiga, e mandar uma lista vazia de limites para quem não sabe o
+        que ela é não faria mal; mandar para quem SABE, sem ter lido o que está
+        gravado, apagaria os limites de todo mundo.
+      */
+      const servidorConheceLimites = Array.isArray(politica?.perfisComLimite);
       const p = await coreApi.saveSalePolicy({
         discountLimitPercent: paraOServidor(limite),
         creditSaleDueDays: paraOServidor(prazo),
         reservationValidDays: paraOServidor(validade),
         cashWithdrawalLimitReais: tetoPedido,
         workshopCreditEnabled: faturaOs,
+        ...(servidorConheceLimites
+          ? {
+              discountReasonRequired: motivoObrigatorio,
+              limitesPorPerfil: limites.map((l) => ({
+                profileCode: l.profileCode,
+                maxPercent: paraOServidor(l.maxPercent),
+                maxReais: paraOServidor(l.maxReais),
+                itemMaxPercent: paraOServidor(l.itemMaxPercent),
+                itemMaxReais: paraOServidor(l.itemMaxReais),
+              })),
+            }
+          : {}),
       });
       aplicar(p);
       // O aviso repete o que FICOU VALENDO, lido da resposta e não do que foi
@@ -520,6 +613,85 @@ export default function PoliticaVendaPage() {
                 justamente quando alguém decidiu protegê-lo. O PDV mostra o teto antes de o
                 operador digitar o valor.
               </p>
+
+              {/*
+                O MOTIVO OBRIGATÓRIO E O LIMITE POR PERFIL (P0 da Preço Justo).
+
+                O limite de cima era o ÚNICO número da alçada: igual para o caixa
+                novo e para a atendente, só em %, só na venda inteira — e quem
+                tinha perfil de gerente não tinha teto nenhum. Cada linha abaixo
+                dá a um perfil tetos próprios, na venda e em cada item, em % e em
+                R$. Só aparece quando o servidor conhece a tabela.
+              */}
+              {Array.isArray(politica.perfisComLimite) && (
+                <>
+                  <label className="flex items-start gap-2 text-[length:var(--gs-text-sm)]">
+                    <input
+                      type="checkbox"
+                      aria-label="Exigir motivo na liberação de desconto"
+                      checked={motivoObrigatorio}
+                      onChange={(e) => setMotivoObrigatorio(e.target.checked)}
+                      className="mt-1"
+                    />
+                    <span>
+                      <strong>Exigir motivo na liberação de desconto.</strong> A senha do gestor só
+                      libera o desconto acima do limite com o porquê digitado — ele fica na auditoria
+                      junto do nome de quem liberou e de quem pediu.
+                    </span>
+                  </label>
+
+                  <div className="flex flex-col gap-2">
+                    <strong className="text-[length:var(--gs-text-sm)] text-[var(--gs-purple-900)]">
+                      Limite de desconto por perfil
+                    </strong>
+                    <p className="m-0 text-[length:var(--gs-text-sm)] text-[var(--gs-muted)]">
+                      Em branco é sem este teto — com uma exceção: o % da venda em branco, para quem
+                      não tem alçada, é o limite de cima. Gerente e gestor sem linha aqui continuam
+                      sem teto. Acima de qualquer teto o PDV pede a senha de um gestor, e o gestor só
+                      libera dentro dos tetos do perfil dele. O item mede o desconto e o preço
+                      rebaixado da linha; a venda mede tudo, rodapé incluído.
+                    </p>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-[length:var(--gs-text-sm)] border-collapse">
+                        <thead>
+                          <tr>
+                            <th className="text-left p-1">Perfil</th>
+                            <th className="text-left p-1">Venda (%)</th>
+                            <th className="text-left p-1">Venda (R$)</th>
+                            <th className="text-left p-1">Item (%)</th>
+                            <th className="text-left p-1">Item (R$)</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {limites.map((l) => {
+                            const rotulo = ROTULO_DO_PERFIL[l.profileCode] ?? l.profileCode;
+                            return (
+                              <tr key={l.profileCode}>
+                                <td className="p-1 whitespace-nowrap">{rotulo}</td>
+                                {(Object.keys(ROTULO_DO_CAMPO) as CampoDoLimite[]).map((campo) => (
+                                  <td key={campo} className="p-1 min-w-[6.5rem]">
+                                    <Input
+                                      aria-label={`${rotulo}: ${ROTULO_DO_CAMPO[campo]}`}
+                                      value={l[campo]}
+                                      inputMode="decimal"
+                                      placeholder={
+                                        campo === 'maxPercent' && !PERFIS_COM_ALCADA.has(l.profileCode)
+                                          ? 'o de cima'
+                                          : 'sem teto'
+                                      }
+                                      onChange={(e) => mudarLimite(l.profileCode, campo, e.target.value)}
+                                    />
+                                  </td>
+                                ))}
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </>
+              )}
 
               <div>
                 <Button onClick={() => void salvar()} loading={salvando}>

@@ -31,7 +31,7 @@
  * mesmo commit. Sem esse freio, esta tabela vira o depósito de quinze colunas
  * que ninguém lê, que é exatamente o que payment_term_days já foi.
  */
-import { getConnection } from '../../db/sqlite.js';
+import { getConnection, withTransaction } from '../../db/sqlite.js';
 import { ensureCoreSchema } from '../../db/schema.js';
 import { ApiError } from '../../utils/errors.js';
 import { fimDoDia, hojeNaLoja, somarDias } from './CalendarioOperacional.js';
@@ -75,6 +75,12 @@ export interface PoliticaDeVenda {
    * trava mora no recebimento da OS, que é quem lê este campo.
    */
   workshopCreditEnabled: boolean;
+  /**
+   * A liberação de desconto acima da alçada só vale com MOTIVO digitado
+   * (P0 da Preço Justo). Falso é o padrão, e é o comportamento de sempre: o
+   * motivo continua aceito, só não é exigido. Leitor: `authorizeAction`.
+   */
+  discountReasonRequired: boolean;
   /** Quais vieram do cadastro e quais são o padrão — a tela mostra a diferença. */
   definidos: {
     discountLimitPercent: boolean;
@@ -82,6 +88,7 @@ export interface PoliticaDeVenda {
     reservationValidDays: boolean;
     cashWithdrawalLimitCents: boolean;
     workshopCreditEnabled: boolean;
+    discountReasonRequired: boolean;
   };
 }
 
@@ -91,6 +98,7 @@ interface LinhaDePolitica {
   reservation_valid_days: number | null;
   cash_withdrawal_limit_cents: number | null;
   workshop_credit_enabled: number | null;
+  discount_reason_required: number | null;
 }
 
 /**
@@ -105,7 +113,7 @@ export function politicaDaEmpresa(companyId: string): PoliticaDeVenda {
   const linha = getConnection()
     .prepare(
       `SELECT discount_limit_percent, credit_sale_due_days, reservation_valid_days,
-              cash_withdrawal_limit_cents, workshop_credit_enabled
+              cash_withdrawal_limit_cents, workshop_credit_enabled, discount_reason_required
          FROM core_sale_policies WHERE company_id = ?`,
     )
     .get(companyId) as LinhaDePolitica | undefined;
@@ -115,6 +123,7 @@ export function politicaDaEmpresa(companyId: string): PoliticaDeVenda {
   const validade = linha?.reservation_valid_days ?? null;
   const tetoSangria = linha?.cash_withdrawal_limit_cents ?? null;
   const faturaOs = linha?.workshop_credit_enabled ?? null;
+  const motivoObrigatorio = linha?.discount_reason_required ?? null;
 
   return {
     discountLimitPercent: limite ?? PADRAO_LIMITE_DESCONTO_PERCENT,
@@ -127,12 +136,15 @@ export function politicaDaEmpresa(companyId: string): PoliticaDeVenda {
     cashWithdrawalLimitCents: tetoSangria,
     // Nulo e zero são o mesmo "não": só o 1 gravado de propósito concede prazo.
     workshopCreditEnabled: faturaOs === 1,
+    // Mesmo molde: só o 1 gravado de propósito exige o motivo.
+    discountReasonRequired: motivoObrigatorio === 1,
     definidos: {
       discountLimitPercent: limite !== null,
       creditSaleDueDays: prazo !== null,
       reservationValidDays: validade !== null,
       cashWithdrawalLimitCents: tetoSangria !== null,
       workshopCreditEnabled: faturaOs !== null,
+      discountReasonRequired: motivoObrigatorio !== null,
     },
   };
 }
@@ -177,6 +189,211 @@ export function ativarDevolucaoEmDuasEtapasNaPrecoJusto(): boolean {
     )
     .run(agora, agora);
   return Number(r.changes) > 0;
+}
+
+/**
+ * EXIGE O MOTIVO DA LIBERAÇÃO DE DESCONTO NA PREÇO JUSTO — e só nela (P0).
+ *
+ * O mesmo molde de `ativarDevolucaoEmDuasEtapasNaPrecoJusto`, e pelo mesmo
+ * motivo: roda a cada subida (`prepararBanco`) e no bootstrap (banco novo), e
+ * só escreve onde a coluna está NULA. O "não" que o dono gravar depois (0)
+ * fica; as outras cinco operações seguem com o motivo opcional, que é o
+ * comportamento de sempre — esta função não as toca. Devolve se escreveu.
+ *
+ * NÃO cria limite por perfil nenhum, e é decisão: quanto a atendente dá e quanto
+ * uma linha aguenta são números do DONO. Inventá-los aqui mudaria o balcão da
+ * loja num deploy que ninguém pediu. Sem linha em `core_discount_limits`, a
+ * Preço Justo vende com os limites de hoje até alguém configurar a tela.
+ */
+export function exigirMotivoDaLiberacaoNaPrecoJusto(): boolean {
+  ensureCoreSchema();
+  const agora = new Date().toISOString();
+  const r = getConnection()
+    .prepare(
+      `INSERT INTO core_sale_policies (company_id, discount_reason_required, created_at, updated_at)
+       SELECT id, 1, ?, ? FROM core_companies WHERE slug = 'preco-justo'
+       ON CONFLICT (company_id) DO UPDATE SET
+         discount_reason_required = 1,
+         updated_at               = excluded.updated_at
+       WHERE core_sale_policies.discount_reason_required IS NULL`,
+    )
+    .run(agora, agora);
+  return Number(r.changes) > 0;
+}
+
+/**
+ * OS PERFIS QUE PODEM TER LIMITE PRÓPRIO DE DESCONTO (P0 da Preço Justo).
+ *
+ * Todo perfil que vende ou libera, e só eles. `admin_geral` fica FORA de
+ * propósito: é a alçada que responde pelo grupo inteiro, e um teto nele poderia
+ * deixar a operação sem ninguém capaz de liberar a concessão grande — a trava
+ * viraria balcão parado. `contador` não vende. Perfil fora desta lista é
+ * recusado na gravação: um erro de digitação no código do perfil viraria um
+ * limite que nunca vale para ninguém, e o dono acreditaria nele.
+ */
+export const PERFIS_COM_LIMITE_DE_DESCONTO = [
+  'operador_caixa_loja',
+  'operador_caixa_oficina',
+  'operador_caixa',
+  'atendente',
+  'estoquista',
+  'mecanico',
+  'gerente_loja',
+  'gerente_oficina',
+  'gerente_operacao_loja',
+  'gestor',
+] as const;
+
+/**
+ * O limite de desconto de UM perfil nesta operação — uma linha de
+ * `core_discount_limits`. Cada nulo é "sem este teto", com a exceção escrita
+ * na DDL: `maxPercent` nulo num perfil SEM alçada é o limite da operação.
+ */
+export interface LimitePorPerfil {
+  profileCode: string;
+  /** Concessão da venda inteira, em % do bruto. */
+  maxPercent: number | null;
+  /** Concessão da venda inteira, em CENTAVOS. */
+  maxCents: number | null;
+  /** Concessão de UMA linha, em % do bruto dela. */
+  itemMaxPercent: number | null;
+  /** Concessão de UMA linha, em CENTAVOS. */
+  itemMaxCents: number | null;
+}
+
+export function limitesPorPerfil(companyId: string): LimitePorPerfil[] {
+  ensureCoreSchema();
+  const linhas = getConnection()
+    .prepare(
+      `SELECT profile_code, max_percent, max_cents, item_max_percent, item_max_cents
+         FROM core_discount_limits WHERE company_id = ? ORDER BY profile_code`,
+    )
+    .all(companyId) as unknown as {
+    profile_code: string;
+    max_percent: number | null;
+    max_cents: number | null;
+    item_max_percent: number | null;
+    item_max_cents: number | null;
+  }[];
+  return linhas.map((l) => ({
+    profileCode: l.profile_code,
+    maxPercent: l.max_percent,
+    maxCents: l.max_cents,
+    itemMaxPercent: l.item_max_percent,
+    itemMaxCents: l.item_max_cents,
+  }));
+}
+
+/**
+ * Confere a lista que veio da tela ANTES de qualquer escrita — e recusa alto.
+ *
+ * A mesma régua de `salvarPolitica` (`numeroOuPadrao`): texto que não é número
+ * é recusado com o nome do campo, vazio é "sem este teto", e o valor em REAIS
+ * vira CENTAVOS aqui. Percentual é arredondado a duas casas na gravação, que é
+ * a precisão com que a venda compara (ver `passaDoPercentual`): guardar 7,125
+ * e comparar 7,13 faria a tela dizer um número e o balcão aplicar outro.
+ */
+export function normalizarLimitesPorPerfil(entrada: unknown): LimitePorPerfil[] {
+  if (!Array.isArray(entrada)) {
+    throw new ApiError(
+      'CORE_SALE_POLICY_INVALID',
+      'Limites por perfil: envie a lista de perfis.',
+      400,
+      { campo: 'limitesPorPerfil' },
+    );
+  }
+  const conhecidos = new Set<string>(PERFIS_COM_LIMITE_DE_DESCONTO);
+  const vistos = new Set<string>();
+  const percentual = { min: 0, max: 100, inteiro: false };
+  const reais = { min: 0, max: 1_000_000, inteiro: false };
+  const duasCasas = (v: number | null) => (v === null ? null : Math.round(v * 100) / 100);
+  const emCentavos = (v: number | null) => (v === null ? null : Math.round(v * 100));
+  return entrada.map((bruto) => {
+    const item = (bruto && typeof bruto === 'object' ? bruto : {}) as Record<string, unknown>;
+    const perfil = String(item.profileCode ?? '').trim();
+    if (!conhecidos.has(perfil)) {
+      throw new ApiError(
+        'CORE_SALE_POLICY_INVALID',
+        `Limites por perfil: "${perfil}" não é um perfil que vende ou libera desconto.`,
+        400,
+        { campo: 'limitesPorPerfil', profileCode: perfil },
+      );
+    }
+    if (vistos.has(perfil)) {
+      throw new ApiError(
+        'CORE_SALE_POLICY_INVALID',
+        `Limites por perfil: "${perfil}" aparece duas vezes.`,
+        400,
+        { campo: 'limitesPorPerfil', profileCode: perfil },
+      );
+    }
+    vistos.add(perfil);
+    return {
+      profileCode: perfil,
+      maxPercent: duasCasas(numeroOuPadrao(item.maxPercent, `Desconto da venda (${perfil}, %)`, percentual)),
+      maxCents: emCentavos(numeroOuPadrao(item.maxReais, `Desconto da venda (${perfil}, R$)`, reais)),
+      itemMaxPercent: duasCasas(
+        numeroOuPadrao(item.itemMaxPercent, `Desconto por item (${perfil}, %)`, percentual),
+      ),
+      itemMaxCents: emCentavos(numeroOuPadrao(item.itemMaxReais, `Desconto por item (${perfil}, R$)`, reais)),
+    };
+  });
+}
+
+/**
+ * Grava a lista INTEIRA de limites por perfil da operação.
+ *
+ * A lista é o estado final: perfil que saiu dela volta ao padrão (a linha é
+ * apagada), e perfil com os quatro tetos vazios também — linha com tudo nulo
+ * seria "configurado" sem configurar nada, e a trilha diria que alguém decidiu
+ * um limite que não existe. Configuração do dono, e não dado de venda: a venda
+ * que já aconteceu guardou na trilha dela o limite com que foi medida.
+ */
+export function gravarLimitesPorPerfil(input: {
+  companyId: string;
+  userId: string;
+  limites: LimitePorPerfil[];
+}): LimitePorPerfil[] {
+  ensureCoreSchema();
+  const db = getConnection();
+  const agora = new Date().toISOString();
+  const vale = input.limites.filter(
+    (l) => l.maxPercent !== null || l.maxCents !== null || l.itemMaxPercent !== null || l.itemMaxCents !== null,
+  );
+  withTransaction(() => {
+    const ficam = vale.map((l) => l.profileCode);
+    db.prepare(
+      `DELETE FROM core_discount_limits
+        WHERE company_id = ? AND profile_code NOT IN (${ficam.map(() => '?').join(', ') || "''"})`,
+    ).run(input.companyId, ...ficam);
+    const gravar = db.prepare(
+      `INSERT INTO core_discount_limits
+         (company_id, profile_code, max_percent, max_cents, item_max_percent, item_max_cents,
+          updated_by, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT (company_id, profile_code) DO UPDATE SET
+         max_percent      = excluded.max_percent,
+         max_cents        = excluded.max_cents,
+         item_max_percent = excluded.item_max_percent,
+         item_max_cents   = excluded.item_max_cents,
+         updated_by       = excluded.updated_by,
+         updated_at       = excluded.updated_at`,
+    );
+    for (const l of vale) {
+      gravar.run(
+        input.companyId,
+        l.profileCode,
+        l.maxPercent,
+        l.maxCents,
+        l.itemMaxPercent,
+        l.itemMaxCents,
+        input.userId,
+        agora,
+        agora,
+      );
+    }
+  });
+  return limitesPorPerfil(input.companyId);
 }
 
 /**
@@ -283,6 +500,16 @@ export function salvarPolitica(input: {
    * crédito que ninguém decidiu dar.
    */
   workshopCreditEnabled?: boolean | null;
+  /**
+   * Exigir motivo na liberação de desconto (P0 da Preço Justo).
+   *
+   * AUSENTE MANTÉM o que está gravado — ao contrário dos campos acima, e de
+   * propósito: é uma trava de segurança, e um cliente antigo que salvasse a
+   * política sem conhecer o campo não pode desligá-la em silêncio. `null`
+   * volta ao padrão (opcional); `true`/`false` gravam a escolha; texto é
+   * recusado, pelo mesmo argumento de `workshopCreditEnabled`.
+   */
+  discountReasonRequired?: boolean | null;
 }): PoliticaDeVenda {
   ensureCoreSchema();
 
@@ -346,23 +573,50 @@ export function salvarPolitica(input: {
   }
   const faturaOs = typeof faturaOsPedido === 'boolean' ? (faturaOsPedido ? 1 : 0) : null;
 
+  const motivoPedido: unknown = input.discountReasonRequired;
+  if (motivoPedido !== undefined && motivoPedido !== null && typeof motivoPedido !== 'boolean') {
+    throw new ApiError(
+      'CORE_SALE_POLICY_INVALID',
+      'Exigir motivo na liberação de desconto: responda sim ou não.',
+      400,
+      { campo: 'discountReasonRequired' },
+    );
+  }
+  // 1 no segundo parâmetro = "o pedido trouxe o campo, grave"; 0 = mantenha.
+  const trouxeMotivo = motivoPedido === undefined ? 0 : 1;
+  const motivoObrigatorio = typeof motivoPedido === 'boolean' ? (motivoPedido ? 1 : 0) : null;
+
   const agora = new Date().toISOString();
   getConnection()
     .prepare(
       `INSERT INTO core_sale_policies
          (company_id, discount_limit_percent, credit_sale_due_days,
           reservation_valid_days, cash_withdrawal_limit_cents, workshop_credit_enabled,
-          created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+          discount_reason_required, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT (company_id) DO UPDATE SET
          discount_limit_percent      = excluded.discount_limit_percent,
          credit_sale_due_days        = excluded.credit_sale_due_days,
          reservation_valid_days      = excluded.reservation_valid_days,
          cash_withdrawal_limit_cents = excluded.cash_withdrawal_limit_cents,
          workshop_credit_enabled     = excluded.workshop_credit_enabled,
+         discount_reason_required    = CASE WHEN ? = 1
+                                         THEN excluded.discount_reason_required
+                                         ELSE core_sale_policies.discount_reason_required END,
          updated_at                  = excluded.updated_at`,
     )
-    .run(input.companyId, limite, prazo, validade, tetoSangria, faturaOs, agora, agora);
+    .run(
+      input.companyId,
+      limite,
+      prazo,
+      validade,
+      tetoSangria,
+      faturaOs,
+      motivoObrigatorio,
+      agora,
+      agora,
+      trouxeMotivo,
+    );
 
   // Relê em vez de montar o objeto com o que acabou de entrar: o que a tela
   // mostra passa a ser o que o banco guarda, e não o que esta função acha que

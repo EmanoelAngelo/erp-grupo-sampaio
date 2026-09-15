@@ -341,6 +341,8 @@ export function RegularizarVendasOffline({
   const [liberando, setLiberando] = useState<string | null>(null);
   const [loginDoGestor, setLoginDoGestor] = useState('');
   const [senhaDoGestor, setSenhaDoGestor] = useState('');
+  /** O porquê da liberação (P0 da Preço Justo) — obrigatório onde a operação exige. */
+  const [motivoDoGestor, setMotivoDoGestor] = useState('');
   const [erroDaLiberacao, setErroDaLiberacao] = useState<string | null>(null);
   /** A recusa pelo preço que baixou, com as linhas do servidor, por pendência (G-offline-sync-08). */
   const [precoMudou, setPrecoMudou] = useState<Record<string, PrecoMudou>>({});
@@ -526,6 +528,8 @@ export function RegularizarVendasOffline({
           reason:
             `Venda guardada sem servidor (código ${codigoDaVendaGuardada(venda.idempotencyKey)}, `
             + `${formatCents(venda.receivedCents)} recebidos), relançada em Regularizar`,
+          // O PORQUÊ digitado (P0 da Preço Justo); vazio não viaja.
+          justificativa: motivoDoGestor.trim() || undefined,
         });
         autorizacaoId = concedida.id;
       } catch (err) {
@@ -533,12 +537,13 @@ export function RegularizarVendasOffline({
         setOcupado(null);
         return;
       }
-      // A senha não fica na tela depois de usada.
+      // A senha não fica na tela depois de usada — nem o motivo, que era desta venda.
       setSenhaDoGestor('');
+      setMotivoDoGestor('');
       setLiberando(null);
       await relancar(venda, comoVendaNova, { authorizationId: autorizacaoId });
     },
-    [liberacao, loginDoGestor, relancar, senhaDoGestor],
+    [liberacao, loginDoGestor, motivoDoGestor, relancar, senhaDoGestor],
   );
 
   const descartar = useCallback(
@@ -744,6 +749,18 @@ export function RegularizarVendasOffline({
                         value={senhaDoGestor}
                         autoComplete="off"
                         onChange={(e) => setSenhaDoGestor(e.target.value)}
+                        className="px-3 py-2 rounded-[var(--gs-radius)] border border-[var(--gs-border-strong)]"
+                      />
+                    </label>
+                    <label className="flex flex-col gap-1 text-[length:var(--gs-text-sm)]">
+                      <span>Motivo da liberação</span>
+                      <input
+                        aria-label="Motivo da liberação"
+                        value={motivoDoGestor}
+                        maxLength={500}
+                        autoComplete="off"
+                        placeholder="Ex.: cliente fiel, compra de atacado"
+                        onChange={(e) => setMotivoDoGestor(e.target.value)}
                         className="px-3 py-2 rounded-[var(--gs-radius)] border border-[var(--gs-border-strong)]"
                       />
                     </label>

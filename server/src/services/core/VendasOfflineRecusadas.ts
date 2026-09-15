@@ -499,7 +499,22 @@ export function alcadaDaVendaGuardada(input: {
   perfisDoToken: string[];
   vendaGuardada: unknown;
   agora?: Date;
-}): { perfis: string[]; vendidaPor: string | null; vendidaEm: string | null } | null {
+}): {
+  perfis: string[];
+  vendidaPor: string | null;
+  vendidaEm: string | null;
+  /**
+   * Os perfis de QUEM VENDEU, quando não é quem envia — para o LIMITE de
+   * desconto ser o mais estreito das duas pessoas (P0 da Preço Justo).
+   *
+   * `perfis` acima resolve só a pergunta "tem alçada?", e resolve bem: o
+   * gerente que reenvia não empresta a alçada dele. Com limite POR PERFIL
+   * aparece a pergunta que ele não responde: o caixa de 20% reenviando a venda
+   * da atendente de 5% media os 15% dela contra os 20% dele, e a venda passava.
+   * Nulo quando quem vendeu é quem envia (ou não foi dito).
+   */
+  perfisDoVendedor: string[] | null;
+} | null {
   const g = input.vendaGuardada;
   if (!g || typeof g !== 'object' || Array.isArray(g)) return null;
   const bruto = g as { userId?: unknown; queuedAt?: unknown };
@@ -509,7 +524,7 @@ export function alcadaDaVendaGuardada(input: {
   const agora = (input.agora ?? new Date()).getTime();
   const vendidaEm = quando && new Date(quando).getTime() <= agora + 5 * 60_000 ? quando : null;
   if (!vendidaPor || vendidaPor === input.userId) {
-    return { perfis: input.perfisDoToken, vendidaPor: vendidaPor ?? null, vendidaEm };
+    return { perfis: input.perfisDoToken, vendidaPor: vendidaPor ?? null, vendidaEm, perfisDoVendedor: null };
   }
   const vinculo = getConnection()
     .prepare(
@@ -523,7 +538,9 @@ export function alcadaDaVendaGuardada(input: {
     temAlcadaParaLiberar(input.perfisDoToken) && !temAlcadaParaLiberar(perfisDoVendedor)
       ? perfisDoVendedor
       : input.perfisDoToken;
-  return { perfis, vendidaPor, vendidaEm };
+  // Vendedor que não é vínculo ativo desta operação entra SEM perfil: o
+  // limite dele é o da operação, e o mais estreito das duas réguas vale.
+  return { perfis, vendidaPor, vendidaEm, perfisDoVendedor };
 }
 
 function carregar(companyId: string, id: string): Linha {
