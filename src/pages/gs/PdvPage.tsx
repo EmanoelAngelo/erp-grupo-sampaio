@@ -1126,6 +1126,8 @@ export default function PdvPage() {
    * do servidor, e ela mentiria para toda loja que configurou outro valor.
    */
   const [limitePercent, setLimitePercent] = useState<number | null>(null);
+  /** A operação exige o motivo na liberação de desconto (P0 da Preço Justo). */
+  const [motivoObrigatorio, setMotivoObrigatorio] = useState(false);
   /**
    * A recusa do servidor, com os números DELE.
    *
@@ -1457,7 +1459,12 @@ export default function PdvPage() {
   useEffect(() => {
     void coreApi
       .discountPolicy()
-      .then((p) => setLimitePercent(p.operatorLimitPercent))
+      .then((p) => {
+        // O percentual DESTA pessoa quando o perfil tem um (P0 da Preço Justo);
+        // sem ele, o da operação — o mesmo número que a venda vai aplicar.
+        setLimitePercent(p.limiteDoPerfil?.percentual ?? p.operatorLimitPercent);
+        setMotivoObrigatorio(p.motivoObrigatorio === true);
+      })
       // Sem o limite, o painel continua mostrando quanto está sendo concedido
       // — que já é mais do que o balcão tinha antes — e só deixa de opinar
       // sobre gestor.
@@ -4276,7 +4283,7 @@ export default function PdvPage() {
 
   /** O gestor digita a credencial e a venda segue de onde parou. */
   const confirmAuthorization = useCallback(
-    async (login: string, password: string) => {
+    async (login: string, password: string, justificativa?: string) => {
       setAuthBusy(true);
       setAuthError(null);
       try {
@@ -4334,6 +4341,8 @@ export default function PdvPage() {
             `Concessão de ${formatCents(fonte.concedidoCents)} (${fonte.percentual}%) `
             + `sobre ${formatCents(fonte.brutoCents)} na venda ${saleKey}`
             + (de.length > 0 ? ` — ${de.join(', ')}` : ''),
+          // O PORQUÊ digitado (P0 da Preço Justo); vazio não viaja.
+          justificativa: justificativa || undefined,
         });
         setAuthorizationId(granted.id);
         setShowAuth(false);
@@ -6840,12 +6849,15 @@ export default function PdvPage() {
           motivo={authReason}
           busy={authBusy}
           error={authError}
+          justificativa={{ obrigatorio: motivoObrigatorio }}
           onCancel={() => {
             setShowAuth(false);
             setAuthError(null);
             setPendingPayments(null);
           }}
-          onConfirm={(login, password) => void confirmAuthorization(login, password)}
+          onConfirm={(login, password, justificativa) =>
+            void confirmAuthorization(login, password, justificativa)
+          }
         />
       )}
     </div>

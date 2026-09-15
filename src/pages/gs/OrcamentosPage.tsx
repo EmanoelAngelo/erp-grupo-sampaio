@@ -270,7 +270,7 @@ export default function OrcamentosPage() {
 
   /** O gestor digitou a credencial: pede a liberação e reenvia a aprovação. */
   const confirmarLiberacaoDaAprovacao = useCallback(
-    async (login: string, password: string) => {
+    async (login: string, password: string, justificativa?: string) => {
       if (!aprovacaoPendente) return;
       setLiberando(true);
       setLiberacaoErro(null);
@@ -301,6 +301,8 @@ export default function OrcamentosPage() {
             + `${formatCents(detalhe?.concedidoCents ?? 0)} (${detalhe?.percentual ?? 0}%) `
             + `sobre ${formatCents(detalhe?.brutoCents ?? 0)}`
             + (de.length > 0 ? ` — ${de.join(', ')}` : ''),
+          // O PORQUÊ digitado (P0 da Preço Justo); vazio não viaja.
+          justificativa: justificativa || undefined,
         });
         await aprovar(quote, granted.id);
       } catch (err) {
@@ -692,17 +694,26 @@ export default function OrcamentosPage() {
             + (aprovacaoPendente.detalhe
               ? ` (${formatCents(aprovacaoPendente.detalhe.concedidoCents)} sobre `
                 + `${formatCents(aprovacaoPendente.detalhe.brutoCents)}, `
-                + `${aprovacaoPendente.detalhe.percentual}%, `
-                + `limite ${aprovacaoPendente.detalhe.limite}%)`
+                + `${aprovacaoPendente.detalhe.percentual}%`
+                // O perfil pode não ter teto em % (só em R$ ou por item, P0):
+                // aí o servidor manda nulo, e "limite null%" não diz nada.
+                + (aprovacaoPendente.detalhe.limite !== null
+                  ? `, limite ${aprovacaoPendente.detalhe.limite}%`
+                  : '')
+                + ')'
               : '')
           }
           busy={liberando}
           error={liberacaoErro}
+          // O motivo aparece sempre; quem decide se é obrigatório é o servidor.
+          justificativa={{ obrigatorio: false }}
           onCancel={() => {
             setAprovacaoPendente(null);
             setLiberacaoErro(null);
           }}
-          onConfirm={(login, password) => void confirmarLiberacaoDaAprovacao(login, password)}
+          onConfirm={(login, password, justificativa) =>
+            void confirmarLiberacaoDaAprovacao(login, password, justificativa)
+          }
         />
       )}
     </AppShell>

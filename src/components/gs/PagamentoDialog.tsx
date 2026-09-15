@@ -247,16 +247,31 @@ export function AutorizacaoGerenteDialog({
   onCancel,
   busy,
   error,
+  justificativa,
 }: {
   motivo: string;
-  onConfirm: (login: string, password: string) => void;
+  /** O terceiro argumento é o motivo digitado — vazio quando o campo não aparece. */
+  onConfirm: (login: string, password: string, justificativa: string) => void;
   onCancel: () => void;
   busy?: boolean;
   error?: string | null;
+  /**
+   * PEDE O PORQUÊ DA LIBERAÇÃO (P0 da Preço Justo) — só a liberação de desconto
+   * passa isto.
+   *
+   * O DEFEITO: o diálogo pedia usuário e senha e mais nada. O que ficava na
+   * trilha como "motivo" era a frase que a tela montava com os números, e o dono
+   * lendo a auditoria via QUANTO e QUEM, nunca POR QUÊ. `obrigatorio` trava o
+   * botão enquanto o campo está vazio; o servidor confere de novo, e é ele
+   * quem decide.
+   */
+  justificativa?: { obrigatorio: boolean };
 }) {
   const [login, setLogin] = useState('');
   const [password, setPassword] = useState('');
+  const [porque, setPorque] = useState('');
   const loginRef = useRef<HTMLInputElement>(null);
+  const faltaOPorque = justificativa?.obrigatorio === true && porque.trim().length < 3;
 
   useEffect(() => {
     loginRef.current?.focus();
@@ -271,7 +286,7 @@ export function AutorizacaoGerenteDialog({
         className="px-6 py-5 flex flex-col gap-4"
         onSubmit={(e) => {
           e.preventDefault();
-          onConfirm(login, password);
+          onConfirm(login, password, porque.trim());
         }}
       >
         <p className="text-[length:var(--gs-text-sm)] text-[var(--gs-text-soft)]">{motivo}</p>
@@ -304,6 +319,24 @@ export function AutorizacaoGerenteDialog({
           />
         </label>
 
+        {justificativa && (
+          <label className="flex flex-col gap-1.5">
+            <span className="text-[length:var(--gs-text-sm)] font-semibold text-[var(--gs-text-soft)]">
+              Motivo da liberação{justificativa.obrigatorio ? ' (obrigatório)' : ''}
+            </span>
+            <input
+              aria-label="Motivo da liberação"
+              value={porque}
+              maxLength={500}
+              onChange={(e) => setPorque(e.target.value)}
+              autoComplete="off"
+              placeholder="Ex.: cliente fiel, compra de atacado"
+              className="h-11 px-3 rounded-[var(--gs-radius)] border border-[var(--gs-border)] bg-white
+                text-[length:var(--gs-text-base)] outline-none focus:border-[var(--gs-focus-ring)]"
+            />
+          </label>
+        )}
+
         {error && (
           <p role="alert" className="text-[length:var(--gs-text-sm)] font-semibold text-[var(--gs-danger)]">
             {error}
@@ -314,7 +347,7 @@ export function AutorizacaoGerenteDialog({
           <Button type="button" variant="ghost" onClick={onCancel}>
             Cancelar
           </Button>
-          <Button type="submit" loading={busy} disabled={!login || !password}>
+          <Button type="submit" loading={busy} disabled={!login || !password || faltaOPorque}>
             Autorizar
           </Button>
         </div>
