@@ -28,7 +28,8 @@ import { Badge, Button } from './ui';
 import { formatCents, formatQuantity } from './format';
 import { ApiRequestError } from '@/lib/api/client';
 import { coreApi, type Product } from '@/lib/api/core';
-import { distintivoDePeca, ehPecaDeBancada } from '@/pages/gs/pdvTypes';
+import { distintivoDePeca, ehPecaDeBancada, rotuloFiscalIncompleto } from '@/pages/gs/pdvTypes';
+import { MiniaturaDoProduto } from './MiniaturaDoProduto';
 
 export function PesquisaAvancadaDialog({
   incluirPecas,
@@ -209,18 +210,27 @@ export function PesquisaAvancadaDialog({
                       className="w-full flex items-center justify-between gap-4 px-4 py-3
                         bg-transparent border-0 cursor-pointer text-left hover:bg-[var(--gs-surface-hover)]"
                     >
-                      <span>
-                        <span className="flex items-center gap-2 flex-wrap font-semibold text-[var(--gs-text)]">
-                          {p.name}
-                          {ehPecaDeBancada(p) && (
-                            <Badge tone="warning">{distintivoDePeca(p)}</Badge>
-                          )}
-                        </span>
-                        <span className="block text-[length:var(--gs-text-sm)] text-[var(--gs-muted)]">
-                          {p.internal_code}
-                          {p.barcode ? ` · ${p.barcode}` : ''}
-                          {p.category ? ` · ${p.category}` : ''} · saldo{' '}
-                          {formatQuantity(p.stock_quantity ?? 0)}
+                      {/* A miniatura do balcão, como na busca principal (P0 da
+                          Preço Justo): nunca o original, e o espaço neutro
+                          quando não há foto. */}
+                      <span className="flex items-center gap-3 min-w-0">
+                        <MiniaturaDoProduto thumbUrl={p.thumb_url} />
+                        <span className="min-w-0">
+                          <span className="flex items-center gap-2 flex-wrap font-semibold text-[var(--gs-text)]">
+                            {p.name}
+                            {ehPecaDeBancada(p) && (
+                              <Badge tone="warning">{distintivoDePeca(p)}</Badge>
+                            )}
+                            {rotuloFiscalIncompleto(p) && (
+                              <Badge tone="warning">{rotuloFiscalIncompleto(p)}</Badge>
+                            )}
+                          </span>
+                          <span className="block text-[length:var(--gs-text-sm)] text-[var(--gs-muted)]">
+                            {p.internal_code}
+                            {p.barcode ? ` · ${p.barcode}` : ''}
+                            {p.category ? ` · ${p.category}` : ''} · saldo{' '}
+                            {formatQuantity(p.stock_quantity ?? 0)}
+                          </span>
                         </span>
                       </span>
                       <span className="font-bold text-[var(--gs-purple-800)] whitespace-nowrap">

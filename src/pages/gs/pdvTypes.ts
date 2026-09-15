@@ -452,3 +452,43 @@ export const PDV_SHORTCUT_KEYS = ['F1', 'F2', 'F3', 'F4', 'F6', 'F7', 'F8', 'F9'
 
 /** Teclas que devem chegar ao navegador intactas. Há teste cobrando. */
 export const PDV_TECLAS_DO_SISTEMA = ['F5', 'F11', 'F12'];
+
+// ------------------------------------------------ fiscal incompleto no balcão
+
+/**
+ * O "FISCAL INCOMPLETO" DO BALCÃO (P0 da Preço Justo).
+ *
+ * O DEFEITO: o produto sem NCM (ou sem grupo tributário que feche) entrava no
+ * carrinho sem sinal nenhum, e a recusa da NFC-e só aparecia DEPOIS do
+ * pagamento, com o cliente pago na frente do caixa.
+ *
+ * A busca agora manda `fiscal_pendencias` — os NOMES dos campos que a nota
+ * recusaria, pela régua da própria nota (servidor, `PendenciaFiscalNoBalcao`).
+ * O distintivo vai na lista e na linha do carrinho; a frase vai na faixa
+ * quando o item entra direto pela bipagem, sem passar pela lista. Nenhum dos
+ * dois bloqueia a venda — travar o balcão por cadastro pararia a loja —; o
+ * que eles fazem é o operador saber ANTES do pagamento, e chamar quem cuida
+ * do catálogo.
+ */
+export function pendenciasFiscais(product: Pick<Product, 'fiscal_pendencias'>): string[] {
+  const lista = product.fiscal_pendencias;
+  return Array.isArray(lista)
+    ? lista.filter((p): p is string => typeof p === 'string' && p.trim() !== '')
+    : [];
+}
+
+/** "Fiscal incompleto: NCM, CFOP" — o distintivo. Nulo quando não há o que avisar. */
+export function rotuloFiscalIncompleto(product: Pick<Product, 'fiscal_pendencias'>): string | null {
+  const p = pendenciasFiscais(product);
+  return p.length > 0 ? `Fiscal incompleto: ${p.join(', ')}` : null;
+}
+
+/** A frase da faixa quando o item entrou direto pela bipagem. */
+export function avisoFiscalIncompleto(product: Pick<Product, 'name' | 'fiscal_pendencias'>): string | null {
+  const p = pendenciasFiscais(product);
+  if (p.length === 0) return null;
+  return (
+    `"${product.name}" entrou, mas o cadastro fiscal está incompleto (${p.join(', ')}): a NFC-e desta `
+    + 'venda vai ser recusada até alguém completar o cadastro. Avise o gerente ou quem cuida do catálogo.'
+  );
+}
