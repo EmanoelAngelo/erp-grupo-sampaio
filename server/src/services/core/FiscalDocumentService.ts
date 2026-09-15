@@ -156,6 +156,45 @@ function idempotencyFor(saleId: string, model: string): string {
 }
 
 /**
+ * UMA VENDA, UM DOCUMENTO VIVO — entre os DOIS modelos (P0 fiscal).
+ *
+ * O defeito: a idempotência é por (venda, modelo), e o comentário de
+ * `createNfeForSale` celebrava "a mesma venda pode ter um cupom e uma nota".
+ * Pode — mas não os dois VALENDO: NFC-e autorizada e NF-e autorizada da mesma
+ * venda documentam a mesma mercadoria duas vezes (faturamento e ICMS em dobro
+ * na apuração do contador). Quem vendeu no balcão e precisa da NF-e cancela o
+ * cupom (dentro do prazo) e só então emite a nota.
+ *
+ * Rejeitada e cancelada não documentam nada; qualquer outro estado — do
+ * rascunho à contingência — é um documento que pode vir a valer.
+ */
+const ESTADOS_QUE_NAO_DOCUMENTAM: ReadonlySet<FiscalStatus> = new Set(['CANCELLED', 'REJECTED']);
+
+/** O documento do OUTRO modelo que ainda documenta (ou pode documentar) esta venda. */
+export function outroDocumentoVivoDaVenda(
+  companyId: string,
+  saleId: string,
+  model: string,
+): FiscalDocument | null {
+  const outro = getDocumentBySale(companyId, saleId, model === MODEL_NFCE ? MODEL_NFE : MODEL_NFCE);
+  return outro && !ESTADOS_QUE_NAO_DOCUMENTAM.has(outro.status) ? outro : null;
+}
+
+function recusarSeOutroModeloDocumentaAVenda(companyId: string, saleId: string, model: string): void {
+  const outro = outroDocumentoVivoDaVenda(companyId, saleId, model);
+  if (!outro) return;
+  const nome = (m: string) => (m === MODEL_NFE ? 'NF-e (modelo 55)' : 'NFC-e (modelo 65)');
+  throw new ApiError(
+    'CORE_FISCAL_SALE_ALREADY_DOCUMENTED',
+    `Esta venda já tem ${nome(outro.model)} nº ${outro.number} (situação ${outro.status}). Emitir também a `
+      + `${nome(model)} documentaria a mesma mercadoria duas vezes. Para trocar de documento, cancele o `
+      + 'outro primeiro — dentro do prazo de cancelamento.',
+    409,
+    { documentId: outro.id, model: outro.model, status: outro.status },
+  );
+}
+
+/**
  * Registra a mudança de estado, sempre append-only.
  *
  * O histórico é o que permite auditar depois: de onde veio, para onde foi, e
@@ -283,6 +322,7 @@ export function createNfceForSale(input: {
 
   const existente = getDocumentBySale(input.companyId, input.saleId, MODEL_NFCE);
   if (existente) return { document: existente, created: false };
+  recusarSeOutroModeloDocumentaAVenda(input.companyId, input.saleId, MODEL_NFCE);
 
   // Portão do estágio de MONTAGEM: emitente, série e dados fiscais do produto.
   // O CERTIFICADO é cobrado na assinatura/transmissão — exigi-lo aqui faria o
@@ -492,6 +532,7 @@ export function createNfeForSale(input: {
 
   const existente = getDocumentBySale(input.companyId, input.saleId, MODEL_NFE);
   if (existente) return { document: existente, created: false };
+  recusarSeOutroModeloDocumentaAVenda(input.companyId, input.saleId, MODEL_NFE);
 
   assertCanEmit(input.companyId, MODEL_NFE, 'document');
 
