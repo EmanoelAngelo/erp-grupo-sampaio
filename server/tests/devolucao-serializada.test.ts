@@ -181,7 +181,10 @@ beforeEach(async () => {
   ensureCoreSchema();
 
   loja = upsertCompany({
-    slug: 'pj-motors-dev',
+    // O slug É o da PJ Motors (P0 das plaquinhas): a plaquinha passou a ser
+    // exclusiva dela, e `empresaUsaPlaquinha` exige o slug além da marca. O
+    // `pj-motors-dev` antigo, com a marca ligada à mão, deixou de vincular.
+    slug: 'pj-motors',
     legalName: 'PJ Motors Ltda',
     tradeName: 'PJ Motors',
     kind: 'store',
@@ -193,13 +196,10 @@ beforeEach(async () => {
     kind: 'workshop',
   });
   ensureOfficialWorkshops();
-  // A regra de ouro do dono (rodada 53): PJ Motors e Oficina usam
-  // plaquinha. O teste monta um grupo de mentira e tem de dizer o mesmo
-  // que o seed diz.
+  // A regra de ouro do dono, restrita no P0 das plaquinhas: plaquinha é SÓ da
+  // PJ Motors. O teste monta um grupo de mentira e diz o mesmo que o seed diz —
+  // a marca oficial alcança a loja deste arquivo, que agora tem o slug dela.
   ensureOfficialTagCompanies();
-  // A loja deste arquivo usa o slug `pj-motors-dev`, que a marca oficial nao
-  // alcanca: aqui ela e dita a mao.
-  getConnection().prepare('UPDATE core_companies SET uses_equipment_tags = 1 WHERE id = ?').run(loja);
   mobilidade = workshopIdOf('oficina-mobilidade');
 
   vendedor = await upsertUser({ login: 'BALCAO_DEV', displayName: 'Balcão', password: SENHA });

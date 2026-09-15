@@ -15,6 +15,15 @@
  *   - GAP-PRD-190: a PJ Motors vende a moto e não reimprimia a plaquinha: as
  *     rotas de etiqueta procuram o equipamento pela empresa da sessão, e ele
  *     vive na Oficina.
+ *
+ * ## O que mudou no P0 das plaquinhas
+ *
+ * Plaquinha passou a ser EXCLUSIVA da PJ Motors. O GAP-PRD-185 dava à tela o
+ * poder de ligar a marca em qualquer operação, e a oficina de mobilidade nascia
+ * com ela ligada — os casos abaixo cobravam isso e agora cobram o contrário:
+ * operação nova nasce sem, ligar fora da PJ é 403, e só a PJ liga e desliga. O
+ * GAP-PRD-190 continua (a PJ reimprime pela unidade); a outra loja e a ficha da
+ * Oficina passam a responder que não têm plaquinha.
  */
 import { beforeEach, describe, expect, it } from 'vitest';
 import request from 'supertest';
@@ -67,13 +76,17 @@ function bancada(companyId: string, slug: string, kind: 'mobility' | 'phones' = 
 describe('GAP-PRD-185 — a operação nova escolhe a plaquinha pela tela', () => {
   let dono: { Authorization: string };
   let lojaDoGrupo: string;
+  let pjDoGrupo: string;
 
   beforeEach(async () => {
     resetDbForTests();
     ensureCoreSchema();
     lojaDoGrupo = upsertCompany({ slug: 'loja-grupo-185', legalName: 'Loja Ltda', tradeName: 'Loja', kind: 'retail' });
+    // A PJ Motors do grupo (P0 das plaquinhas): a única que pode ter a marca.
+    pjDoGrupo = upsertCompany({ slug: 'pj-motors', legalName: 'PJ Motors Ltda', tradeName: 'PJ Motors', kind: 'retail' });
     const donoId = await upsertUser({ login: 'DONO185', displayName: 'Dono', password: SENHA });
     linkUserToCompany(donoId, lojaDoGrupo, 'gestor', true);
+    linkUserToCompany(donoId, pjDoGrupo, 'gestor', false);
     dono = await entrar('DONO185');
   });
 
@@ -92,7 +105,12 @@ describe('GAP-PRD-185 — a operação nova escolhe a plaquinha pela tela', () =
       });
   }
 
-  it('oficina de mobilidade nasce usando plaquinha, e o gerente dela gera o primeiro lote sem UPDATE à mão', async () => {
+  /*
+    P0 DAS PLAQUINHAS: este caso provava que a oficina de mobilidade nascia com
+    a marca ligada e gerava o primeiro lote. O dono restringiu a plaquinha à PJ
+    Motors: a sétima oficina nasce SEM, e o pool responde 403 ao gerente dela.
+  */
+  it('oficina de mobilidade nasce SEM plaquinha, e o gerente dela não gera lote', async () => {
     const res = await request(app)
       .post('/api/v1/core/companies')
       .set(dono)
@@ -103,8 +121,8 @@ describe('GAP-PRD-185 — a operação nova escolhe a plaquinha pela tela', () =
         manager: { login: 'GER.SETIMA', displayName: 'Gerente da Sétima', password: SENHA },
       });
     expect(res.status, JSON.stringify(res.body)).toBe(201);
-    expect(res.body.company.usesEquipmentTags).toBe(true);
-    expect(flag(res.body.company.id)).toBe(1);
+    expect(res.body.company.usesEquipmentTags).toBe(false);
+    expect(flag(res.body.company.id)).toBe(0);
 
     // A senha que o dono definiu é PROVISÓRIA (GAP-PRD-202): o gerente troca
     // antes do primeiro gesto, como na tela.
@@ -121,11 +139,13 @@ describe('GAP-PRD-185 — a operação nova escolhe a plaquinha pela tela', () =
       .post('/api/v1/core/equipment-tags/batches')
       .set(gerente)
       .send({ quantidade: 3 });
-    // Antes: 409 CORE_COMPANY_NO_TAGS, "UPDATE manual".
-    expect(lote.status, JSON.stringify(lote.body)).toBe(201);
+    // Antes do GAP-PRD-185: 409 "UPDATE manual". Depois dele: 201. Desde o P0
+    // das plaquinhas: 403 — a sétima oficina não tem plaquinha, por regra.
+    expect(lote.status, JSON.stringify(lote.body)).toBe(403);
+    expect(lote.body.error.code).toBe('CORE_COMPANY_NO_TAGS');
   });
 
-  it('celular e loja nascem sem; a escolha explícita vence o padrão; escolha malformada é 400 sem nada nascer', async () => {
+  it('toda operação nova nasce sem; pedir plaquinha fora da PJ Motors é 403 sem nada nascer; escolha malformada é 400', async () => {
     const celulares = await criar({ kind: 'workshop', workshopKind: 'phones' });
     expect(celulares.status, JSON.stringify(celulares.body)).toBe(201);
     expect(flag(celulares.body.company.id)).toBe(0);
@@ -133,41 +153,65 @@ describe('GAP-PRD-185 — a operação nova escolhe a plaquinha pela tela', () =
     const loja = await criar({ kind: 'retail' });
     expect(flag(loja.body.company.id)).toBe(0);
 
-    // A loja que vende moto (uma PJ nova) liga na criação.
-    const lojaDeMoto = await criar({ kind: 'retail', usesEquipmentTags: true });
-    expect(lojaDeMoto.body.company.usesEquipmentTags).toBe(true);
-    expect(flag(lojaDeMoto.body.company.id)).toBe(1);
-
-    // A oficina de mobilidade que não quer, desliga na criação.
+    // A oficina de mobilidade que diz "não" explicitamente nasce sem, como sempre.
     const semPlaquinha = await criar({ kind: 'workshop', usesEquipmentTags: false });
+    expect(semPlaquinha.status, JSON.stringify(semPlaquinha.body)).toBe(201);
     expect(flag(semPlaquinha.body.company.id)).toBe(0);
 
-    const antes = (getConnection().prepare('SELECT COUNT(*) AS n FROM core_companies').get() as { n: number }).n;
+    const contar = (tabela: string) =>
+      (getConnection().prepare(`SELECT COUNT(*) AS n FROM ${tabela}`).get() as { n: number }).n;
+    const empresasAntes = contar('core_companies');
+    const bancadasAntes = contar('core_workshops');
+
+    /*
+      "A loja que vende moto (uma PJ nova) liga na criação" — era o que este
+      caso cobrava. Agora a plaquinha é da PJ Motors que existe: outra operação
+      pedindo a marca é 403 DENTRO da transação, e empresa, gerente e bancada
+      são desfeitos juntos.
+    */
+    const lojaDeMoto = await criar({ kind: 'retail', usesEquipmentTags: true });
+    expect(lojaDeMoto.status, JSON.stringify(lojaDeMoto.body)).toBe(403);
+    expect(lojaDeMoto.body.error.code).toBe('CORE_COMPANY_TAGS_PJ_ONLY');
+    const oficinaQuerendo = await criar({ kind: 'workshop', usesEquipmentTags: true });
+    expect(oficinaQuerendo.status).toBe(403);
+    expect(contar('core_companies')).toBe(empresasAntes);
+    expect(contar('core_workshops')).toBe(bancadasAntes);
+
     const ruim = await criar({ kind: 'workshop', usesEquipmentTags: 'sim' });
     expect(ruim.status).toBe(400);
     expect(ruim.body.error.code).toBe('CORE_COMPANY_TAGS_INVALID');
-    expect((getConnection().prepare('SELECT COUNT(*) AS n FROM core_companies').get() as { n: number }).n).toBe(antes);
+    expect(contar('core_companies')).toBe(empresasAntes);
   });
 
-  it('quem responde pelo grupo liga e desliga depois; a lista mostra; desligar com adesivo no pool é recusado', async () => {
+  it('só a PJ Motors liga e desliga; ligar outra é 403; a marca velha da Oficina se desliga sem trava', async () => {
     const oficina = await criar({ kind: 'workshop', usesEquipmentTags: false });
     const id = String(oficina.body.company.id);
 
+    // Ligar numa operação que não é a PJ Motors: 403, e nada muda.
+    const ligaOutra = await request(app)
+      .patch(`/api/v1/core/companies/${id}/equipment-tags`)
+      .set(dono)
+      .send({ enabled: true });
+    expect(ligaOutra.status, JSON.stringify(ligaOutra.body)).toBe(403);
+    expect(ligaOutra.body.error.code).toBe('CORE_COMPANY_TAGS_PJ_ONLY');
+    expect(flag(id)).toBe(0);
+
+    // A PJ Motors: o ciclo de antes, com a trava de pendentes.
     const lista = await request(app).get('/api/v1/core/companies').set(dono);
-    expect(lista.body.items.find((c: { id: string }) => c.id === id).usesEquipmentTags).toBe(false);
+    expect(lista.body.items.find((c: { id: string }) => c.id === pjDoGrupo).usesEquipmentTags).toBe(false);
 
     const liga = await request(app)
-      .patch(`/api/v1/core/companies/${id}/equipment-tags`)
+      .patch(`/api/v1/core/companies/${pjDoGrupo}/equipment-tags`)
       .set(dono)
       .send({ enabled: true });
     expect(liga.status, JSON.stringify(liga.body)).toBe(200);
     expect(liga.body.usesEquipmentTags).toBe(true);
-    expect(flag(id)).toBe(1);
+    expect(flag(pjDoGrupo)).toBe(1);
     const auditoria = getConnection()
       .prepare(
         "SELECT detail FROM core_audit_log WHERE action = 'company.equipment_tags.update' AND company_id = ?",
       )
-      .get(id) as { detail: string } | undefined;
+      .get(pjDoGrupo) as { detail: string } | undefined;
     expect(JSON.parse(auditoria!.detail)).toMatchObject({ antes: false, depois: true });
 
     // Um lote gerado e ainda no pool: desligar agora deixaria adesivo sem caminho.
@@ -176,28 +220,52 @@ describe('GAP-PRD-185 — a operação nova escolhe a plaquinha pela tela', () =
         `INSERT INTO core_equipment_tags (id, company_id, public_id, public_token, status, created_at, updated_at)
          VALUES (?, ?, 999001, ?, 'disponivel', ?, ?)`,
       )
-      .run(randomUUID(), id, randomUUID(), new Date().toISOString(), new Date().toISOString());
+      .run(randomUUID(), pjDoGrupo, randomUUID(), new Date().toISOString(), new Date().toISOString());
     const desligaComPool = await request(app)
-      .patch(`/api/v1/core/companies/${id}/equipment-tags`)
+      .patch(`/api/v1/core/companies/${pjDoGrupo}/equipment-tags`)
       .set(dono)
       .send({ enabled: false });
     expect(desligaComPool.status).toBe(409);
     expect(desligaComPool.body.error.code).toBe('CORE_COMPANY_TAGS_PENDING');
-    expect(flag(id)).toBe(1);
+    expect(flag(pjDoGrupo)).toBe(1);
 
-    getConnection().prepare("UPDATE core_equipment_tags SET status = 'danificada' WHERE company_id = ?").run(id);
+    getConnection().prepare("UPDATE core_equipment_tags SET status = 'danificada' WHERE company_id = ?").run(pjDoGrupo);
     const desliga = await request(app)
-      .patch(`/api/v1/core/companies/${id}/equipment-tags`)
+      .patch(`/api/v1/core/companies/${pjDoGrupo}/equipment-tags`)
       .set(dono)
       .send({ enabled: false });
     expect(desliga.status).toBe(200);
-    expect(flag(id)).toBe(0);
+    expect(flag(pjDoGrupo)).toBe(0);
 
     const ruim = await request(app)
-      .patch(`/api/v1/core/companies/${id}/equipment-tags`)
+      .patch(`/api/v1/core/companies/${pjDoGrupo}/equipment-tags`)
       .set(dono)
       .send({ enabled: 'talvez' });
     expect(ruim.status).toBe(400);
+
+    /*
+      A MARCA VELHA. Um banco de antes do P0 tem a Oficina marcada e plaquinhas
+      dela no pool. A lista mostra o valor EFETIVO (não usa), e desligar é
+      aceito sem a trava de pendentes — o pool dela já não é alcançável. A
+      linha da plaquinha continua no banco: nada é apagado.
+    */
+    getConnection().prepare('UPDATE core_companies SET uses_equipment_tags = 1 WHERE id = ?').run(id);
+    getConnection()
+      .prepare(
+        `INSERT INTO core_equipment_tags (id, company_id, public_id, public_token, status, created_at, updated_at)
+         VALUES (?, ?, 999002, ?, 'disponivel', ?, ?)`,
+      )
+      .run(randomUUID(), id, randomUUID(), new Date().toISOString(), new Date().toISOString());
+    const listaVelha = await request(app).get('/api/v1/core/companies').set(dono);
+    expect(listaVelha.body.items.find((c: { id: string }) => c.id === id).usesEquipmentTags).toBe(false);
+    const limpa = await request(app)
+      .patch(`/api/v1/core/companies/${id}/equipment-tags`)
+      .set(dono)
+      .send({ enabled: false });
+    expect(limpa.status, JSON.stringify(limpa.body)).toBe(200);
+    expect(flag(id)).toBe(0);
+    const ficou = getConnection().prepare('SELECT COUNT(*) AS n FROM core_equipment_tags WHERE company_id = ?').get(id) as { n: number };
+    expect(ficou.n).toBe(1);
   });
 
   it('o gerente da operação não liga plaquinha: é de quem responde pelo grupo', async () => {
@@ -235,7 +303,10 @@ describe('GAP-PRD-190 — a PJ Motors reimprime a plaquinha da moto que vende', 
   beforeEach(async () => {
     resetDbForTests();
     ensureCoreSchema();
-    pj = upsertCompany({ slug: 'pj-190', legalName: 'PJ Ltda', tradeName: 'PJ Motors 190', kind: 'retail' });
+    // O slug da PJ Motors (P0 das plaquinhas): a reimpressão pela unidade é
+    // gesto só dela. A Oficina e a outra loja continuam com a marca ligada — o
+    // retrato de um banco antigo —, e é o que prova que a marca sozinha não abre.
+    pj = upsertCompany({ slug: 'pj-motors', legalName: 'PJ Ltda', tradeName: 'PJ Motors 190', kind: 'retail' });
     oficina = upsertCompany({ slug: 'oficina-190', legalName: 'Oficina Ltda', tradeName: 'Oficina 190', kind: 'workshop' });
     outraLoja = upsertCompany({ slug: 'outra-190', legalName: 'Outra Ltda', tradeName: 'Outra', kind: 'retail' });
     getConnection()
@@ -327,7 +398,7 @@ describe('GAP-PRD-190 — a PJ Motors reimprime a plaquinha da moto que vende', 
     expect(auditoria.company_id).toBe(pj);
   });
 
-  it('as recusas: unidade sem plaquinha 409, unidade de outra loja 404, caixa 403, loja sem plaquinha 409', async () => {
+  it('as recusas: unidade sem plaquinha 409, outra loja 403 sem ler a unidade, caixa 403, PJ sem a marca 403', async () => {
     const produto = createProduct(pj, { name: 'Outra moto', priceCents: 100 }).id;
     updateProduct(pj, produto, { serialized: true });
     const [solta] = createUnits(pj, produto, 1, { entryReferenceType: 'ajuste', entryReferenceId: 'e2' });
@@ -338,11 +409,16 @@ describe('GAP-PRD-190 — a PJ Motors reimprime a plaquinha da moto que vende', 
     expect(semPlaquinha.status).toBe(409);
     expect(semPlaquinha.body.error.code).toBe('CORE_UNIT_WITHOUT_TAG');
 
+    // Era 404 (a unidade não é dela). Desde o P0 das plaquinhas a outra loja
+    // nem chega à unidade: não tem plaquinha (403), e a resposta não traz o
+    // número da moto da PJ.
     const deOutraLoja = await request(app)
       .post(`/api/v1/core/units/${unitId}/equipment/sheet`)
       .set(gerenteOutra)
       .send({});
-    expect(deOutraLoja.status).toBe(404);
+    expect(deOutraLoja.status).toBe(403);
+    expect(deOutraLoja.body.error.code).toBe('CORE_COMPANY_NO_TAGS');
+    expect(JSON.stringify(deOutraLoja.body)).not.toContain(`#${String(equipamento.public_id).padStart(4, '0')}`);
 
     const doCaixa = await request(app)
       .post(`/api/v1/core/units/${unitId}/equipment/sheet`)
@@ -355,14 +431,22 @@ describe('GAP-PRD-190 — a PJ Motors reimprime a plaquinha da moto que vende', 
       .post(`/api/v1/core/units/${unitId}/equipment/sheet`)
       .set(gerentePj)
       .send({});
-    expect(semRegra.status).toBe(409);
+    // 409 → 403 no P0 das plaquinhas: é a empresa sem a função, não um estado.
+    expect(semRegra.status).toBe(403);
     expect(semRegra.body.error.code).toBe('CORE_COMPANY_NO_TAGS');
   });
 
-  it('GAP-PRD-107 — a ficha diz se a máquina pode trocar de plaquinha (empresa no pool e bancada com QR)', async () => {
+  it('GAP-PRD-107 — a ficha da Oficina diz que a empresa não tem plaquinha, mesmo com a marca velha ligada', async () => {
+    /*
+      Antes do P0 das plaquinhas esta ficha dizia `empresaUsa: true` — a
+      Oficina no pool, e a tela oferecia trocar e reimprimir. Agora a Oficina
+      não tem plaquinha: `empresaUsa` é falso mesmo com a marca gravada, e a
+      tela não oferece gesto nenhum (o número segue na ficha, só leitura).
+    */
     const ficha = await request(app).get(`/api/v1/core/equipment/${equipamento.id}`).set(gerenteOficina);
     expect(ficha.status, JSON.stringify(ficha.body)).toBe(200);
-    expect(ficha.body.plaquinha).toEqual({ empresaUsa: true, bancadaUsa: true });
+    expect(ficha.body.plaquinha).toEqual({ empresaUsa: false, bancadaUsa: true });
+    expect(ficha.body.publicIdLabel).toBe(`#${String(equipamento.public_id).padStart(4, '0')}`);
 
     getConnection().prepare('UPDATE core_companies SET uses_equipment_tags = 0 WHERE id = ?').run(oficina);
     getConnection().prepare("UPDATE core_workshops SET kind = 'phones' WHERE id = ?").run(mobilidade);

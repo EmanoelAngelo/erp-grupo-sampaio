@@ -84,16 +84,14 @@ export const STATEMENTS: string[] = [
      ie           TEXT,
      tax_regime   TEXT NOT NULL DEFAULT 'simples',
      kind         TEXT NOT NULL DEFAULT 'retail',
-     -- A REGRA DE OURO DO DONO, como DADO e nao como lista no codigo.
+     -- A REGRA DE OURO DO DONO, como DADO — e, desde o P0 das plaquinhas,
+     -- tambem como regra no codigo.
      --
-     -- Plaquinha com QR e numero e coisa de PJ Motors e da Oficina: sao as
-     -- duas operacoes que lidam com a maquina fisica que fica parada no
-     -- patio por dias. Loja de roupa e de maquiagem usa etiqueta comercial
-     -- (codigo de barras e preco), que e outro sistema.
-     --
-     -- Fica aqui, e nao numa lista de slugs no codigo, porque slug se
-     -- renomeia e empresa nova nasce toda semana. O padrao e ZERO: quem
-     -- entra depois nao ganha de brinde o que consome numero do grupo.
+     -- Plaquinha com QR e numero e EXCLUSIVA da PJ Motors (antes: PJ Motors
+     -- e Oficina). A coluna sozinha nao basta mais: empresaUsaPlaquinha
+     -- exige a marca ligada E o slug pj-motors, entao um banco antigo com
+     -- a Oficina marcada nao reabre o pool para ela. A marca continua
+     -- mandando dentro da PJ (desligada, nem ela usa). O padrao e ZERO.
      uses_equipment_tags INTEGER NOT NULL DEFAULT 0,
      -- QUE TIPO DE LOJA ESTA E — para a vitrine saber como se arrumar.
      --

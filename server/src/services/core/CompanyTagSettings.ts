@@ -27,16 +27,52 @@
  * as deixaria sem caminho — a marcação de danificada passa pelo mesmo guarda.
  * A recusa diz quantas são e o que fazer. As plaquinhas já COLADAS continuam
  * respondendo pelo QR: desligar só fecha o pool para lotes novos.
+ *
+ * ## SÓ A PJ MOTORS LIGA (P0 das plaquinhas)
+ *
+ * O defeito: esta tela ligava a marca em QUALQUER operação, e a oficina de
+ * mobilidade nascia com ela ligada por padrão. O dono restringiu a plaquinha à
+ * PJ Motors — e uma marca que a tela liga numa loja de roupa é uma porta que o
+ * pool teria de fechar depois, em cada rota.
+ *
+ * A escolha: só a empresa de slug `pj-motors` pode ter a marca. Ligar em outra
+ * é 403 (`CORE_COMPANY_TAGS_PJ_ONLY`), na criação e na lista. Desligar em
+ * outra continua aceito, e SEM a trava de pendentes: é o jeito de limpar a
+ * marca velha que um banco antigo deixou na Oficina, e as plaquinhas dela já
+ * não são alcançáveis por rota nenhuma — a trava protegeria um pool que
+ * ninguém mais abre. Por que o slug, e não uma lista de ids: é o único
+ * identificador que sobrevive a semeadura e restauração, o mesmo que a
+ * migração usa.
  */
 import { getConnection } from '../../db/sqlite.js';
 import { ensureCoreSchema } from '../../db/schema.js';
 import { ApiError } from '../../utils/errors.js';
-import { capabilitiesFor } from './WorkshopCapabilities.js';
+import { EMPRESA_DAS_PLAQUINHAS, ehEmpresaDasPlaquinhas } from './EmpresaDasPlaquinhas.js';
 
-/** O padrão de uma operação nova, derivado do que a bancada dela faz. */
-export function plaquinhaPadraoDaEmpresaNova(kind: string, workshopKind?: string | null): boolean {
-  if (kind !== 'workshop') return false;
-  return capabilitiesFor(workshopKind === 'phones' ? 'phones' : 'mobility').equipmentTags;
+/**
+ * O padrão de uma operação nova: SEM plaquinha.
+ *
+ * Antes derivava da bancada (mobilidade nascia com a marca ligada). Operação
+ * nova nunca é a PJ Motors — o slug é único e a PJ já existe —, então o
+ * padrão é desligado para todas. Fica como função para a rota continuar
+ * dizendo "o padrão" num lugar só.
+ */
+export function plaquinhaPadraoDaEmpresaNova(slug?: string | null): boolean {
+  return ehEmpresaDasPlaquinhas(slug);
+}
+
+/**
+ * A recusa de ligar a plaquinha fora da PJ Motors — a mesma frase na criação e
+ * na lista de Empresas.
+ */
+export function exigirQueSejaAEmpresaDasPlaquinhas(slug: string | null | undefined, nome: string): void {
+  if (ehEmpresaDasPlaquinhas(slug)) return;
+  throw new ApiError(
+    'CORE_COMPANY_TAGS_PJ_ONLY',
+    `Plaquinha com QR e número é exclusiva da PJ Motors (/${EMPRESA_DAS_PLAQUINHAS}): `
+      + `${nome} não pode usá-la. Aqui a identificação é a etiqueta de produto.`,
+    403,
+  );
 }
 
 /**
@@ -82,14 +118,28 @@ export function definirPlaquinhaDaEmpresa(input: { companyId: string; enabled: u
   }
   const db = getConnection();
   const empresa = db
-    .prepare('SELECT id, trade_name, uses_equipment_tags FROM core_companies WHERE id = ? AND active = 1')
-    .get(input.companyId) as { id: string; trade_name: string; uses_equipment_tags: number } | undefined;
+    .prepare('SELECT id, slug, trade_name, uses_equipment_tags FROM core_companies WHERE id = ? AND active = 1')
+    .get(input.companyId) as
+    | { id: string; slug: string; trade_name: string; uses_equipment_tags: number }
+    | undefined;
   if (!empresa) {
     throw new ApiError('CORE_COMPANY_NOT_FOUND', 'Empresa não encontrada.', 404);
   }
-  const antes = Number(empresa.uses_equipment_tags) === 1;
+  const daPj = ehEmpresaDasPlaquinhas(empresa.slug);
+  // Ligar fora da PJ Motors é recusado antes de qualquer escrita.
+  if (escolha) exigirQueSejaAEmpresaDasPlaquinhas(empresa.slug, empresa.trade_name);
+  /*
+    O "antes" que a tela vê é o EFETIVO. A marca gravada na Oficina por um
+    banco antigo não vale nada (`empresaUsaPlaquinha` exige o slug da PJ), e
+    responder "antes: ligada" faria a tela anunciar que desligou algo que
+    nunca funcionou. A escrita abaixo, porém, olha o valor GRAVADO: desligar
+    limpa a marca velha de verdade.
+  */
+  const gravada = Number(empresa.uses_equipment_tags) === 1;
+  const antes = gravada && daPj;
 
-  if (antes && !escolha) {
+  // A trava de pendentes só protege o pool que ainda é alcançável: o da PJ.
+  if (daPj && antes && !escolha) {
     const pendentes = db
       .prepare(
         `SELECT status, COUNT(*) AS n FROM core_equipment_tags
@@ -109,6 +159,6 @@ export function definirPlaquinhaDaEmpresa(input: { companyId: string; enabled: u
     }
   }
 
-  if (antes !== escolha) gravarPlaquinhaDaEmpresa(input.companyId, escolha);
+  if (gravada !== escolha) gravarPlaquinhaDaEmpresa(input.companyId, escolha);
   return { companyId: empresa.id, tradeName: empresa.trade_name, antes, depois: escolha };
 }

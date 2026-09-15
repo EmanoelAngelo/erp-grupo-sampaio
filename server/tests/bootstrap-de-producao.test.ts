@@ -216,7 +216,9 @@ describe('banco novo + DEVORA_BOOTSTRAP_ADMIN_PASSWORD', () => {
       ['pj-motors', 'PJ Motors'],
       ['preco-justo', 'Preço Justo'],
     ]);
-    expect(empresas.filter((e) => e.uses_equipment_tags === 1).map((e) => e.slug)).toEqual(['oficina', 'pj-motors']);
+    // Plaquinha é EXCLUSIVA da PJ Motors (P0 das plaquinhas): antes a subida
+    // marcava também a Oficina, e este teste cobrava as duas.
+    expect(empresas.filter((e) => e.uses_equipment_tags === 1).map((e) => e.slug)).toEqual(['pj-motors']);
     expect(empresas.filter((e) => e.kind !== 'workshop').every((e) => e.storefront_preset !== null)).toBe(true);
     const bancadas = db().prepare('SELECT slug FROM core_workshops ORDER BY slug').all() as { slug: string }[];
     expect(bancadas.map((b) => b.slug)).toEqual(['oficina-celulares', 'oficina-mobilidade']);

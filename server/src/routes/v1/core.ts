@@ -246,6 +246,7 @@ import { lerVersaoEsperada } from '../../services/core/WorkshopOrderVersion.js';
 import { regularizarOs } from '../../services/core/WorkshopOrderRegularization.js';
 import {
   definirPlaquinhaDaEmpresa,
+  exigirQueSejaAEmpresaDasPlaquinhas,
   gravarPlaquinhaDaEmpresa,
   lerEscolhaDePlaquinha,
   plaquinhaPadraoDaEmpresaNova,
@@ -694,6 +695,7 @@ import {
 } from '../../services/core/EquipmentService.js';
 import {
   criarLoteDePlaquinhas,
+  ehEmpresaDasPlaquinhas,
   empresaTemBancada,
   empresaUsaPlaquinha,
   exigirBancadaQueColaPlaquinha,
@@ -9588,7 +9590,13 @@ coreRouter.get('/companies', (req: AuthedRequest, res, next) => {
         kind: c.kind,
         active: c.active === 1,
         // Quem usa plaquinha com QR (GAP-PRD-185): a tela liga e desliga.
-        usesEquipmentTags: Number((c as { uses_equipment_tags?: number }).uses_equipment_tags ?? 0) === 1,
+        //
+        // O valor EFETIVO (P0 das plaquinhas): a marca gravada E o slug da PJ
+        // Motors. Um banco antigo tem a Oficina marcada, e mostrar "Usa" na
+        // linha dela seria anunciar uma função que toda rota recusa.
+        usesEquipmentTags:
+          Number((c as { uses_equipment_tags?: number }).uses_equipment_tags ?? 0) === 1
+          && ehEmpresaDasPlaquinhas(c.slug),
       })),
     });
   } catch (err) {
@@ -9720,12 +9728,20 @@ coreRouter.post('/companies', (req: AuthedRequest, res, next) => {
         ANTES de criar: a escolha malformada é 400 sem nada nascer.
       */
       const workshopKind = req.body?.workshopKind === 'phones' ? 'phones' : 'mobility';
-      const usaPlaquinha =
-        lerEscolhaDePlaquinha(req.body?.usesEquipmentTags)
-        ?? plaquinhaPadraoDaEmpresaNova(kind, workshopKind);
+      /*
+        SÓ A PJ MOTORS NASCE COM PLAQUINHA (P0 das plaquinhas).
+
+        O defeito: a oficina de mobilidade nascia com a marca ligada por padrão,
+        e o corpo podia ligá-la em qualquer loja. O padrão agora é desligado, e
+        pedir `usesEquipmentTags: true` para uma empresa que não é a PJ Motors é
+        403 DENTRO da transação — o slug só existe depois de a empresa ser
+        criada (o servidor o deriva do nome), e a recusa ali desfaz a empresa, o
+        gerente e a bancada juntos: nada nasce.
+      */
+      const escolhaDePlaquinha = lerEscolhaDePlaquinha(req.body?.usesEquipmentTags);
 
       // A marca entra na MESMA transação da empresa: nasce inteira ou não nasce.
-      const criada = withTransaction(() => {
+      const { nova: criada, usaPlaquinha } = withTransaction(() => {
         const nova = createCompanyWithFounders({
           legalName,
           tradeName,
@@ -9747,8 +9763,10 @@ coreRouter.post('/companies', (req: AuthedRequest, res, next) => {
             profileCode,
           },
         });
-        gravarPlaquinhaDaEmpresa(nova.company.id, usaPlaquinha);
-        return nova;
+        const usa = escolhaDePlaquinha ?? plaquinhaPadraoDaEmpresaNova(nova.company.slug);
+        if (usa) exigirQueSejaAEmpresaDasPlaquinhas(nova.company.slug, nova.company.trade_name);
+        gravarPlaquinhaDaEmpresa(nova.company.id, usa);
+        return { nova, usaPlaquinha: usa };
       });
 
       /*
@@ -12456,6 +12474,16 @@ coreRouter.get('/units/equipment-candidates', (req: AuthedRequest, res, next) =>
   try {
     requireProfile(req, 'gerente_loja', 'gerente_oficina', 'estoquista');
     const { companyId } = scope(req);
+    /*
+      A LISTA VAZIA VIRA RECUSA (P0 das plaquinhas).
+
+      `plaquinhasVinculaveis` devolvia `[]` para quem não usa plaquinha — e a
+      tela de qualquer loja montava o diálogo "Vincular plaquinha" com a lista
+      vazia. Vincular é gestão de plaquinha, e ela é só da PJ Motors: fora
+      dela a resposta diz isso, com 403, em vez de uma lista que parece
+      "ainda não há moto".
+    */
+    exigirEmpresaComPlaquinha(companyId);
     const termo = req.query.termo ? String(req.query.termo) : undefined;
     // A unidade que vai receber: vendida, a lista traz só a plaquinha com o
     // mesmo número (vínculo tardio, GAP-PRD-108).
@@ -12574,6 +12602,15 @@ coreRouter.get('/units/:productId', (req: AuthedRequest, res, next) => {
       companyId,
       unidades.filter((u) => u.status === 'in_stock').map((u) => u.id),
     );
+    /*
+      O BLOCO DA PLAQUINHA SÓ VIAJA NA PJ MOTORS (P0 das plaquinhas).
+
+      Uma loja que adotou plaquinha antes da regra (qualquer uma podia, até a
+      rodada 53) tem unidade com `equipment_id` — e esta leitura trazia junto
+      o número, a bancada e a empresa da Oficina. Fora da PJ, o vínculo antigo
+      fica gravado e a lista não o projeta.
+    */
+    const mostraPlaquinha = empresaUsaPlaquinha(companyId);
     res.json({
       // A plaquinha vai JUNTO da unidade porque é na lista que o operador
       // decide: sem ela, a tela mostraria um botão de vincular para uma moto que
@@ -12583,7 +12620,7 @@ coreRouter.get('/units/:productId', (req: AuthedRequest, res, next) => {
       // esmagadora do estoque — não paga nenhuma consulta a mais.
       items: unidades.map((u) => ({
         ...u,
-        plaquinha: u.equipment_id ? plaquinhaDaUnidade(companyId, u.id) : null,
+        plaquinha: u.equipment_id && mostraPlaquinha ? plaquinhaDaUnidade(companyId, u.id) : null,
         reserva: reservas.get(u.id) ?? null,
       })),
     });
@@ -12856,6 +12893,16 @@ coreRouter.post('/labels/equipment', (req: AuthedRequest, res, next) => {
   try {
     requireProfile(req, 'gerente_oficina', 'mecanico', 'operador_caixa_oficina');
     const { companyId } = scope(req);
+    /*
+      IMPRIMIR A PLAQUINHA DA MÁQUINA É GESTÃO DE PLAQUINHA (P0 das plaquinhas).
+
+      Esta rota e a folha abaixo só perguntavam à BANCADA (mobilidade dá QR,
+      celular não): a Oficina imprimia aqui a plaquinha de cada máquina que
+      cadastrava. Plaquinha é só da PJ Motors — que a reimprime pela unidade
+      (`/units/:id/equipment/sheet`). A Oficina continua vendo o número da
+      máquina na OS e na ficha, só leitura; imprimir o adesivo, não.
+    */
+    exigirEmpresaComPlaquinha(companyId);
     const ids: string[] = Array.isArray(req.body?.equipmentIds) ? req.body.equipmentIds : [];
     if (ids.length === 0) {
       throw new ApiError('CORE_EMPTY_LABELS', 'Selecione ao menos um equipamento.', 400);
@@ -12941,6 +12988,8 @@ coreRouter.post('/labels/equipment/sheet', (req: AuthedRequest, res, next) => {
   try {
     requireProfile(req, 'gerente_oficina', 'gerente_loja', 'mecanico', 'estoquista', 'atendente');
     const { companyId } = scope(req);
+    // A mesma regra da rota acima (P0 das plaquinhas): a folha é a plaquinha.
+    exigirEmpresaComPlaquinha(companyId);
     const ids: string[] = Array.isArray(req.body?.equipmentIds) ? req.body.equipmentIds : [];
     if (ids.length === 0) {
       throw new ApiError('CORE_EMPTY_LABELS', 'Selecione ao menos um equipamento.', 400);
@@ -13026,6 +13075,9 @@ coreRouter.post('/labels/equipment/sheet', (req: AuthedRequest, res, next) => {
 coreRouter.get('/labels/equipment/formats', (req: AuthedRequest, res, next) => {
   try {
     requireProfile(req, 'gerente_oficina', 'gerente_loja', 'mecanico', 'estoquista', 'atendente');
+    // Os formatos da PLAQUINHA (P0 das plaquinhas): catálogo de uma função que
+    // só a PJ Motors tem. A etiqueta comercial tem o catálogo dela.
+    exigirEmpresaComPlaquinha(scope(req).companyId);
     res.json({
       items: EQUIPMENT_TAG_FORMATS,
       baseUrl: publicBaseUrl(),
@@ -13040,9 +13092,11 @@ coreRouter.get('/labels/equipment/formats', (req: AuthedRequest, res, next) => {
 // ---------------------------------------------- o pool de plaquinhas (rodada 53)
 //
 // A REGRA DE OURO do dono mora em `empresaUsaPlaquinha`, e todas as rotas
-// abaixo passam por ela: plaquinha com QR e número é da PJ Motors e da
-// Oficina. Loja de roupa e de maquiagem identifica mercadoria por etiqueta
-// comercial — código de barras e preço —, que é outra tela e outro catálogo.
+// abaixo passam por ela — as de LEITURA inclusive, desde o P0 das plaquinhas:
+// plaquinha com QR e número é EXCLUSIVA da PJ Motors (a regra antiga dizia
+// "PJ Motors e Oficina"). Preço Justo, Oficina e as lojas de roupa e de
+// maquiagem levam 403 `CORE_COMPANY_NO_TAGS` em todas; a mercadoria delas é
+// identificada por etiqueta comercial — código de barras e preço.
 //
 // Os perfis são os da BANCADA (mecânico, gerente de oficina, atendente,
 // caixa da oficina) mais o gerente de loja, que é quem adota a plaquinha na
@@ -13084,6 +13138,15 @@ coreRouter.get('/equipment-tags', (req: AuthedRequest, res, next) => {
       'operador_caixa_oficina',
     );
     const { companyId } = scope(req);
+    /*
+      A LEITURA TAMBÉM PERGUNTA À REGRA DE OURO (P0 das plaquinhas).
+
+      Esta rota respondia 200 com a lista e o resumo do pool para QUALQUER
+      empresa, e só dizia `usaPlaquinha: false` no fim — a Preço Justo via as
+      plaquinhas das próprias máquinas de celular, e a Oficina o pool inteiro.
+      Plaquinha é só da PJ Motors: fora dela, 403 antes de ler uma linha.
+    */
+    exigirEmpresaComPlaquinha(companyId);
     res.json({
       /*
         A CREDENCIAL NAO VIAJA NA LISTA.
@@ -13136,7 +13199,10 @@ coreRouter.get('/equipment-tags/batches', (req: AuthedRequest, res, next) => {
       'atendente',
       'operador_caixa_oficina',
     );
-    res.json({ items: listarLotesDePlaquinha(scope(req).companyId) });
+    const { companyId } = scope(req);
+    // A mesma regra da lista (P0 das plaquinhas): lote é leitura do pool.
+    exigirEmpresaComPlaquinha(companyId);
+    res.json({ items: listarLotesDePlaquinha(companyId) });
   } catch (err) {
     next(err);
   }
@@ -13337,6 +13403,8 @@ coreRouter.get('/equipment-tags/layout', (req: AuthedRequest, res, next) => {
   try {
     requireProfile(req, 'gerente_oficina', 'gerente_loja', 'mecanico', 'estoquista');
     const { companyId } = scope(req);
+    // O layout é a cara da plaquinha: fora da PJ Motors não há o que desenhar.
+    exigirEmpresaComPlaquinha(companyId);
     res.json({ layout: layoutDaEmpresa(companyId), usaPlaquinha: empresaUsaPlaquinha(companyId) });
   } catch (err) {
     next(err);

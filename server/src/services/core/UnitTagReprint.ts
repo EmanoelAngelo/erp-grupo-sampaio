@@ -91,10 +91,22 @@ export function folhaDaPlaquinhaDaUnidade(input: {
 
   const formato = equipmentTagFormat(input.formatId);
   const rotulo = formatTagId(maquina.public_id);
+  /*
+    A CARA DO ADESIVO É A DA PJ MOTORS (P0 das plaquinhas).
+
+    O cabeçalho deste arquivo dizia que o layout é o da empresa DONA da
+    máquina — a Oficina. Com a plaquinha exclusiva da PJ, a Oficina não edita
+    mais layout nenhum (`PUT /equipment-tags/layout` recusa), e a reimpressão
+    sairia para sempre com o layout congelado de lá, enquanto o editor da tela
+    de Plaquinhas — o da PJ — mudaria um desenho que nenhuma folha usa. A
+    empresa que gere a plaquinha é a que chama esta função (já conferida por
+    `exigirEmpresaComPlaquinha` acima), e é dela o layout e o nome no papel.
+    O número e o QR continuam os da máquina: reimprimir não é trocar.
+  */
   const folha = renderEquipmentTagSheet({
-    companyId: maquina.company_id,
+    companyId: input.companyId,
     format: formato,
-    layout: layoutDaEmpresa(maquina.company_id),
+    layout: layoutDaEmpresa(input.companyId),
     items: [
       {
         publicIdLabel: rotulo,

@@ -14,6 +14,14 @@
  *     bancada nenhuma; os números do grupo queimavam em adesivos que nunca
  *     entrariam numa máquina, e a mensagem de "atende mais de uma oficina" saía
  *     para quem não tem nenhuma.
+ *
+ * ## O que mudou no P0 das plaquinhas
+ *
+ * Plaquinha passou a ser EXCLUSIVA da PJ Motors. O caso GAP-PRD-110 terminava
+ * provando que "a Oficina segue gerando" — e esse é justamente o comportamento
+ * que o dono tirou: a Oficina leva 403 `CORE_COMPANY_NO_TAGS` no pool inteiro,
+ * leitura inclusive. A regra da bancada continua valendo para a PJ (sem bancada,
+ * não gera). As OS da Oficina (GAP-PRD-109/189) não mudam.
  */
 import { beforeEach, describe, expect, it } from 'vitest';
 import request from 'supertest';
@@ -296,7 +304,7 @@ describe('GAP-PRD-189 — a moto do pátio não é "vendida à mão"', () => {
 // ---------------------------------------------------------------- GAP-PRD-110
 
 describe('GAP-PRD-110 — quem gera plaquinha é quem tem bancada', () => {
-  it('a PJ sem bancada não gera, não imprime nem libera, e a tela sabe por quê; a Oficina segue gerando', async () => {
+  it('a PJ sem bancada não gera, não imprime nem libera, e a tela sabe por quê; a Oficina não tem pool nenhum', async () => {
     const gerentePj = await entrar('GER.PJ.FRONTEIRA');
 
     const pool = await request(app).get('/api/v1/core/equipment-tags').set(gerentePj);
@@ -328,13 +336,24 @@ describe('GAP-PRD-110 — quem gera plaquinha é quem tem bancada', () => {
     const previa = await request(app).post('/api/v1/core/equipment-tags/sheet').set(gerentePj).send({ preview: true });
     expect(previa.status).toBe(200);
 
+    /*
+      A OFICINA NÃO TEM POOL (P0 das plaquinhas). Aqui a asserção antiga era
+      "a Oficina segue gerando" (201) e "o pool dela tem bancada". A regra do
+      dono tirou a plaquinha da Oficina: ela tem bancada, e mesmo assim gerar e
+      ler o pool são 403 — a bancada decide ONDE a PJ gera, não QUEM tem
+      plaquinha. Nenhum número foi reservado pela tentativa.
+    */
     const gerenteOf = await entrar('GER.OF.FRONTEIRA');
     const daOficina = await request(app)
       .post('/api/v1/core/equipment-tags/batches')
       .set(gerenteOf)
       .send({ quantidade: 2 });
-    expect(daOficina.status, JSON.stringify(daOficina.body)).toBe(201);
+    expect(daOficina.status, JSON.stringify(daOficina.body)).toBe(403);
+    expect(daOficina.body.error.code).toBe('CORE_COMPANY_NO_TAGS');
     const poolOficina = await request(app).get('/api/v1/core/equipment-tags').set(gerenteOf);
-    expect(poolOficina.body.temBancada).toBe(true);
+    expect(poolOficina.status).toBe(403);
+    expect(poolOficina.body.items).toBeUndefined();
+    const depois = getConnection().prepare('SELECT COUNT(*) AS n FROM core_equipment_tags WHERE company_id = ?').get(oficinaCo) as { n: number };
+    expect(depois.n).toBe(0);
   });
 });

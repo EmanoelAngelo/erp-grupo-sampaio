@@ -14,9 +14,17 @@
  *   2. o estado anda numa direção só: gerada → disponível → associada. E
  *      liberar exige o PAPEL — número liberado sem folha exportada é número
  *      que o cadastro aceita e que não existe colado em lugar nenhum;
- *   3. a REGRA DE OURO do dono: plaquinha com QR é de PJ Motors e da Oficina.
- *      As outras quatro empresas identificam mercadoria por etiqueta
- *      comercial, e a recusa diz isso com todas as letras.
+ *   3. a REGRA DE OURO do dono: plaquinha com QR é EXCLUSIVA da PJ Motors
+ *      (até o P0 das plaquinhas: "de PJ Motors e da Oficina"). As outras
+ *      empresas identificam mercadoria por etiqueta comercial, e a recusa — 403,
+ *      leitura inclusive — diz isso com todas as letras.
+ *
+ * ## A empresa do pool, desde o P0
+ *
+ * O pool aqui é o da PJ MOTORS com uma bancada de mobilidade — o dia em que ela
+ * montar moto. Era a "oficina-co"; com a plaquinha exclusiva da PJ, a mecânica
+ * do pool (lote, papel, liberação, associação, troca, layout) só anda nela, e
+ * é nela que este arquivo a prova.
  *
  * ## As mordidas
  *
@@ -48,7 +56,7 @@ async function entrar(userId: string, companyId: string, profileCodes: string[])
   return { Authorization: `Bearer ${res.body.accessToken}` };
 }
 
-/** A empresa que USA plaquinha — como a Oficina e a PJ Motors no banco real. */
+/** A empresa que USA plaquinha — só a PJ Motors, no banco real (P0 das plaquinhas). */
 function empresaComPlaquinha(companyId: string): void {
   getConnection()
     .prepare('UPDATE core_companies SET uses_equipment_tags = 1 WHERE id = ?')
@@ -96,9 +104,10 @@ async function exportarFolha(tagIds: string[]) {
 
 beforeEach(async () => {
   resetDbForTests();
-  gerente = await entrar('gerente-of', 'oficina-co', ['gerente_oficina']);
-  empresaComPlaquinha('oficina-co');
-  criarBancada('ws-mob', 'oficina-co', 'mobility');
+  // `loginForTest` usa o id como slug: a empresa é a PJ Motors (ver o cabeçalho).
+  gerente = await entrar('gerente-of', 'pj-motors', ['gerente_oficina']);
+  empresaComPlaquinha('pj-motors');
+  criarBancada('ws-mob', 'pj-motors', 'mobility');
   daLoja = await entrar('gerente-gringa', 'gringa-co', ['gerente_loja']);
 });
 
@@ -474,17 +483,19 @@ describe('adesivo perdido', () => {
 /**
  * A REGRA DE OURO DO DONO.
  *
- * "O sistema de etiquetas com QR e ID é somente para PJ Motors e Oficina."
- * A Gringa é loja de roupa: identifica mercadoria por etiqueta comercial, com
- * código de barras e preço. A recusa diz isso — não é um 403 mudo.
+ * Era "o sistema de etiquetas com QR e ID é somente para PJ Motors e Oficina";
+ * desde o P0 das plaquinhas é SÓ da PJ Motors. A Gringa é loja de roupa:
+ * identifica mercadoria por etiqueta comercial, com código de barras e preço.
+ * A recusa diz isso — e passou de 409 a 403, porque não é estado que se
+ * conserta clicando em outra coisa: é a empresa que não tem a função.
  */
-describe('a regra de ouro: plaquinha é de PJ Motors e da Oficina', () => {
+describe('a regra de ouro: plaquinha é da PJ Motors', () => {
   it('loja de roupa não gera lote, e a recusa explica o porquê', async () => {
     const res = await request(app)
       .post('/api/v1/core/equipment-tags/batches')
       .set(daLoja)
       .send({ quantidade: 10 });
-    expect(res.status, JSON.stringify(res.body)).toBe(409);
+    expect(res.status, JSON.stringify(res.body)).toBe(403);
     expect(res.body.error.code).toBe('CORE_COMPANY_NO_TAGS');
     expect(res.body.error.message).toContain('etiqueta de produto');
   });
@@ -494,21 +505,21 @@ describe('a regra de ouro: plaquinha é de PJ Motors e da Oficina', () => {
       .post('/api/v1/core/equipment-tags/sheet')
       .set(daLoja)
       .send({ tagIds: ['qualquer'] });
-    expect(folha.status).toBe(409);
+    expect(folha.status).toBe(403);
     expect(folha.body.error.code).toBe('CORE_COMPANY_NO_TAGS');
 
     const liberar = await request(app)
       .post('/api/v1/core/equipment-tags/release')
       .set(daLoja)
       .send({ batchId: 'qualquer' });
-    expect(liberar.status).toBe(409);
+    expect(liberar.status).toBe(403);
     expect(liberar.body.error.code).toBe('CORE_COMPANY_NO_TAGS');
 
     const layout = await request(app)
       .put('/api/v1/core/equipment-tags/layout')
       .set(daLoja)
       .send({ bgColor: '#000000' });
-    expect(layout.status).toBe(409);
+    expect(layout.status).toBe(403);
     expect(layout.body.error.code).toBe('CORE_COMPANY_NO_TAGS');
   });
 
@@ -540,18 +551,24 @@ describe('a regra de ouro: plaquinha é de PJ Motors e da Oficina', () => {
       })
       .expect(201);
 
+    // A lista vazia virou recusa (P0 das plaquinhas): 200 com `[]` parecia
+    // "ainda não há moto", e a loja de roupa não tem plaquinha nenhuma.
     const daGringa = await request(app)
       .get('/api/v1/core/units/equipment-candidates')
       .set(daLoja);
-    expect(daGringa.status, JSON.stringify(daGringa.body)).toBe(200);
-    expect(daGringa.body.items).toHaveLength(0);
+    expect(daGringa.status, JSON.stringify(daGringa.body)).toBe(403);
+    expect(daGringa.body.error.code).toBe('CORE_COMPANY_NO_TAGS');
+    expect(daGringa.body.items).toBeUndefined();
   });
 
-  it('a leitura do pool responde a quem não usa, dizendo que não usa', async () => {
+  it('a leitura do pool recusa quem não usa, sem entregar lista nem resumo', async () => {
+    // Antes: 200 com `usaPlaquinha: false` e a lista junto. A leitura agora
+    // pergunta à regra de ouro antes de ler uma linha (P0 das plaquinhas).
     const res = await request(app).get('/api/v1/core/equipment-tags').set(daLoja);
-    expect(res.status).toBe(200);
-    expect(res.body.usaPlaquinha).toBe(false);
-    expect(res.body.items).toHaveLength(0);
+    expect(res.status).toBe(403);
+    expect(res.body.error.code).toBe('CORE_COMPANY_NO_TAGS');
+    expect(res.body.items).toBeUndefined();
+    expect(res.body.resumo).toBeUndefined();
   });
 });
 
@@ -919,6 +936,9 @@ describe('a migração 68 leva o pool junto', () => {
        VALUES ('emp-68', 'oficina', 'Oficina 68', 'Oficina 68', 'workshop', 1, ?, ?)
        ON CONFLICT (slug) DO NOTHING`,
     ).run(agora, agora);
+    // A PJ Motors deste arquivo já existe (o login a criou) e já tem a marca:
+    // ela é zerada para a migração provar que é ELA quem liga (P0 das plaquinhas).
+    db.prepare("UPDATE core_companies SET uses_equipment_tags = 0 WHERE slug = 'pj-motors'").run();
     db.prepare(
       `INSERT INTO core_workshops (id, company_id, slug, name, kind, active, created_at)
        VALUES ('ws-68', 'emp-68', 'ws-68', 'Bancada 68', 'mobility', 1, ?)`,
@@ -943,11 +963,16 @@ describe('a migração 68 leva o pool junto', () => {
     // Impressa pelo caminho antigo, uma a uma: o sistema não sabe quando.
     expect(tag.printed_at).toBeNull();
 
-    // E a regra de ouro entrou como DADO: a Oficina usa plaquinha.
-    const empresa = db
-      .prepare("SELECT uses_equipment_tags FROM core_companies WHERE slug = 'oficina'")
-      .get() as { uses_equipment_tags: number };
-    expect(empresa.uses_equipment_tags).toBe(1);
+    /*
+      E a regra de ouro entrou como DADO — só para a PJ Motors (P0 das
+      plaquinhas). Antes este caso cobrava a Oficina marcada; agora a migração
+      marca a PJ e deixa a Oficina como estava (zero). A máquina da Oficina
+      continua com a linha 'associada' acima: a numeração do grupo é uma só.
+    */
+    const marca = (slug: string) =>
+      (db.prepare('SELECT uses_equipment_tags AS f FROM core_companies WHERE slug = ?').get(slug) as { f: number }).f;
+    expect(marca('pj-motors')).toBe(1);
+    expect(marca('oficina')).toBe(0);
 
     /*
       A SEQUÊNCIA DO GRUPO NÃO PODE FICAR ATRÁS DO QUE JÁ ESTÁ COLADO.

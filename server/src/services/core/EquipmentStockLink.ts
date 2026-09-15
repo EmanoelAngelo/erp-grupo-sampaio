@@ -936,6 +936,16 @@ export function desvincularUnidade(input: {
   userId: string;
 }): void {
   ensureCoreSchema();
+  /*
+    DESVINCULAR TAMBÉM É GESTÃO DE PLAQUINHA (P0 das plaquinhas).
+
+    Vincular já passava pela regra de ouro; desvincular não perguntava nada, e
+    uma loja fora da PJ Motors com vínculo antigo mexia na plaquinha da Oficina
+    por aqui. Vincular e desvincular são as duas metades do mesmo gesto, e o
+    gesto é só da PJ. O vínculo antigo de outra loja continua gravado: soltar
+    a plaquinha dela não é decisão desta rota.
+  */
+  exigirEmpresaComPlaquinha(input.companyId);
   withTransaction(() => {
     const db = getConnection();
     const unidade = lerUnidade(input.companyId, input.unitId);

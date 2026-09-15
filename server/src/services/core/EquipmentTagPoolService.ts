@@ -44,6 +44,7 @@ import { randomBytes, randomUUID } from 'node:crypto';
 import { getConnection, withTransaction } from '../../db/sqlite.js';
 import { ensureCoreSchema, nextSequenceValue } from '../../db/schema.js';
 import { ApiError } from '../../utils/errors.js';
+import { EMPRESA_DAS_PLAQUINHAS, ehEmpresaDasPlaquinhas } from './EmpresaDasPlaquinhas.js';
 
 export const TAG_STATUSES = ['gerada', 'disponivel', 'associada', 'danificada'] as const;
 export type TagStatus = (typeof TAG_STATUSES)[number];
@@ -79,28 +80,50 @@ export function formatTagId(publicId: number): string {
   return `#${String(publicId).padStart(4, '0')}`;
 }
 
+// A constante mora num módulo sem dependências (ver o cabeçalho dele); aqui ela
+// é reexportada para quem já importa o pool.
+export { EMPRESA_DAS_PLAQUINHAS, ehEmpresaDasPlaquinhas };
+
 /**
- * A REGRA DE OURO, num lugar só.
+ * A REGRA DE OURO, num lugar só — e agora ela é de UMA empresa.
  *
- * "O sistema de etiquetas com QR e ID é somente para PJ Motors e Oficina" —
- * são as duas operações que lidam com a máquina física que fica parada no
- * pátio. Loja de roupa, de maquiagem e de variedades usa etiqueta COMERCIAL
- * (código de barras e preço), que é outro sistema, com outra tela.
+ * ## O defeito
  *
- * A pergunta é feita ao CADASTRO (`uses_equipment_tags`), não a uma lista de
- * slugs escrita aqui: slug se renomeia, e empresa nova nasce toda semana. O
- * padrão da coluna é zero — quem entra depois não ganha de brinde o que
- * consome número do grupo.
+ * A regra dizia "plaquinha com QR e número é da PJ Motors e da Oficina", e a
+ * pergunta ia só ao cadastro (`uses_equipment_tags`). O dono restringiu: a
+ * plaquinha existe SÓ na PJ Motors. Perguntar apenas à coluna deixava três
+ * portas abertas para outra empresa enxergar e mexer no pool:
+ *   - o banco que já existe tem `uses_equipment_tags = 1` na Oficina (o passo
+ *     de migração 68 e a subida do servidor marcavam as duas);
+ *   - a tela de Empresas ligava a marca em qualquer operação, e a criação de
+ *     oficina de mobilidade nascia com ela ligada por padrão;
+ *   - as leituras do pool não perguntavam nada, e respondiam com a lista.
+ *
+ * ## A regra, agora
+ *
+ * As DUAS coisas têm de ser verdade: a marca ligada no cadastro E a empresa ser
+ * a PJ Motors. A marca continua mandando dentro da PJ (desligada, nem ela usa);
+ * o slug garante que nenhuma outra — Preço Justo, Oficina, Gringa, Me Mimei,
+ * Conceito ou a que nascer amanhã — passe, mesmo com a marca ligada num banco
+ * antigo. Nada é apagado: a plaquinha que a Oficina já tinha continua no banco,
+ * só deixa de ser alcançável.
  */
 export function empresaUsaPlaquinha(companyId: string): boolean {
   ensureCoreSchema();
   const row = getConnection()
-    .prepare('SELECT uses_equipment_tags FROM core_companies WHERE id = ?')
-    .get(companyId) as { uses_equipment_tags?: number } | undefined;
-  return Number(row?.uses_equipment_tags ?? 0) === 1;
+    .prepare('SELECT slug, uses_equipment_tags FROM core_companies WHERE id = ?')
+    .get(companyId) as { slug?: string; uses_equipment_tags?: number } | undefined;
+  return Number(row?.uses_equipment_tags ?? 0) === 1 && ehEmpresaDasPlaquinhas(row?.slug);
 }
 
-/** O mesmo guarda, em forma de recusa — para as rotas que escrevem. */
+/**
+ * O mesmo guarda, em forma de recusa — para TODA rota de plaquinha, leitura
+ * inclusive.
+ *
+ * 403 e não mais 409: não é um estado que a pessoa conserta clicando em outra
+ * coisa ("gere o lote antes"), é a empresa da sessão que não tem a função. O
+ * código continua `CORE_COMPANY_NO_TAGS` para quem já o trata.
+ */
 export function exigirEmpresaComPlaquinha(companyId: string): void {
   if (empresaUsaPlaquinha(companyId)) return;
   const nome = (
@@ -110,9 +133,10 @@ export function exigirEmpresaComPlaquinha(companyId: string): void {
   )?.trade_name;
   throw new ApiError(
     'CORE_COMPANY_NO_TAGS',
-    `${nome ?? 'Esta empresa'} não usa plaquinha com QR: aqui a identificação é a etiqueta de `
-    + 'produto, com código de barras e preço.',
-    409,
+    `Plaquinha com QR e número é exclusiva da PJ Motors: ${nome ?? 'esta empresa'} não gera, não `
+    + 'imprime, não vincula nem consulta plaquinha. Aqui a identificação é a etiqueta de produto, '
+    + 'com código de barras e preço.',
+    403,
   );
 }
 
