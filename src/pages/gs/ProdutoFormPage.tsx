@@ -19,7 +19,7 @@ import { useCan } from '@/hooks/useCan';
 import { EtiquetaDoProduto } from '@/components/gs/EtiquetaDoProduto';
 import { formatCents, formatQuantity, parseReaisToCents } from '@/components/gs/format';
 import { ApiRequestError } from '@/lib/api/client';
-import { normalizeImage } from '@/lib/image';
+import { miniaturaDaUrl, normalizeImage } from '@/lib/image';
 import {
   coreApi,
   type ComponenteDoKit,
@@ -422,7 +422,8 @@ export default function ProdutoFormPage() {
    * voltar e procurar onde anexar.
    */
   const [fotosPendentes, setFotosPendentes] = useState<
-    { dataUrl: string; fileName: string; mimeType: string }[]
+    // `thumbDataUrl`: a miniatura do balcão, gerada junto (P0 da Preço Justo).
+    { dataUrl: string; fileName: string; mimeType: string; thumbDataUrl?: string | null }[]
   >([]);
   /**
    * Códigos de barras ADICIONAIS — os que não são o principal.
@@ -1247,6 +1248,7 @@ export default function ProdutoFormPage() {
               dataUrl: foto.dataUrl,
               fileName: foto.fileName,
               mimeType: foto.mimeType,
+              thumbDataUrl: foto.thumbDataUrl ?? null,
             });
           } catch (err) {
             avisos.push(`A foto "${foto.fileName}" não subiu (${motivo(err)}). Envie de novo na aba Fotos.`);
@@ -3152,8 +3154,10 @@ function GaleriaCard({
 }: {
   /** Nulo enquanto o produto não foi salvo. */
   productId: string | null;
-  pendentes: { dataUrl: string; fileName: string; mimeType: string }[];
-  onPendentes: (fotos: { dataUrl: string; fileName: string; mimeType: string }[]) => void;
+  pendentes: { dataUrl: string; fileName: string; mimeType: string; thumbDataUrl?: string | null }[];
+  onPendentes: (
+    fotos: { dataUrl: string; fileName: string; mimeType: string; thumbDataUrl?: string | null }[],
+  ) => void;
   onChange: () => void;
 }) {
   const [imagens, setImagens] = useState<ProductImage[]>([]);
@@ -3174,18 +3178,65 @@ function GaleriaCard({
     void carregar();
   }, [carregar]);
 
+  /*
+    A MINIATURA QUE FALTA É GERADA AQUI, NA PRIMEIRA ABERTURA (P0 da Preço
+    Justo — o preenchimento "preguiçoso").
+
+    Foto enviada antes da miniatura existir aparece no PDV como o espaço
+    neutro. Esta galeria já baixa os originais para desenhá-los: aproveitar a
+    visita e gravar a miniatura das que não têm custa um canvas por foto, uma
+    vez. Só para quem gere o catálogo (`products.manage`) — quem só consulta a
+    ficha não escreve nada —, e cada foto é tentada UMA vez por abertura: a
+    que falhar (original ausente, recusa) fica para "Gerar miniaturas" em
+    Fotos em lote, sem laço.
+  */
+  const podePreencherMiniatura = useCan('products.manage');
+  const miniaturasTentadas = useRef(new Set<string>());
+  useEffect(() => {
+    if (!productId || !podePreencherMiniatura) return;
+    const faltando = imagens.filter((i) => !i.thumb_url && !miniaturasTentadas.current.has(i.id));
+    if (faltando.length === 0) return;
+    let viva = true;
+    void (async () => {
+      for (const img of faltando) {
+        miniaturasTentadas.current.add(img.id);
+        const mini = await miniaturaDaUrl(coreApi.imageUrl(img.url));
+        if (!viva || !mini) continue;
+        try {
+          await coreApi.definirMiniatura(productId, img.id, mini.dataUrl);
+        } catch {
+          // 409 (outra aba preencheu) ou recusa: a fila de Fotos em lote sabe.
+        }
+      }
+    })();
+    return () => {
+      viva = false;
+    };
+  }, [productId, imagens, podePreencherMiniatura]);
+
   const enviar = useCallback(
     async (files: FileList | null) => {
       if (!files?.length) return;
       setBusy(true);
       setError(null);
       try {
-        const normalizadas: { dataUrl: string; fileName: string; mimeType: string }[] = [];
+        const normalizadas: {
+          dataUrl: string;
+          fileName: string;
+          mimeType: string;
+          thumbDataUrl?: string | null;
+        }[] = [];
         for (const file of Array.from(files)) {
           // Reduz e recomprime antes de subir: foto de celular chega com
-          // vários megabytes que não servem para vitrine nenhuma.
+          // vários megabytes que não servem para vitrine nenhuma. A mesma
+          // leitura desenha a miniatura do balcão, que sobe junto.
           const n = await normalizeImage(file);
-          normalizadas.push({ dataUrl: n.dataUrl, fileName: file.name, mimeType: n.mimeType });
+          normalizadas.push({
+            dataUrl: n.dataUrl,
+            fileName: file.name,
+            mimeType: n.mimeType,
+            thumbDataUrl: n.miniatura?.dataUrl ?? null,
+          });
         }
 
         if (!productId) {
