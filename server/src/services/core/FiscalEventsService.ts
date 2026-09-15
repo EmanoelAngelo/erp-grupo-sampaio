@@ -35,6 +35,7 @@ import { momentoFiscal } from './MomentoFiscal.js';
 import { montarProcEventoNfe, montarProcInutNfe } from './FiscalProcNfe.js';
 import { classifyCStat, type SefazAdapter, type SefazResponse } from './SefazAdapter.js';
 import { assertAdapterPodeAgirNoDocumento } from './FiscalAtosAdministrativos.js';
+import { numeroNaoConsumidoPelaSefaz } from './FiscalReemissao.js';
 
 /**
  * O adapter de um ato — pronto, ou a fábrica dele.
@@ -578,17 +579,32 @@ function conflitosNaFaixa(input: {
 }): { emitidos: number[]; inutilizados: [number, number][] } {
   const db = getConnection();
 
+  /*
+    NÚMERO QUE A SEFAZ NÃO CONSUMIU SE INUTILIZA (P0 fiscal).
+
+    O defeito: qualquer linha de documento na faixa bloqueava a inutilização —
+    inclusive a nota REJEITADA, cujo número a SEFAZ não gravou. Quem desistia
+    de corrigir uma rejeitada ficava com um buraco na numeração que nenhuma
+    inutilização podia justificar. Agora só bloqueia o número consumido (ver
+    `numeroNaoConsumidoPelaSefaz`): autorizada, cancelada, denegada, em
+    andamento, ou rejeitada por duplicidade (539 — o número é de outra chave).
+  */
   const emitidos = (
     db
       .prepare(
-        `SELECT number FROM core_fiscal_documents
+        `SELECT id, number, status, c_stat FROM core_fiscal_documents
           WHERE company_id = ? AND model = ? AND serie = ?
             AND number BETWEEN ? AND ?`,
       )
       .all(input.companyId, input.model, input.serie, input.from, input.to) as unknown as {
+      id: string;
       number: number;
+      status: string;
+      c_stat: string | null;
     }[]
-  ).map((r) => Number(r.number));
+  )
+    .filter((r) => !numeroNaoConsumidoPelaSefaz(input.companyId, r))
+    .map((r) => Number(r.number));
 
   /**
    * Faixas bloqueadas: as já inutilizadas E as EM CURSO.

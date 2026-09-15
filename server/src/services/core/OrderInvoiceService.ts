@@ -25,7 +25,7 @@ import { getConnection, withTransaction } from '../../db/sqlite.js';
 import { ensureCoreSchema } from '../../db/schema.js';
 import { ApiError } from '../../utils/errors.js';
 import { recordDomainEvent } from '../sync/DomainEvents.js';
-import { getFiscalConfig, assertCanEmit, buildReadiness } from './FiscalConfigService.js';
+import { getFiscalConfig, assertCanEmit, buildReadiness, type FiscalConfig } from './FiscalConfigService.js';
 import { MODEL_NFE, reserveNextNumber } from './FiscalKeyService.js';
 import { getDocument, recordTransition, type FiscalDocument } from './FiscalDocumentService.js';
 import { advanceDocument } from './FiscalPipelineService.js';
@@ -35,6 +35,7 @@ import {
   validateNfe,
   type NfeRecipient,
   type NfeTransport,
+  type PresenceIndicator,
 } from './FiscalXmlNfe.js';
 import { conferirLeiauteAntesDeNumerar } from './FiscalXsdValidator.js';
 import { completarPeloGrupo } from './TributacaoDoItem.js';
@@ -474,103 +475,20 @@ export function createNfeForOrder(input: {
     return { document: getDocument(input.companyId, existente.id)!, created: false };
   }
 
-  const order = loadOrder(input.companyId, input.orderId);
-  if (order.status !== 'pago') {
-    throw new ApiError(
-      'CORE_ORDER_NOT_INVOICEABLE',
-      `Só pedido pago gera NF-e. Este está como "${order.status}".`,
-      409,
-    );
-  }
-
-  // Portão de montagem: emitente e série. Certificado e CSC são cobrados na
-  // assinatura — exigi-los aqui faria o gestor perder o faturamento enquanto o
-  // certificado é renovado, em vez de acumular na fila.
-  assertCanEmit(input.companyId, MODEL_NFE, 'document');
-
-  const destinatario = recipientForOrder(input.companyId, input.orderId);
-  if (!destinatario) {
-    throw new ApiError(
-      'CORE_ORDER_RECIPIENT_MISSING',
-      'O cliente não tem endereço cadastrado com os campos que a NF-e exige.',
-      409,
-    );
-  }
-
-  const config = getFiscalConfig(input.companyId);
-  // Lacunas do produto vêm do grupo — CFOP interestadual para outra UF (GAP-PRD-129).
-  const operacao = completarPeloGrupo(
-    orderAsFiscalOperation(input.companyId, input.orderId),
-    destinatario.uf,
-  );
+  // As conferências da montagem moram em `prepararNfeDoPedido` — a reemissão
+  // de uma rejeitada passa pelas mesmas, sem cópia (P0 fiscal).
+  const montagem = prepararNfeDoPedido(input.companyId, input.orderId);
+  const destinatario = montagem.recipient;
   const serie = input.serie ?? 1;
-
-  // VALIDA ANTES DE NUMERAR: descobrir um NCM faltando depois de reservar o
-  // número queimaria um número por erro de cadastro, e número queimado só se
-  // resolve por inutilização.
-  const problemas = validateNfe({ sale: operacao, config, recipient: destinatario });
-  /*
-    E O MUNICÍPIO DO RETRATO NA TABELA OFICIAL (R3-IBGE). O pedido fechado
-    antes da tabela passou só pelo formato; com um código que não é município
-    da UF, a SEFAZ recusaria a nota com o número já queimado. Recusa aqui,
-    antes da reserva, dizendo onde corrigir. Sem a tabela, nada muda.
-  */
-  const municipioErrado = municipioDaNotaQueNaoConfere(destinatario.cityIbge, destinatario.uf, destinatario.cityName);
-  if (municipioErrado) {
-    problemas.push({
-      field: 'dest.cMun',
-      message:
-        `${municipioErrado.motivo} — corrija o município em Pedidos › este pedido › Nota fiscal do pedido `
-        + '(escolha a cidade na lista) e emita de novo.',
-    });
-  }
-  if (problemas.length > 0) {
-    throw new ApiError(
-      'CORE_FISCAL_DOCUMENT_INVALID',
-      `A NF-e não pode ser emitida: ${problemas
-        .map((p) => `${p.field} — ${p.message}`)
-        .join(' | ')}`,
-      409,
-      { problems: problemas },
-    );
-  }
-
-  const frete = Number(order.shipping_cents ?? 0);
-  const transporte: NfeTransport = frete > 0
-    // Frete cobrado do cliente na loja: por conta do destinatário.
-    ? { modFrete: '1', freightCents: frete }
-    // Retirada no balcão não tem transporte. Declarar frete zero com modalidade
-    // de entrega diria que houve envio grátis, o que não aconteceu.
-    : { modFrete: '9', freightCents: 0 };
 
   // O leiaute pelo XSD antes do número — o portão comum da NF-e (GAP-PRD-097).
   conferirLeiauteAntesDeNumerar(
-    (provisorio) =>
-      buildNfeXml({
-        sale: operacao,
-        config,
-        recipient: destinatario,
-        serie,
-        number: provisorio,
-        transport: transporte,
-        presence: '2',
-        additionalInfo: `Pedido online nº ${order.number}.`,
-      }).xml,
+    (provisorio) => buildNfeXml({ ...montagem, serie, number: provisorio }).xml,
   );
 
   const numero = reserveNextNumber({ companyId: input.companyId, model: MODEL_NFE, serie });
   const emitidoEm = new Date();
-  const construido = buildNfeXml({
-    sale: operacao,
-    config,
-    recipient: destinatario,
-    serie,
-    number: numero,
-    transport: transporte,
-    presence: '2',
-    additionalInfo: `Pedido online nº ${order.number}.`,
-    issuedAt: emitidoEm,
-  });
+  const construido = buildNfeXml({ ...montagem, serie, number: numero, issuedAt: emitidoEm });
 
   try {
     return withTransaction(() => {
@@ -591,7 +509,7 @@ export function createNfeForOrder(input: {
         serie,
         numero,
         construido.accessKey,
-        config.environment,
+        montagem.config.environment,
         construido.xml,
         emitidoEm.toISOString(),
         // Gravado na emissão: é o destinatário DAQUELA nota. Buscar depois no
@@ -646,6 +564,100 @@ export function createNfeForOrder(input: {
     }
     throw err;
   }
+}
+
+/** O que a NF-e do pedido precisa para ser montada — conferido, ainda sem número. */
+export interface MontagemDaNfeDoPedido {
+  sale: NfceSale;
+  config: FiscalConfig;
+  recipient: NfeRecipient;
+  transport: NfeTransport;
+  presence: PresenceIndicator;
+  additionalInfo: string;
+}
+
+/**
+ * A MONTAGEM DA NF-e DO PEDIDO, sem número.
+ *
+ * Separada de `createNfeForOrder` (P0 fiscal) para que a REEMISSÃO de uma nota
+ * rejeitada — mesmo número, chave nova, cadastro corrigido — passe pelas
+ * MESMAS conferências da primeira emissão. Nenhuma regra nova: é o trecho que
+ * morava dentro de `createNfeForOrder`, com o mesmo texto de recusa.
+ */
+export function prepararNfeDoPedido(companyId: string, orderId: string): MontagemDaNfeDoPedido {
+  const order = loadOrder(companyId, orderId);
+  if (order.status !== 'pago') {
+    throw new ApiError(
+      'CORE_ORDER_NOT_INVOICEABLE',
+      `Só pedido pago gera NF-e. Este está como "${order.status}".`,
+      409,
+    );
+  }
+
+  // Portão de montagem: emitente e série. Certificado e CSC são cobrados na
+  // assinatura — exigi-los aqui faria o gestor perder o faturamento enquanto o
+  // certificado é renovado, em vez de acumular na fila.
+  assertCanEmit(companyId, MODEL_NFE, 'document');
+
+  const destinatario = recipientForOrder(companyId, orderId);
+  if (!destinatario) {
+    throw new ApiError(
+      'CORE_ORDER_RECIPIENT_MISSING',
+      'O cliente não tem endereço cadastrado com os campos que a NF-e exige.',
+      409,
+    );
+  }
+
+  const config = getFiscalConfig(companyId);
+  // Lacunas do produto vêm do grupo — CFOP interestadual para outra UF (GAP-PRD-129).
+  const operacao = completarPeloGrupo(orderAsFiscalOperation(companyId, orderId), destinatario.uf);
+
+  // VALIDA ANTES DE NUMERAR: descobrir um NCM faltando depois de reservar o
+  // número queimaria um número por erro de cadastro, e número queimado só se
+  // resolve por inutilização.
+  const problemas = validateNfe({ sale: operacao, config, recipient: destinatario });
+  /*
+    E O MUNICÍPIO DO RETRATO NA TABELA OFICIAL (R3-IBGE). O pedido fechado
+    antes da tabela passou só pelo formato; com um código que não é município
+    da UF, a SEFAZ recusaria a nota com o número já queimado. Recusa aqui,
+    antes da reserva, dizendo onde corrigir. Sem a tabela, nada muda.
+  */
+  const municipioErrado = municipioDaNotaQueNaoConfere(destinatario.cityIbge, destinatario.uf, destinatario.cityName);
+  if (municipioErrado) {
+    problemas.push({
+      field: 'dest.cMun',
+      message:
+        `${municipioErrado.motivo} — corrija o município em Pedidos › este pedido › Nota fiscal do pedido `
+        + '(escolha a cidade na lista) e emita de novo.',
+    });
+  }
+  if (problemas.length > 0) {
+    throw new ApiError(
+      'CORE_FISCAL_DOCUMENT_INVALID',
+      `A NF-e não pode ser emitida: ${problemas
+        .map((p) => `${p.field} — ${p.message}`)
+        .join(' | ')}`,
+      409,
+      { problems: problemas },
+    );
+  }
+
+  const frete = Number(order.shipping_cents ?? 0);
+  const transporte: NfeTransport = frete > 0
+    // Frete cobrado do cliente na loja: por conta do destinatário.
+    ? { modFrete: '1', freightCents: frete }
+    // Retirada no balcão não tem transporte. Declarar frete zero com modalidade
+    // de entrega diria que houve envio grátis, o que não aconteceu.
+    : { modFrete: '9', freightCents: 0 };
+
+  return {
+    sale: operacao,
+    config,
+    recipient: destinatario,
+    transport: transporte,
+    presence: '2',
+    additionalInfo: `Pedido online nº ${order.number}.`,
+  };
 }
 
 /** Monta, valida, assina e enfileira a NF-e do pedido. */

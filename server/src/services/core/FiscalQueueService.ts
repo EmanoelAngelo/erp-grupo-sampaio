@@ -202,7 +202,32 @@ export function enqueue(input: {
     const existente = db
       .prepare('SELECT * FROM core_fiscal_queue WHERE company_id = ? AND idempotency_key = ?')
       .get(input.companyId, chave) as Record<string, unknown> | undefined;
-    if (existente) return toItem(existente);
+    if (existente) {
+      /*
+        O DOCUMENTO ASSINADO DE NOVO VOLTA À FILA (P0 fiscal — reemissão).
+
+        O defeito: com o item já existente, `enqueue` devolvia o item e NÃO
+        movia o documento de SIGNED para QUEUED. Na reemissão de uma rejeitada
+        (mesmo número, chave nova) o documento ficava SIGNED com um item
+        `done` — nunca transmitido, e a transição SIGNED→AUTHORIZED explodia
+        se alguém o forçasse. Documento assinado que pede fila entra na fila:
+        o item encerrado reabre (sem tentativas nem erro herdados) e o
+        documento vai para QUEUED.
+      */
+      const docExistente = getDocument(input.companyId, input.documentId);
+      if (docExistente?.status === 'SIGNED') {
+        const agora = new Date().toISOString();
+        db.prepare(
+          `UPDATE core_fiscal_queue
+              SET status = 'pending', attempts = 0, next_attempt_at = ?, error_code = NULL,
+                  error_message = NULL, locked_until = NULL, locked_by = NULL, updated_at = ?
+            WHERE id = ? AND status IN ('done', 'dead')`,
+        ).run(agora, agora, String(existente.id));
+        transition({ companyId: input.companyId, documentId: input.documentId, to: 'QUEUED', userId: input.userId });
+        return toItem(db.prepare('SELECT * FROM core_fiscal_queue WHERE id = ?').get(String(existente.id)) as Record<string, unknown>);
+      }
+      return toItem(existente);
+    }
 
     const doc = getDocument(input.companyId, input.documentId);
     if (!doc) {
