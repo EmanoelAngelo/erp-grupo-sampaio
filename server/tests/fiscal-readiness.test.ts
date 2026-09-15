@@ -104,7 +104,9 @@ describe('readiness', () => {
       .send({
         legalName: 'Preço Justo Comércio Ltda',
         cnpj: '11.222.333/0001-81',
-        ie: '123456789',
+        // IE do RS é o CGC/TE, com dígito conferido (auditoria P0): o fictício
+        // '123456789' não fecha a conta e o item ficaria PENDENTE/DIVERGENTE.
+        ie: '096/0012346',
         crt: '1',
         street: 'Av. Central',
         number: '100',

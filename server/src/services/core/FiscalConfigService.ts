@@ -24,7 +24,19 @@ import {
   rotuloDoAmbiente,
   type AmbienteDoCsc,
 } from '../nfce/NfceCscService.js';
-import { MODEL_NFCE, MODEL_NFE, getSeries, type FiscalEnvironment } from './FiscalKeyService.js';
+import {
+  MODEL_NFCE,
+  MODEL_NFE,
+  getSeries,
+  rotuloDoAmbienteDaSerie,
+  seriesDoAmbiente,
+  type FiscalEnvironment,
+} from './FiscalKeyService.js';
+import { ieDoRsConfere } from './InscricaoEstadualRs.js';
+
+// A conta do CGC/TE mora no módulo dela; o checklist a usa e a expõe a quem
+// já importa daqui.
+export { ieDoRsConfere };
 import { TEST_PROTOCOL_PREFIX } from './SefazTestAdapter.js';
 /*
   AS DUAS MARCAS DE ENSAIO VÊM DE QUEM AS PRODUZ — nunca digitadas aqui.
@@ -552,6 +564,23 @@ export function buildReadiness(
   */
   const senhaSelada = cert.certificate?.senhaGuardada === true;
 
+  /*
+    O A1 DE OUTRO CNPJ (auditoria P0 da Preço Justo). A conferência do upload
+    compara com o CNPJ do emitente DAQUELE momento; trocar o CNPJ do emitente
+    depois deixava no checklist um certificado de outra raiz como utilizável, e
+    a recusa só chegava na assinatura, com a venda feita. Raiz igual continua
+    aceita — a SEFAZ compara a raiz, e o A1 da matriz assina pela filial.
+  */
+  const cnpjDoA1 = String(cert.certificate?.documentNumber ?? cert.certificate?.cnpj ?? '').replace(/\D/g, '');
+  const cnpjDoEmitente = String(cfg.cnpj ?? '').replace(/\D/g, '');
+  const a1DeOutroCnpj =
+    cert.configured
+    && cnpjDoA1.length === 14
+    && cnpjDoEmitente.length === 14
+    && cnpjDoA1.slice(0, 8) !== cnpjDoEmitente.slice(0, 8)
+      ? cnpjDoA1.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, '$1.$2.$3/$4-$5')
+      : null;
+
   const endereco = [cfg.street, cfg.number, cfg.district, cfg.cityName, cfg.uf]
     .filter(Boolean)
     .join(', ');
@@ -596,13 +625,56 @@ export function buildReadiness(
         state: cfg.cnpj && !isValidCnpj(cfg.cnpj) ? 'DIVERGENTE' : undefined,
       },
     ),
-    check(
-      'ie',
-      'Inscrição estadual',
-      Boolean(cfg.ie),
-      'Informe a inscrição estadual.',
-      { owner: 'gestor', known: cfg.ie },
-    ),
+    /*
+      A INSCRIÇÃO ESTADUAL — no RS, o CGC/TE (auditoria P0 da Preço Justo).
+
+      O contador passou "CGC/TE 093/0491475": no Rio Grande do Sul a IE se
+      chama CGC/TE e é escrita 999/9999999. O item só perguntava "tem IE?", e
+      um número com o dígito trocado passava verde até a SEFAZ recusá-lo
+      (rejeição 209), com a nota já numerada. O rótulo agora diz o nome que o
+      dono conhece, e o dígito verificador do RS é conferido.
+
+      O NÚMERO NÃO É REESCRITO: a barra é formatação, o XML já leva só os
+      dígitos, e o cadastro guarda o que foi digitado.
+
+      Ausente continua travando (FAIL). Presente com o dígito errado é
+      DIVERGENTE, mas PENDING e não FAIL: a conta é local, a palavra final é do
+      cadastro da SEFAZ, e travar a loja inteira por uma conta nossa seria ser
+      mais severo que o fisco. O aviso fica no checklist, com a consequência.
+    */
+    ((): ReadinessItem => {
+      const doRs = String(cfg.uf ?? '').trim().toUpperCase() === 'RS';
+      const rotulo = doRs ? 'Inscrição estadual (CGC/TE)' : 'Inscrição estadual';
+      if (!cfg.ie) {
+        return check(
+          'ie',
+          rotulo,
+          false,
+          doRs
+            ? 'Informe a inscrição estadual — no RS, o número do CGC/TE (formato 999/9999999).'
+            : 'Informe a inscrição estadual.',
+          { owner: 'gestor', known: null },
+        );
+      }
+      if (doRs && !ieDoRsConfere(cfg.ie)) {
+        return {
+          key: 'ie',
+          label: rotulo,
+          status: 'PENDING',
+          detail:
+            `A inscrição estadual gravada (${cfg.ie}) não confere com o dígito verificador do CGC/TE `
+            + 'do RS: são 10 dígitos (3 do município, 6 do contribuinte e 1 verificador), no formato '
+            + '999/9999999. Confira no cartão do CGC/TE — com a IE do emitente inválida, a SEFAZ '
+            + 'recusa a nota depois de numerada (rejeição 209).',
+          state: 'DIVERGENTE',
+          source: 'cadastro',
+          owner: 'gestor',
+          known: cfg.ie,
+          counts: null,
+        };
+      }
+      return check('ie', rotulo, true, '', { owner: 'gestor', known: cfg.ie });
+    })(),
     check(
       'crt',
       'Regime tributário (CRT)',
@@ -649,10 +721,14 @@ export function buildReadiness(
     check(
       'certificate',
       'Certificado A1',
-      cert.configured && senhaSelada,
+      cert.configured && senhaSelada && !a1DeOutroCnpj,
       !cert.configured
         ? 'Nenhum certificado carregado nesta operação.'
-        : 'O arquivo está no cofre, mas a senha não: ele foi gravado antes de a senha passar a '
+        : a1DeOutroCnpj
+          ? `O certificado carregado é do CNPJ ${a1DeOutroCnpj}, de raiz diferente da do emitente `
+            + 'desta operação. A SEFAZ recusa a assinatura por CNPJ que não é o do emitente: envie '
+            + 'em Fiscal › Certificado o A1 desta operação, ou corrija o CNPJ do emitente.'
+          : 'O arquivo está no cofre, mas a senha não: ele foi gravado antes de a senha passar a '
           + 'ser selada. Sem ela, o PDV e a fila não assinam sozinhos — cada nota pediria a senha. '
           + 'Reenvie o mesmo .pfx com a senha em Fiscal › Certificado: o reenvio sela a senha e '
           + 'preenche o titular e a conferência do CNPJ.',
@@ -670,7 +746,12 @@ export function buildReadiness(
           certificado CERTO vem da conferência de CNPJ e, no fim, da SEFAZ.
         */
         // Sem a senha selada ainda há um gesto do dono a fazer: PENDENTE.
-        state: cert.configured && senhaSelada ? 'AUTO_DETECTADO' : 'PENDENTE',
+        // A1 de outra raiz é DIVERGENTE: há um arquivo lá, e é o arquivo errado.
+        state: a1DeOutroCnpj
+          ? 'DIVERGENTE'
+          : cert.configured && senhaSelada
+            ? 'AUTO_DETECTADO'
+            : 'PENDENTE',
         known: cert.configured
           ? (String(cert.certificate?.subject ?? '') || 'certificado carregado')
           : null,
@@ -780,19 +861,56 @@ export function buildReadiness(
     );
   }
 
+  /*
+    A SÉRIE DO AMBIENTE (auditoria P0 da Preço Justo).
+
+    O item perguntava só "existe série?" — contando até série inativa — e
+    ficava verde com a série da produção servindo aos testes. Agora pergunta
+    "existe série ATIVA para o ambiente em que esta operação emite?", com a
+    mesma régua da emissão (`seriesDoAmbiente`), e avisa quando o teste da
+    homologação está gastando a numeração que a produção vai usar.
+  */
   const series = getSeries(companyId, model);
-  items.push(
-    check(
-      'serie',
-      model === MODEL_NFCE ? 'Série NFC-e' : 'Série NF-e',
-      series.length > 0,
-      'Nenhuma série configurada para este modelo.',
-      {
-        owner: 'gestor',
-        known: series.length > 0 ? series.map((s) => `série ${s.serie}`).join(', ') : null,
-      },
-    ),
+  const ativas = series.filter((s) => s.active);
+  const doAmbiente = seriesDoAmbiente(companyId, model, cfg.environment);
+  const ambienteDaOperacao = rotuloDoAmbienteDaSerie(cfg.environment);
+  const usada = doAmbiente.length === 1 ? doAmbiente[0] : null;
+  const avisoDaSerie =
+    usada && usada.environment === null && cfg.environment === 'homologation'
+      ? `A série ${usada.serie} serve aos dois ambientes: cada nota de teste da homologação gasta um `
+        + 'número que a produção não poderá usar'
+        + (usada.usadas.homologation > 0 ? ` (${usada.usadas.homologation} já gasto(s))` : '')
+        + '. Para a primeira nota de produção sair no número definido pelo contador, marque a série '
+        + `${usada.serie} como "só produção" e cadastre outra série "só homologação" para os testes, `
+        + 'em Fiscal › Configuração › Numeração das notas.'
+      : usada && cfg.environment === 'production' && usada.usadas.homologation > 0
+        ? `${usada.usadas.homologation} nota(s) de homologação usaram números da série ${usada.serie}: `
+          + `a produção segue do nº ${usada.nextNumber}, e os números anteriores nunca emitidos em `
+          + 'produção pedem inutilização — confirme com o contador.'
+        : null;
+  const serieItem = check(
+    'serie',
+    model === MODEL_NFCE ? 'Série NFC-e' : 'Série NF-e',
+    doAmbiente.length > 0,
+    ativas.length > 0
+      ? `Nenhuma série de ${ambienteDaOperacao} para este modelo: `
+        + ativas
+          .map((s) => `a série ${s.serie} está reservada para ${rotuloDoAmbienteDaSerie(s.environment!)}`)
+          .join('; ')
+        + `. Cadastre uma série "só ${ambienteDaOperacao}" em Fiscal › Configuração › Numeração das notas.`
+      : 'Nenhuma série configurada para este modelo.',
+    {
+      owner: 'gestor',
+      // O legado continua dito como sempre ("série 1"); a série marcada diz o ambiente.
+      known:
+        series.length > 0
+          ? series
+            .map((s) => (s.environment ? `série ${s.serie} (${rotuloDoAmbienteDaSerie(s.environment)})` : `série ${s.serie}`))
+            .join(', ')
+          : null,
+    },
   );
+  items.push(serieItem.status === 'PASS' && avisoDaSerie ? { ...serieItem, detail: avisoDaSerie } : serieItem);
 
   if (model === MODEL_NFCE) {
     // O CSC vive cifrado no cofre do NfceCscService. Aqui só se pergunta QUAL
