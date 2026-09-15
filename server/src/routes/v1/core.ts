@@ -190,6 +190,12 @@ import {
   plaquinhasVinculaveis,
   vincularUnidade,
 } from '../../services/core/EquipmentStockLink.js';
+import {
+  desvincularPlaquinhaDoPool,
+  plaquinhasDoPoolDasUnidades,
+  substituirPlaquinhaDaUnidade,
+  vincularPlaquinhaDoPool,
+} from '../../services/core/PlaquinhaDaPjNaUnidade.js';
 import { cancelSale, countSales, createSale, getSaleDetail, listSales } from '../../services/core/SalesService.js';
 import {
   addMovement,
@@ -1649,6 +1655,15 @@ coreRouter.post('/print/jobs', (req: AuthedRequest, res, next) => {
     const { companyId, userId } = scope(req);
     const documentType = String(req.body?.documentType ?? '') as DocumentType;
     const documentId = String(req.body?.documentId ?? '');
+    /*
+      A PLAQUINHA NÃO SAI PELA FILA DO CAIXA (P0 das plaquinhas).
+
+      Esta fila admite o caixa do PDV (`operador_caixa_loja`), e o
+      EQUIPMENT_QR_TAG passava por ela como qualquer cupom: o login do PDV da
+      PJ podia mandar imprimir plaquinha. Imprimir plaquinha é gestão (PDV não
+      administra) — a mesma capability de POST /labels/equipment/sheet.
+    */
+    if (documentType === 'EQUIPMENT_QR_TAG') requireCapability(req, 'labels.equipment.print');
     // A página de teste e o pulso da gaveta têm rota própria (gerência,
     // motivo, trilha). Por aqui, abrir a gaveta sem venda passaria sem nada.
     if (TIPOS_RESERVADOS.includes(documentType)) {
@@ -8157,11 +8172,14 @@ function resolveWorkshop(req: AuthedRequest, required = true): WorkshopRow | nul
   if (!required) return null;
   // Empresa SEM bancada nenhuma não "atende mais de uma" (GAP-PRD-110): a frase
   // antiga mandava a gestão da PJ Motors escolher uma oficina que não existe.
+  // E a seguinte dizia que a plaquinha era da oficina — desde o P0 das
+  // plaquinhas ela é só da PJ Motors, que gera o lote e cola na moto pela
+  // unidade.
   if (available.length === 0) {
     throw new ApiError(
       'CORE_COMPANY_WITHOUT_WORKSHOP',
-      'Esta empresa não tem oficina nem bancada: cadastro de máquina, OS e plaquinha são da oficina do '
-        + 'grupo. A moto da loja recebe a plaquinha da oficina em Estoque › Unidades.',
+      'Esta empresa não tem oficina nem bancada: cadastro de máquina e OS são da oficina do grupo. A '
+        + 'plaquinha da PJ Motors é gerada em Plaquinhas e colada na moto em Estoque › Unidades.',
       409,
     );
   }
@@ -12903,10 +12921,22 @@ coreRouter.get('/units/summary', (req: AuthedRequest, res, next) => {
     const db = getConnection();
     const contar = (sql: string): number =>
       Number((db.prepare(sql).get(companyId) as { total: number }).total);
+    /*
+      A MOTO COM O ADESIVO DA PJ JÁ TEM PLAQUINHA (P0 das plaquinhas).
+
+      "Sem plaquinha" contava só `equipment_id` nulo: a moto em que a PJ colou
+      a plaquinha do lote dela (`core_equipment_tags.unit_id`) continuava na
+      fila para sempre, e a fila deixava de dizer se ainda há trabalho.
+    */
+    const semAdesivoDaPj = `
+            AND NOT EXISTS (SELECT 1 FROM core_equipment_tags t
+                             WHERE t.company_id = core_product_units.company_id
+                               AND t.unit_id = core_product_units.id
+                               AND t.status = 'associada')`;
     res.json({
       semPlaquinha: contar(
         `SELECT COUNT(*) AS total FROM core_product_units
-          WHERE company_id = ? AND status = 'in_stock' AND equipment_id IS NULL`,
+          WHERE company_id = ? AND status = 'in_stock' AND equipment_id IS NULL${semAdesivoDaPj}`,
       ),
       /*
         A FILA DO VÍNCULO TARDIO (GAP-PRD-108): moto que saiu vendida sem
@@ -12916,7 +12946,7 @@ coreRouter.get('/units/summary', (req: AuthedRequest, res, next) => {
       vendidasSemPlaquinha: contar(
         `SELECT COUNT(*) AS total FROM core_product_units
           WHERE company_id = ? AND status = 'sold' AND equipment_id IS NULL
-            AND exit_reference_type IN ('sale', 'ecommerce_order')`,
+            AND exit_reference_type IN ('sale', 'ecommerce_order')${semAdesivoDaPj}`,
       ),
       /*
         O DIA 1 DA OPERAÇÃO DE MOTOS (GAP-PRD-112): quantos produtos são
@@ -12965,6 +12995,11 @@ coreRouter.get('/units/:productId', (req: AuthedRequest, res, next) => {
       fica gravado e a lista não o projeta.
     */
     const mostraPlaquinha = empresaUsaPlaquinha(companyId);
+    // O adesivo do lote da PJ colado na unidade (P0 das plaquinhas), numa
+    // consulta só para a lista inteira — e só na PJ, como o bloco da máquina.
+    const doPool = mostraPlaquinha
+      ? plaquinhasDoPoolDasUnidades(companyId, unidades.map((u) => u.id))
+      : new Map();
     res.json({
       // A plaquinha vai JUNTO da unidade porque é na lista que o operador
       // decide: sem ela, a tela mostraria um botão de vincular para uma moto que
@@ -12975,6 +13010,7 @@ coreRouter.get('/units/:productId', (req: AuthedRequest, res, next) => {
       items: unidades.map((u) => ({
         ...u,
         plaquinha: u.equipment_id && mostraPlaquinha ? plaquinhaDaUnidade(companyId, u.id) : null,
+        plaquinhaDoPool: doPool.get(u.id) ?? null,
         reserva: reservas.get(u.id) ?? null,
       })),
     });
@@ -13051,7 +13087,13 @@ coreRouter.post('/units/:id/equipment/sheet', (req: AuthedRequest, res, next) =>
       action: 'unit.equipment.label.reprint',
       entityType: 'product_unit',
       entityId: String(req.params.id),
-      detail: { equipmentId: folha.equipmentId, publicId: folha.publicIdLabel, formatId: folha.formatId },
+      // `tagId` é o adesivo da PJ reimpresso (sem máquina, P0 das plaquinhas).
+      detail: {
+        equipmentId: folha.equipmentId,
+        tagId: folha.tagId,
+        publicId: folha.publicIdLabel,
+        formatId: folha.formatId,
+      },
     });
     res.json({
       html: folha.html,
@@ -13093,13 +13135,110 @@ coreRouter.delete('/units/:id/equipment', (req: AuthedRequest, res, next) => {
   }
 });
 
+/*
+  A PLAQUINHA DA PJ MOTORS NA MOTO DO ESTOQUE (P0 das plaquinhas).
+
+  A PJ gerava, imprimia e liberava o lote, e o adesivo nunca virava
+  `associada`: só o cadastro de MÁQUINA associava, e a PJ não tem bancada. O QR
+  colado na moto respondia 404 para sempre. Estas três rotas fecham o ciclo pela
+  UNIDADE, sem máquina: colar, soltar (moto errada, ainda no pátio) e trocar o
+  adesivo estragado. Tela: Estoque › Unidades, gestão da PJ Motors.
+
+  O guarda é `inventory.units.manage` — o mesmo das rotas vizinhas da unidade.
+  O caixa do PDV não o tem (PDV não administra). A regra da empresa mora no
+  serviço (`exigirEmpresaComPlaquinha`, antes de qualquer leitura): fora da PJ,
+  403 CORE_COMPANY_NO_TAGS.
+*/
+coreRouter.post('/units/:id/tag', (req: AuthedRequest, res, next) => {
+  try {
+    // Colar o adesivo liberado na moto: Estoque › Unidades, gestão da PJ Motors.
+    requireCapability(req, 'inventory.units.manage');
+    const { companyId, userId } = scope(req);
+    // O `tagId` vazio é conferido DENTRO do serviço, depois da regra da
+    // empresa: fora da PJ a resposta é sempre 403, com corpo ou sem.
+    const tagId = String(req.body?.tagId ?? '');
+    const plaquinha = vincularPlaquinhaDoPool({ companyId, unitId: String(req.params.id), tagId, userId });
+    recordAudit({
+      companyId,
+      userId,
+      action: 'unit.tag.link',
+      entityType: 'product_unit',
+      entityId: String(req.params.id),
+      detail: { tagId: plaquinha.tagId, publicId: plaquinha.publicIdLabel },
+    });
+    res.status(201).json({ plaquinha });
+  } catch (err) {
+    next(err);
+  }
+});
+
+coreRouter.delete('/units/:id/tag', (req: AuthedRequest, res, next) => {
+  try {
+    // Soltar o adesivo da moto errada: Estoque › Unidades, gestão da PJ Motors.
+    requireCapability(req, 'inventory.units.manage');
+    const { companyId, userId } = scope(req);
+    const solta = desvincularPlaquinhaDoPool({ companyId, unitId: String(req.params.id), userId });
+    recordAudit({
+      companyId,
+      userId,
+      action: 'unit.tag.unlink',
+      entityType: 'product_unit',
+      entityId: String(req.params.id),
+      // Qual adesivo foi solto: depois do UPDATE a unidade não diz mais.
+      detail: { tagId: solta.tagId, publicId: solta.publicIdLabel },
+    });
+    res.status(204).end();
+  } catch (err) {
+    next(err);
+  }
+});
+
+coreRouter.post('/units/:id/tag/replace', (req: AuthedRequest, res, next) => {
+  try {
+    // Trocar o adesivo estragado: Estoque › Unidades, gestão da PJ Motors.
+    requireCapability(req, 'inventory.units.manage');
+    const { companyId, userId } = scope(req);
+    const motivo = String(req.body?.motivo ?? '').trim();
+    const resultado = substituirPlaquinhaDaUnidade({
+      companyId,
+      unitId: String(req.params.id),
+      novaTagId: String(req.body?.novaTagId ?? ''),
+      motivo,
+      userId,
+    });
+    recordAudit({
+      companyId,
+      userId,
+      action: 'unit.tag.replace',
+      entityType: 'product_unit',
+      entityId: String(req.params.id),
+      detail: { ...resultado, motivo },
+    });
+    res.json(resultado);
+  } catch (err) {
+    next(err);
+  }
+});
+
 /** Bipar o IMEI ou o chassi no balcão e achar a peça. */
 coreRouter.get('/units', (req: AuthedRequest, res, next) => {
   try {
     /** Busca de unidade por código: é o operador com a etiqueta na mão. */
     abertaAo(req, 'balcao', 'escritorio');
     const { companyId } = scope(req);
-    res.json({ items: searchUnit(companyId, String(req.query.q ?? '')) });
+    const achadas = searchUnit(companyId, String(req.query.q ?? ''));
+    /*
+      O ADESIVO DA PJ TAMBÉM NA BUSCA POR IDENTIDADE (P0 das plaquinhas).
+
+      É por aqui que o pátio chega à moto (bipa o chassi). Sem o bloco, a moto
+      com a plaquinha da PJ colada aparecia "sem plaquinha", com o botão de
+      vincular — que o servidor recusa com 409. Só na PJ, como na lista por
+      produto.
+    */
+    const doPool = empresaUsaPlaquinha(companyId)
+      ? plaquinhasDoPoolDasUnidades(companyId, achadas.map((u) => u.id))
+      : new Map();
+    res.json({ items: achadas.map((u) => ({ ...u, plaquinhaDoPool: doPool.get(u.id) ?? null })) });
   } catch (err) {
     next(err);
   }

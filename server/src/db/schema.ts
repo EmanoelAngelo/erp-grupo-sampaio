@@ -3669,6 +3669,33 @@ export const STATEMENTS: string[] = [
      status         TEXT NOT NULL DEFAULT 'gerada',
      batch_id       TEXT,
      equipment_id   TEXT REFERENCES core_equipment(id),
+     -- A PLAQUINHA DA PJ NA MOTO DO ESTOQUE (P0 das plaquinhas).
+     --
+     -- O defeito: o adesivo do lote da PJ Motors nunca virava 'associada'.
+     -- So createEquipment associava plaquinha do pool, createEquipment exige
+     -- bancada, e a PJ nao tem bancada nenhuma. O QR impresso respondia 404
+     -- para sempre: a PJ gerava, imprimia e liberava um numero inutil.
+     --
+     -- O que a coluna diz: plaquinha 'associada' com unit_id preenchido e
+     -- equipment_id NULL e o adesivo colado NAQUELA unidade de estoque da PJ.
+     -- A plaquinha 'danificada' (troca de adesivo) GUARDA o unit_id, para a
+     -- auditoria saber de qual moto era o adesivo que morreu.
+     --
+     -- Sem REFERENCES de proposito: no banco que ja existe a coluna chega pelo
+     -- reconcileCoreSchema, cujo ALTER usa so o tipo. FK aqui faria o banco
+     -- novo diferente do banco migrado.
+     --
+     -- Sem indice de proposito: ensureCoreSchema roda estas instrucoes ANTES
+     -- das migracoes, e um indice sobre esta coluna derrubaria a subida de
+     -- qualquer banco existente (a mesma nota do indice de kind em
+     -- core_stock_movements, e o teste de schema-drift que a cobra).
+     --
+     -- A unicidade (uma plaquinha viva por unidade) mora no CODIGO, em
+     -- PlaquinhaDaPjNaUnidade.ts, como chassiJaUsadoNaEmpresa. O indice unico
+     -- parcial ON core_equipment_tags(unit_id) WHERE unit_id IS NOT NULL AND
+     -- status = 'associada' fica para um passo numerado de migracao aprovado
+     -- pelo dono.
+     unit_id        TEXT,
      printed_at     TEXT,
      released_at    TEXT,
      released_by    TEXT REFERENCES core_users(id),

@@ -640,4 +640,19 @@ describe('a busca do balcão', () => {
     expect(within(linha).getByText('Shineray PT2')).toBeTruthy();
     expect(within(linha).getByText('Na máquina')).toBeTruthy();
   });
+
+  /*
+    P0 DAS PLAQUINHAS: o adesivo da PJ colado na moto do estoque não tem
+    máquina — a coluna mostrava "—" e a plaquinha associada parecia associada
+    a nada. O servidor manda `unit_label` (marca, modelo e chassi da unidade).
+  */
+  it('a plaquinha colada na moto do estoque mostra a moto na coluna da máquina', async () => {
+    pool = [
+      { ...plaquinha(42, { status: 'associada' }), unit_label: 'Honda CG 160 · 9C2KC1670NR000001' } as Plaquinha,
+    ];
+    montar();
+    const linha = (await screen.findByText('#0042')).closest('tr') as HTMLElement;
+    expect(within(linha).getByText('Honda CG 160 · 9C2KC1670NR000001')).toBeTruthy();
+    expect(within(linha).getByText('Na máquina')).toBeTruthy();
+  });
 });

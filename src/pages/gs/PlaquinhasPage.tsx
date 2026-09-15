@@ -3,11 +3,15 @@
  *
  * ## O que esta tela resolve
  *
- * A oficina não cadastra uma moto e imprime o adesivo dela em seguida: ela
- * manda imprimir uma folha de adesivos, cola nas máquinas do pátio, e só
- * depois senta para cadastrar cada uma com o número que já está colado. Sem
- * esta tela esse caminho não existia — a plaquinha nascia junto do
+ * O adesivo existe antes da moto: a PJ Motors manda imprimir uma folha de
+ * adesivos, libera, cola nas motos do pátio e vincula cada uma pela UNIDADE do
+ * estoque (Estoque › Unidades) — é aí que o QR passa a abrir a página da moto.
+ * Sem esta tela esse caminho não existia — a plaquinha nascia junto do
  * equipamento e não havia como ter adesivo antes da máquina.
+ *
+ * O parágrafo antigo dizia "cadastrar cada uma com o número", e o cadastro de
+ * máquina exige bancada, que a PJ não tem: seguido à risca, o adesivo ficava
+ * livre para sempre e o QR respondia 404 (P0 das plaquinhas).
  *
  * ## Os quatro estados, e por que a ordem importa
  *
@@ -57,6 +61,8 @@ interface Plaquinha {
   batch_id: string | null;
   equipment_id: string | null;
   equipment_label: string | null;
+  /** A moto do estoque da PJ em que o adesivo foi colado (servidor novo). */
+  unit_label?: string | null;
   printed_at: string | null;
   damaged_reason: string | null;
   created_at: string;
@@ -311,7 +317,7 @@ function PoolDePlaquinhas() {
       <PageHeader
         breadcrumb={['Oficina', 'Plaquinhas']}
         title="Plaquinhas"
-        subtitle="O adesivo existe antes da máquina: gere o lote, imprima a folha, cole e cadastre."
+        subtitle="O adesivo existe antes da moto: gere o lote, imprima a folha, libere, cole na moto e vincule em Estoque › Unidades."
         actions={
           podeEditarLayout ? (
             <Button variant="secondary" onClick={() => setEditando((v) => !v)}>
@@ -523,7 +529,7 @@ function PoolDePlaquinhas() {
 
       <Card
         title="Lotes"
-        subtitle="A folha é o que libera: sem papel, o número não vale para cadastro."
+        subtitle="A folha é o que libera: sem papel, o número não pode ser colado numa moto."
         className="mb-5"
       >
         {lotes.length === 0 ? (
@@ -742,7 +748,8 @@ function PoolDePlaquinhas() {
                         </span>
                       )}
                     </td>
-                    <td className="py-2">{t.equipment_label || '—'}</td>
+                    {/* A máquina, ou a moto do estoque em que a PJ colou o adesivo. */}
+                    <td className="py-2">{t.equipment_label || t.unit_label || '—'}</td>
                     <td className="py-2">{quando(t.printed_at)}</td>
                     <td className="py-2 text-right">
                       {t.status !== 'associada' && t.status !== 'danificada' && podeGerar && (

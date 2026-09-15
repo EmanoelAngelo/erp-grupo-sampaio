@@ -243,6 +243,25 @@ function gestosDePlaquinha(
       nome: 'DELETE /units/:id/equipment',
       chamar: () => request(app).delete(`/api/v1/core/units/${alvo.unidade}/equipment`).set(a),
     },
+    // O adesivo do lote da PJ na moto do estoque (P0 das plaquinhas): colar,
+    // soltar e trocar. Os dois laços que usam esta lista são de RECUSA — o
+    // caixa do PDV e as outras empresas —, então as três entram cobertas.
+    {
+      nome: 'POST /units/:id/tag',
+      chamar: () => request(app).post(`/api/v1/core/units/${alvo.unidade}/tag`).set(a).send({ tagId: alvo.tag }),
+    },
+    {
+      nome: 'DELETE /units/:id/tag',
+      chamar: () => request(app).delete(`/api/v1/core/units/${alvo.unidade}/tag`).set(a),
+    },
+    {
+      nome: 'POST /units/:id/tag/replace',
+      chamar: () =>
+        request(app)
+          .post(`/api/v1/core/units/${alvo.unidade}/tag/replace`)
+          .set(a)
+          .send({ novaTagId: alvo.tag, motivo: 'x' }),
+    },
   ];
 }
 

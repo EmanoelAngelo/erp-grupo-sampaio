@@ -28,6 +28,15 @@
  * Vincular é o que fecha isso, e é decisão de gente — por isso mora nesta tela,
  * ao lado da identidade, e não num processo automático que casaria motos
  * parecidas pelas costas.
+ *
+ * ## O adesivo do lote da PJ Motors (P0 das plaquinhas)
+ *
+ * A PJ gera, imprime e libera o lote em Plaquinhas — e o adesivo não tinha
+ * onde entrar: só o cadastro de máquina o associava, e a PJ não tem bancada. O
+ * QR colado na moto respondia 404 para sempre. Aqui a gestão da PJ
+ * (`inventory.units.manage`) cola o adesivo liberado na moto do estoque, solta
+ * (moto errada, ainda no pátio), troca o adesivo estragado e reimprime. O
+ * caixa do PDV vê o número, e não os botões: PDV não administra.
  */
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AppShell } from '@/components/gs/AppShell';
@@ -35,8 +44,9 @@ import { usePedirMotivo, useConfirmar } from '@/components/gs/PerguntaDaTela';
 import { Badge, Button, Card, EmptyState, Input, PageHeader, SearchInput } from '@/components/gs/ui';
 import { formatCents } from '@/components/gs/format';
 import { ApiRequestError } from '@/lib/api/client';
-import { escreverFolha, plaquinhaDaMaquinaApi } from '@/lib/api/plaquinhaDaMaquina';
+import { escreverFolha, plaquinhaDaMaquinaApi, type PlaquinhaLivre } from '@/lib/api/plaquinhaDaMaquina';
 import { useHasProfile } from '@/hooks/useSession';
+import { useCan } from '@/hooks/useCan';
 import { useEmpresaTemPlaquinha } from '@/hooks/useEmpresaTemPlaquinha';
 import {
   coreApi,
@@ -55,8 +65,15 @@ function vendidaSemPlaquinha(u: ProductUnit): boolean {
   return (
     u.status === 'sold'
     && !u.equipment_id
+    // A moto que saiu com o adesivo da PJ colado já tem plaquinha (P0).
+    && !u.plaquinhaDoPool
     && (u.exit_reference_type === 'sale' || u.exit_reference_type === 'ecommerce_order')
   );
+}
+
+/** A identidade da moto numa linha, para o painel dizer em qual moto se mexe. */
+function identidadeEmLinha(u: ProductUnit): string {
+  return [u.chassis, u.motor_number, u.plate, u.imei, u.serial_number].filter(Boolean).join(' · ') || 'sem identidade';
 }
 const TH = 'py-2.5 px-3 font-semibold';
 const TD = 'py-2.5 px-3';
@@ -116,6 +133,13 @@ export default function UnidadesEstoquePage() {
     a tela fica sendo a de identidade da unidade (chassi, IMEI, série, baixa).
   */
   const temPlaquinha = useEmpresaTemPlaquinha();
+  /*
+    QUEM ADMINISTRA O ADESIVO DA PJ (P0 das plaquinhas): a capability das rotas
+    POST/DELETE /units/:id/tag e /tag/replace. O caixa do PDV não a tem — vê o
+    número, sem botão. Sessão antiga sem `access` responde falso até o próximo
+    login; o servidor recusa de qualquer jeito.
+  */
+  const podeGerirPlaquinha = useCan('inventory.units.manage');
   const [busca, setBusca] = useState('');
   const [achados, setAchados] = useState<StockItem[]>([]);
   const [produto, setProduto] = useState<StockItem | null>(null);
@@ -151,6 +175,20 @@ export default function UnidadesEstoquePage() {
   const [candidatas, setCandidatas] = useState<PlaquinhaCandidata[] | null>(null);
   const [ligando, setLigando] = useState(false);
   const [divergencia, setDivergencia] = useState<Divergencia | null>(null);
+
+  /*
+    O PAINEL DO ADESIVO DA PJ — separado do painel da máquina de propósito.
+
+    O da máquina lista MÁQUINAS da Oficina (candidatas, identidade, vínculo
+    tardio); este lista ADESIVOS livres do pool da PJ, pelo número. Misturar os
+    dois num estado só faria a busca de um alimentar a lista do outro.
+  */
+  const [adesivo, setAdesivo] = useState<{ unidade: ProductUnit; modo: 'colar' | 'trocar' } | null>(null);
+  const [buscaAdesivo, setBuscaAdesivo] = useState('');
+  const [livres, setLivres] = useState<PlaquinhaLivre[] | null>(null);
+  const [adesivoNovo, setAdesivoNovo] = useState('');
+  const [motivoDaTroca, setMotivoDaTroca] = useState('');
+  const [gravandoAdesivo, setGravandoAdesivo] = useState(false);
 
   /*
     A FILA DA EMPRESA INTEIRA, VINDA DO SERVIDOR.
@@ -267,6 +305,20 @@ export default function UnidadesEstoquePage() {
     }, 300);
     return () => clearTimeout(t);
   }, [buscaPlaquinha, vinculando]);
+
+  // Os adesivos livres da PJ, pelo número digitado — só com o painel aberto,
+  // e só para quem administra (fora disso a tela nem pergunta ao pool).
+  useEffect(() => {
+    if (!adesivo || !temPlaquinha || !podeGerirPlaquinha) return undefined;
+    const termo = buscaAdesivo.trim();
+    const t = setTimeout(() => {
+      void plaquinhaDaMaquinaApi
+        .livres(termo || undefined)
+        .then((r) => setLivres(r.items))
+        .catch(() => setLivres([]));
+    }, 300);
+    return () => clearTimeout(t);
+  }, [buscaAdesivo, adesivo, temPlaquinha, podeGerirPlaquinha]);
 
   function escolher(item: StockItem) {
     setProduto(item);
@@ -435,6 +487,86 @@ export default function UnidadesEstoquePage() {
     }
   }
 
+  /** Abre o painel do adesivo da PJ para colar (moto sem plaquinha) ou trocar. */
+  function abrirAdesivo(u: ProductUnit, modo: 'colar' | 'trocar') {
+    setAdesivo({ unidade: u, modo });
+    setBuscaAdesivo('');
+    setLivres(null);
+    setAdesivoNovo('');
+    setMotivoDaTroca('');
+    setVinculando(null);
+    setErro(null);
+    setAviso(null);
+  }
+
+  /** Cola o adesivo liberado nesta moto — e o QR dele passa a abrir a página dela. */
+  async function colarAdesivo(u: ProductUnit, tag: PlaquinhaLivre) {
+    setGravandoAdesivo(true);
+    setErro(null);
+    setAviso(null);
+    try {
+      const r = await plaquinhaDaMaquinaApi.colarNaUnidade(u.id, tag.id);
+      setAdesivo(null);
+      setAviso(`Plaquinha ${r.plaquinha?.publicIdLabel ?? tag.publicIdLabel} colada nesta moto — o QR já abre a página dela.`);
+      await recarregarListas();
+    } catch (e) {
+      setErro(
+        e instanceof ApiRequestError && e.code === 'CORE_TAG_NOT_RELEASED'
+          ? 'Imprima e libere o lote em Plaquinhas antes de colar.'
+          : e instanceof ApiRequestError
+            ? e.message
+            : 'Não foi possível colar a plaquinha.',
+      );
+    } finally {
+      setGravandoAdesivo(false);
+    }
+  }
+
+  /** Troca o adesivo estragado: o antigo deixa de valer no mesmo instante. */
+  async function trocarAdesivo(u: ProductUnit) {
+    if (!adesivoNovo || !motivoDaTroca.trim()) return;
+    setGravandoAdesivo(true);
+    setErro(null);
+    setAviso(null);
+    try {
+      const r = await plaquinhaDaMaquinaApi.trocarNaUnidade(u.id, {
+        novaTagId: adesivoNovo,
+        motivo: motivoDaTroca.trim(),
+      });
+      setAdesivo(null);
+      setAviso(`Plaquinha ${r.anterior} trocada por ${r.atual} — o adesivo antigo deixou de valer.`);
+      await recarregarListas();
+    } catch (e) {
+      setErro(e instanceof ApiRequestError ? e.message : 'Não foi possível trocar o adesivo.');
+    } finally {
+      setGravandoAdesivo(false);
+    }
+  }
+
+  /** Solta o adesivo da moto errada (só no pátio): ele volta livre no pool. */
+  async function soltarAdesivo(u: ProductUnit) {
+    if (
+      !(await confirmarNaTela({
+        titulo: `Soltar a plaquinha ${u.plaquinhaDoPool?.publicIdLabel ?? ''} desta moto?`,
+        mensagem:
+          'A plaquinha volta a ficar livre no pool da PJ Motors e o QR deixa de abrir a página desta moto até ser colada de novo.',
+        confirmar: 'Soltar plaquinha',
+        perigoso: true,
+      }))
+    ) {
+      return;
+    }
+    setErro(null);
+    setAviso(null);
+    try {
+      await plaquinhaDaMaquinaApi.soltarDaUnidade(u.id);
+      setAviso(`Plaquinha ${u.plaquinhaDoPool?.publicIdLabel ?? ''} solta — ela voltou a ficar livre.`);
+      await recarregarListas();
+    } catch (e) {
+      setErro(e instanceof ApiRequestError ? e.message : 'Não foi possível soltar a plaquinha.');
+    }
+  }
+
   async function desligar(u: ProductUnit) {
     if (
       !(await confirmarNaTela({
@@ -495,7 +627,8 @@ export default function UnidadesEstoquePage() {
     moto que já está com o cliente.
   */
   const semPlaquinha = useMemo(
-    () => (unidades ?? []).filter((u) => u.status === 'in_stock' && !u.equipment_id).length,
+    // A moto com o adesivo da PJ colado já tem plaquinha (P0 das plaquinhas).
+    () => (unidades ?? []).filter((u) => u.status === 'in_stock' && !u.equipment_id && !u.plaquinhaDoPool).length,
     [unidades],
   );
 
@@ -638,6 +771,98 @@ export default function UnidadesEstoquePage() {
             </li>
           ))}
         </ul>
+      )}
+    </Card>
+  ) : null;
+
+  /*
+    O PAINEL DO ADESIVO DA PJ, fora das listas pelo mesmo motivo do painel da
+    máquina: os dois caminhos (identidade bipada e tabela do produto) abrem o
+    MESMO painel. Só existe na PJ e para quem administra.
+  */
+  const painelDoAdesivo = adesivo && temPlaquinha && podeGerirPlaquinha ? (
+    <Card
+      title={
+        adesivo.modo === 'colar'
+          ? 'Colar plaquinha do lote'
+          : `Trocar o adesivo ${adesivo.unidade.plaquinhaDoPool?.publicIdLabel ?? ''}`
+      }
+      subtitle={
+        adesivo.modo === 'colar'
+          ? 'Escolha o adesivo liberado que está colado nesta moto: o QR dele passa a abrir a página da moto.'
+          : 'O adesivo novo passa a responder por esta moto, e o antigo deixa de valer na hora.'
+      }
+      className="mb-5"
+      actions={
+        <Button variant="ghost" onClick={() => setAdesivo(null)}>
+          Fechar
+        </Button>
+      }
+    >
+      <p className="m-0 mb-3 text-[length:var(--gs-text-sm)]">
+        Moto: <span className="font-mono">{identidadeEmLinha(adesivo.unidade)}</span>
+      </p>
+      <SearchInput value={buscaAdesivo} onChange={setBuscaAdesivo} placeholder="Nº do adesivo (#0042)" />
+
+      {livres === null ? (
+        <p className="mt-3 text-[var(--gs-text-soft)]">Carregando…</p>
+      ) : livres.length === 0 ? (
+        <p className="mt-3 m-0 text-[length:var(--gs-text-sm)] text-[var(--gs-muted)]">
+          Nenhuma plaquinha livre com esse número. Gere, imprima e libere um lote em Plaquinhas.
+        </p>
+      ) : adesivo.modo === 'colar' ? (
+        <ul className="list-none m-0 mt-3 p-0 border border-[var(--gs-border)] rounded-[var(--gs-radius)] divide-y divide-[var(--gs-border)]">
+          {livres.map((t) => (
+            <li
+              key={t.id}
+              className="flex items-center justify-between gap-3 px-4 py-2.5 text-[length:var(--gs-text-sm)]"
+            >
+              <span className="font-mono">{t.publicIdLabel}</span>
+              <Button
+                variant="ghost"
+                loading={gravandoAdesivo}
+                onClick={() => void colarAdesivo(adesivo.unidade, t)}
+              >
+                Colar nesta moto
+              </Button>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <div className="mt-3 flex flex-col gap-3">
+          <label className="flex flex-col gap-1.5">
+            <span className={ROTULO}>Adesivo novo</span>
+            <select
+              value={adesivoNovo}
+              onChange={(e) => setAdesivoNovo(e.target.value)}
+              className="h-10 px-3 rounded-[var(--gs-radius)] border border-[var(--gs-border)] bg-[var(--gs-surface)]"
+            >
+              <option value="">Escolha o adesivo livre</option>
+              {livres.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.publicIdLabel}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="flex flex-col gap-1.5">
+            <span className={ROTULO}>Motivo da troca</span>
+            <Input
+              value={motivoDaTroca}
+              onChange={(e) => setMotivoDaTroca(e.target.value)}
+              placeholder="Descascou no sol, rasgou, QR ilegível…"
+            />
+          </label>
+          <div>
+            <Button
+              loading={gravandoAdesivo}
+              disabled={!adesivoNovo || !motivoDaTroca.trim()}
+              onClick={() => void trocarAdesivo(adesivo.unidade)}
+            >
+              Trocar o adesivo
+            </Button>
+          </div>
+        </div>
       )}
     </Card>
   ) : null;
@@ -807,7 +1032,7 @@ export default function UnidadesEstoquePage() {
                       existe vínculo. O número, quem mostra é a tabela do produto,
                       que consulta a plaquinha inteira.
                     */}
-                    {!temPlaquinha ? null : u.equipment_id ? (
+                    {!temPlaquinha ? null : u.equipment_id || u.plaquinhaDoPool ? (
                       <Badge tone="info">com plaquinha</Badge>
                     ) : u.status === 'in_stock' || vendidaSemPlaquinha(u) ? (
                       <>
@@ -815,6 +1040,12 @@ export default function UnidadesEstoquePage() {
                         <Button variant="ghost" size="sm" onClick={() => abrirVinculo(u)}>
                           {u.status === 'sold' ? 'Vincular plaquinha (já vendida)' : 'Vincular plaquinha'}
                         </Button>
+                        {/* O adesivo do lote da PJ, com a moto na frente (P0). */}
+                        {u.status === 'in_stock' && podeGerirPlaquinha && (
+                          <Button variant="ghost" size="sm" onClick={() => abrirAdesivo(u, 'colar')}>
+                            Colar plaquinha do lote
+                          </Button>
+                        )}
                       </>
                     ) : null}
                   </li>
@@ -826,6 +1057,7 @@ export default function UnidadesEstoquePage() {
       </Card>
 
       {painelDeVinculo}
+      {painelDoAdesivo}
 
       <Card
         title="Unidades do produto"
@@ -1013,6 +1245,38 @@ export default function UnidadesEstoquePage() {
                                 </Button>
                               )}
                             </div>
+                          ) : u.plaquinhaDoPool ? (
+                            /*
+                              O ADESIVO DO LOTE DA PJ (P0 das plaquinhas): o número
+                              para todos da PJ; os gestos só para quem administra.
+                              Soltar só no pátio; trocar também na vendida — o
+                              adesivo descasca na garagem do comprador.
+                            */
+                            <div className="flex flex-col gap-1">
+                              <span className="font-mono text-[length:var(--gs-text-xs)]">
+                                {u.plaquinhaDoPool.publicIdLabel}
+                              </span>
+                              <span className="text-[length:var(--gs-text-xs)] text-[var(--gs-muted)]">
+                                adesivo da PJ Motors
+                              </span>
+                              {podeGerirPlaquinha && (
+                                <>
+                                  <Button variant="ghost" size="sm" onClick={() => void reimprimirPlaquinha(u)}>
+                                    Reimprimir plaquinha
+                                  </Button>
+                                  {(u.status === 'in_stock' || u.status === 'sold') && (
+                                    <Button variant="ghost" size="sm" onClick={() => abrirAdesivo(u, 'trocar')}>
+                                      Trocar adesivo
+                                    </Button>
+                                  )}
+                                  {u.status === 'in_stock' && (
+                                    <Button variant="ghost" size="sm" onClick={() => void soltarAdesivo(u)}>
+                                      Soltar plaquinha
+                                    </Button>
+                                  )}
+                                </>
+                              )}
+                            </div>
                           ) : (
                             <span className="text-[var(--gs-muted)]">—</span>
                           )}
@@ -1040,14 +1304,23 @@ export default function UnidadesEstoquePage() {
                                   que o servidor grava; `plaquinha` é só o bloco
                                   de exibição. Se um dia a consulta do bloco
                                   falhar, o botão errado não aparece. */}
+                              {/* Com o adesivo da PJ colado, a moto já tem
+                                  plaquinha: os gestos dele moram na coluna. */}
                               {!temPlaquinha ? null : u.equipment_id ? (
                                 <Button variant="ghost" onClick={() => void desligar(u)}>
                                   Desvincular
                                 </Button>
-                              ) : (
-                                <Button variant="ghost" onClick={() => abrirVinculo(u)}>
-                                  Vincular plaquinha
-                                </Button>
+                              ) : u.plaquinhaDoPool ? null : (
+                                <>
+                                  <Button variant="ghost" onClick={() => abrirVinculo(u)}>
+                                    Vincular plaquinha
+                                  </Button>
+                                  {podeGerirPlaquinha && (
+                                    <Button variant="ghost" onClick={() => abrirAdesivo(u, 'colar')}>
+                                      Colar plaquinha do lote
+                                    </Button>
+                                  )}
+                                </>
                               )}
                               <Button variant="ghost" onClick={() => void darBaixa(u)}>
                                 Dar baixa

@@ -2140,6 +2140,17 @@ export interface PlaquinhaDaUnidade {
   ordensAbertas: number;
 }
 
+/**
+ * O adesivo do lote da PJ Motors colado nesta unidade (P0 das plaquinhas) —
+ * sem máquina: o QR dele abre a página da moto pela unidade.
+ */
+export interface PlaquinhaDoPoolDaUnidade {
+  tagId: string;
+  publicId: number;
+  publicIdLabel: string;
+  associatedAt: string;
+}
+
 /** Uma peça física, com identidade própria. */
 export interface ProductUnit {
   id: string;
@@ -2160,6 +2171,11 @@ export interface ProductUnit {
   created_at: string;
   /** Vem preenchida na listagem por produto; `null` quando não há vínculo. */
   plaquinha?: PlaquinhaDaUnidade | null;
+  /**
+   * O adesivo da PJ colado na unidade, na listagem por produto (só na PJ
+   * Motors); `null` quando não há. Exclui `plaquinha`: é uma ou outra.
+   */
+  plaquinhaDoPool?: PlaquinhaDoPoolDaUnidade | null;
   /**
    * A pré-venda VIVA que segura esta moto (GAP-PRD-111), na listagem por
    * produto. O PDV não a escolhe para outro cliente, e a tela diz para quem é.

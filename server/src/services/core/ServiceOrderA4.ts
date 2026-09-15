@@ -355,6 +355,13 @@ export function renderServiceOrderA4(companyId: string, orderId: string): OrdemP
     É a mesma regra da bancada desde a rodada 18 e a regra de ouro da 53: a de
     celulares não usa plaquinha, e o aparelho é identificado pela própria OS.
     Imprimir um QR que não leva a lugar nenhum é pior que não imprimir.
+
+    E ele continua aqui depois do P0 das plaquinhas (plaquinha exclusiva da PJ
+    Motors), de propósito: este é o QR da PRÓPRIA máquina da Oficina
+    (`core_equipment.public_token`), o link de acompanhamento do serviço que o
+    cliente leva no papel da OS. A OS não gera, não cola, não vincula nem
+    administra plaquinha nenhuma do pool — só imprime o endereço da máquina
+    que já existe. Nenhum comportamento mudou.
   */
   const usaQr = Boolean(bancada && capabilitiesFor(bancada.kind).equipmentTags && equipamento);
   const qr = usaQr

@@ -19,10 +19,25 @@
  * Já havia teste cobrando que o QR não carregue dado do dono. Esta visão é o
  * outro lado do mesmo cuidado: não basta o QR ser opaco se a página que ele
  * abre despeja tudo.
+ *
+ * A MOTO DO ESTOQUE DA PJ MOTORS TAMBÉM (P0 das plaquinhas)
+ *
+ * O adesivo que a PJ gera e cola na moto do pátio (`core_equipment_tags` com
+ * `unit_id`, ver `PlaquinhaDaPjNaUnidade.ts`) não tem máquina — e esta visão
+ * só conhecia o token de máquina: o QR da PJ respondia 404 para sempre. Agora,
+ * quando o token não é de máquina, ele é procurado entre as plaquinhas da PJ
+ * coladas numa unidade. A mesma visão mínima: marca e modelo do produto, o
+ * número e a loja. NUNCA id de unidade, de plaquinha ou de produto, chassi,
+ * preço ou custo.
+ *
+ * E o 404 é UM SÓ: plaquinha gerada, livre ou danificada, token inventado,
+ * unidade baixada e plaquinha fora da PJ Motors respondem exatamente igual —
+ * quem tenta adivinhar não distingue um token real de um aleatório.
  */
 import { getConnection } from '../../db/sqlite.js';
 import { ensureCoreSchema } from '../../db/schema.js';
 import { formatTagId } from './EquipmentTagPoolService.js';
+import { ehEmpresaDasPlaquinhas } from './EmpresaDasPlaquinhas.js';
 
 export interface PublicEquipmentView {
   publicIdLabel: string;
@@ -37,6 +52,12 @@ export interface PublicEquipmentView {
   status: string | null;
   /** Só o que o cliente pode ler: etapa e quando. Sem autor e sem valor. */
   timeline: { step: string; at: string }[];
+  /**
+   * De onde o token veio: a máquina (plaquinha da Oficina, com OS e portal do
+   * dono) ou a unidade de estoque da PJ Motors (adesivo do lote, sem máquina —
+   * a página não oferece portal, porque não há ficha de dono para abrir).
+   */
+  origem: 'equipamento' | 'unidade';
 }
 
 /**
@@ -118,7 +139,7 @@ export function publicEquipmentByToken(token: string): PublicEquipmentView | nul
         company_name: string;
       }
     | undefined;
-  if (!equipamento) return null;
+  if (!equipamento) return plaquinhaDaPjNaUnidade(alvo);
 
   // A OS mais recente é a que interessa: é o serviço que está acontecendo.
   const os = db
@@ -162,5 +183,74 @@ export function publicEquipmentByToken(token: string): PublicEquipmentView | nul
     inService: Boolean(os && os.status !== 'finalizada'),
     status: os ? (ETAPA_PUBLICA[os.status] ?? 'Em atendimento') : null,
     timeline,
+    origem: 'equipamento',
+  };
+}
+
+/**
+ * O token que não é de máquina: o adesivo da PJ Motors colado numa unidade do
+ * estoque dela (P0 das plaquinhas).
+ *
+ * ## O defeito
+ *
+ * A PJ gera, imprime e libera o lote — e o QR do adesivo colado na moto do
+ * pátio abria "Equipamento não encontrado", porque só `core_equipment` era
+ * consultado e a PJ não tem máquina (não tem bancada). A plaquinha era papel
+ * sem destino.
+ *
+ * ## As três portas, todas no mesmo 404
+ *
+ *   - só `associada` e sem máquina: a plaquinha gerada, livre ou danificada
+ *     (o adesivo trocado) não abre nada — o QR velho morre na troca;
+ *   - só a PJ Motors (`ehEmpresaDasPlaquinhas` pelo slug): um banco antigo com
+ *     plaquinha de outra empresa colada à força não reabre a página. A marca
+ *     `uses_equipment_tags` NÃO é consultada: adesivo já colado continua
+ *     respondendo mesmo com a marca desligada, como na regra da empresa;
+ *   - só unidade em estoque ou vendida: a baixada saiu sem venda (perda,
+ *     quebra, devolução ao fornecedor) e o QR dela deixa de abrir.
+ *
+ * Não escreve nada. A venda desfeita (a unidade volta a `in_stock`) volta a
+ * dizer "Disponível na loja" sozinha.
+ */
+function plaquinhaDaPjNaUnidade(token: string): PublicEquipmentView | null {
+  const linha = getConnection()
+    .prepare(
+      `SELECT t.public_id, u.status AS unit_status, p.name, p.brand, p.category,
+              c.trade_name, c.slug
+         FROM core_equipment_tags t
+         JOIN core_companies c ON c.id = t.company_id
+         JOIN core_product_units u ON u.id = t.unit_id AND u.company_id = t.company_id
+         JOIN core_products p ON p.id = u.product_id AND p.company_id = u.company_id
+        WHERE t.public_token = ? AND t.status = 'associada' AND t.equipment_id IS NULL`,
+    )
+    .get(token) as
+    | {
+        public_id: number;
+        unit_status: string;
+        name: string | null;
+        brand: string | null;
+        category: string | null;
+        trade_name: string;
+        slug: string;
+      }
+    | undefined;
+  if (!linha) return null;
+  if (!ehEmpresaDasPlaquinhas(linha.slug)) return null;
+  if (linha.unit_status !== 'in_stock' && linha.unit_status !== 'sold') return null;
+
+  return {
+    publicIdLabel: formatPublicId(linha.public_id),
+    brand: linha.brand,
+    model: linha.name,
+    color: null,
+    category: linha.category,
+    workshopName: null,
+    companyName: linha.trade_name,
+    inService: false,
+    // Na moto do pátio o que interessa a quem escaneia é que ela está à venda;
+    // vendida, a página não inventa andamento nenhum.
+    status: linha.unit_status === 'in_stock' ? 'Disponível na loja' : null,
+    timeline: [],
+    origem: 'unidade',
   };
 }

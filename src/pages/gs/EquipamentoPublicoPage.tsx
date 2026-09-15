@@ -27,6 +27,12 @@ interface PublicEquipment {
   inService: boolean;
   status: string | null;
   timeline: { step: string; at: string }[];
+  /**
+   * `unidade`: o adesivo da PJ Motors colado numa moto do estoque (P0 das
+   * plaquinhas) — sem máquina, sem ficha de dono no portal. Fora da checagem
+   * de campos de propósito: servidor antigo não manda, e é a máquina.
+   */
+  origem?: 'equipamento' | 'unidade';
 }
 
 export default function EquipamentoPublicoPage() {
@@ -46,7 +52,7 @@ export default function EquipamentoPublicoPage() {
         if (ativo) {
           setErro(
             err instanceof ApiRequestError && err.status === 404
-              ? 'Não encontramos este equipamento.'
+              ? 'Não encontramos esta plaquinha.'
               : 'Não foi possível consultar agora.',
           );
         }
@@ -65,8 +71,15 @@ export default function EquipamentoPublicoPage() {
         {erro && (
           <div className="mt-8 rounded-[var(--gs-radius)] border border-[var(--gs-border)] p-6 text-center">
             <p className="m-0 font-semibold">{erro}</p>
+            {/*
+              O MESMO 404 PARA DOIS CASOS (P0 das plaquinhas). O servidor não
+              distingue o token inventado do adesivo da PJ que ainda não foi
+              vinculado a uma moto — distinguir ajudaria quem tenta adivinhar.
+              A frase cobre os dois: quem acabou de colar sabe o que falta.
+            */}
             <p className="m-0 mt-2 text-[length:var(--gs-text-sm)] text-[var(--gs-muted)]">
-              Confira o código da plaquinha ou fale com a oficina.
+              Se o adesivo acabou de ser colado, ele pode ainda não ter sido vinculado a uma moto —
+              fale com a loja. Confira também o código.
             </p>
           </div>
         )}
@@ -114,6 +127,19 @@ export default function EquipamentoPublicoPage() {
               </ol>
             )}
 
+            {/*
+              A MOTO DO ESTOQUE DA PJ NÃO TEM FICHA NO PORTAL (P0 das
+              plaquinhas). O adesivo dela aponta para a unidade, não para uma
+              máquina com dono: o botão da conta levaria a uma lista vazia. A
+              página diz de quem é a moto e para onde ir.
+            */}
+            {dados.origem === 'unidade' ? (
+              <div className="mt-6 pt-5 border-t border-[var(--gs-border)]">
+                <p className="m-0 text-[length:var(--gs-text-sm)] text-[var(--gs-muted)]">
+                  Moto da {dados.companyName}. Dúvidas sobre ela? Fale com a loja.
+                </p>
+              </div>
+            ) : (
             <div className="mt-6 pt-5 border-t border-[var(--gs-border)] flex flex-col gap-3">
               <p className="m-0 text-[length:var(--gs-text-sm)] text-[var(--gs-muted)]">
                 É o dono deste equipamento? Na sua conta você abre um chamado, acompanha a ordem
@@ -137,6 +163,7 @@ export default function EquipamentoPublicoPage() {
                 valores.
               </p>
             </div>
+            )}
           </div>
         )}
       </div>

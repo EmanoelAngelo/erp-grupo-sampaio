@@ -5,7 +5,7 @@
  "mudancas_permitidas": {
   "D1": "O legado operador_caixa (0 vínculos) passa a poder POST /core/print/jobs e POST /core/print/jobs/:id/reprint (conflitos.md, C1)."
  },
- "total": 717,
+ "total": 720,
  "rotas": {
   "DELETE /core/acquirers/rates/:id": {
    "arquivo": "core.ts",
@@ -314,6 +314,20 @@
    "arquivo": "core.ts",
    "linha": 11770,
    "guarda_hoje": "requireProfile(req, 'gerente_loja', 'gerente_oficina', 'estoquista')",
+   "perfis": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina",
+    "estoquista"
+   ],
+   "capability": "inventory.units.manage",
+   "mudanca": null
+  },
+  "DELETE /core/units/:id/tag": {
+   "arquivo": "core.ts",
+   "linha": null,
+   "guarda_hoje": "requireCapability(req, 'inventory.units.manage')",
    "perfis": [
     "admin_geral",
     "gestor",
@@ -8163,6 +8177,34 @@
    "arquivo": "core.ts",
    "linha": 11734,
    "guarda_hoje": "requireProfile(req, 'gerente_loja', 'gerente_oficina', 'estoquista')",
+   "perfis": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina",
+    "estoquista"
+   ],
+   "capability": "inventory.units.manage",
+   "mudanca": null
+  },
+  "POST /core/units/:id/tag": {
+   "arquivo": "core.ts",
+   "linha": null,
+   "guarda_hoje": "requireCapability(req, 'inventory.units.manage')",
+   "perfis": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina",
+    "estoquista"
+   ],
+   "capability": "inventory.units.manage",
+   "mudanca": null
+  },
+  "POST /core/units/:id/tag/replace": {
+   "arquivo": "core.ts",
+   "linha": null,
+   "guarda_hoje": "requireCapability(req, 'inventory.units.manage')",
    "perfis": [
     "admin_geral",
     "gestor",

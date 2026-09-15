@@ -17,11 +17,21 @@
  *
  * ## A mesma cara da folha da Oficina
  *
- * O adesivo reimpresso é o MESMO adesivo: mesmo número, mesmo QR (o token da
- * máquina não muda — reimprimir não é trocar), mesma identidade visual. Por
- * isso o layout e o nome no rodapé são os da empresa DONA da plaquinha, e não
- * os da loja que pediu. Trocar o número (adesivo perdido, QR vazado) continua
- * sendo a substituição, que é da Oficina.
+ * O adesivo reimpresso é o MESMO adesivo: mesmo número, mesmo QR (o token não
+ * muda — reimprimir não é trocar). O layout é o da PJ Motors, que é quem gere
+ * a plaquinha (ver o bloco no meio da função). Trocar o número (adesivo
+ * perdido, QR vazado) é a troca PELA UNIDADE (`POST /units/:id/tag/replace`)
+ * quando o adesivo é da PJ; na plaquinha de máquina da Oficina, continua sendo
+ * a substituição da Oficina.
+ *
+ * ## A plaquinha da PJ, sem máquina (P0 das plaquinhas)
+ *
+ * A reimpressão só conhecia a plaquinha de MÁQUINA (`equipment_id` da
+ * unidade). O adesivo do lote da PJ colado na unidade (`core_equipment_tags`
+ * com `unit_id`) respondia 409 "sem plaquinha vinculada" — a PJ não conseguia
+ * reimprimir o adesivo que ela mesma gerou. Agora, sem máquina, a folha sai
+ * da plaquinha do pool colada na unidade: mesmo número e mesmo QR. Não há
+ * histórico de máquina para gravar — a trilha é a auditoria da rota.
  */
 import { getConnection } from '../../db/sqlite.js';
 import { ApiError } from '../../utils/errors.js';
@@ -33,11 +43,15 @@ import { layoutDaEmpresa } from './EquipmentTagLayoutService.js';
 import { renderEquipmentTagSheet, type FolhaDePlaquinhas } from './EquipmentTagSheet.js';
 import { publicBaseUrl, publicBaseUrlConfigurada } from './PublicUrl.js';
 import { recordEquipmentEvent } from './EquipmentService.js';
+import { plaquinhaDoPoolParaFolha } from './PlaquinhaDaPjNaUnidade.js';
 
 export interface FolhaDaUnidade extends FolhaDePlaquinhas {
   formatId: string;
   publicIdLabel: string;
-  equipmentId: string;
+  /** A máquina da Oficina, quando a plaquinha é de máquina; null no adesivo da PJ. */
+  equipmentId: string | null;
+  /** A plaquinha do pool da PJ colada na unidade; null na plaquinha de máquina. */
+  tagId: string | null;
   baseUrl: string;
   baseUrlConfigurada: boolean;
 }
@@ -52,11 +66,41 @@ export function folhaDaPlaquinhaDaUnidade(input: {
   // Confere a unidade contra a empresa da sessão — 404 se não for dela.
   const vinculo = plaquinhaDaUnidade(input.companyId, input.unitId);
   if (!vinculo) {
-    throw new ApiError(
-      'CORE_UNIT_WITHOUT_TAG',
-      'Esta unidade não tem plaquinha vinculada. Vincule a plaquinha da Oficina antes de imprimir.',
-      409,
-    );
+    // Sem máquina, o adesivo do lote da PJ colado na unidade (P0 das plaquinhas).
+    const doPool = plaquinhaDoPoolParaFolha(input.companyId, input.unitId);
+    if (!doPool) {
+      throw new ApiError(
+        'CORE_UNIT_WITHOUT_TAG',
+        'Esta unidade não tem plaquinha vinculada. Cole uma plaquinha liberada da PJ (ou vincule a da '
+        + 'máquina) antes de imprimir.',
+        409,
+      );
+    }
+    const formatoDoPool = equipmentTagFormat(input.formatId);
+    const rotuloDoPool = formatTagId(doPool.publicId);
+    const folhaDoPool = renderEquipmentTagSheet({
+      companyId: input.companyId,
+      format: formatoDoPool,
+      layout: layoutDaEmpresa(input.companyId),
+      items: [
+        {
+          publicIdLabel: rotuloDoPool,
+          // O mesmo endereço da folha do lote: é o QR que já está colado.
+          qrUrl: `${publicBaseUrl()}/equipamento/${doPool.publicToken}`,
+          brand: doPool.brand,
+          model: doPool.model,
+        },
+      ],
+    });
+    return {
+      ...folhaDoPool,
+      formatId: formatoDoPool.id,
+      publicIdLabel: rotuloDoPool,
+      equipmentId: null,
+      tagId: doPool.tagId,
+      baseUrl: publicBaseUrl(),
+      baseUrlConfigurada: publicBaseUrlConfigurada(),
+    };
   }
 
   const db = getConnection();
@@ -136,6 +180,7 @@ export function folhaDaPlaquinhaDaUnidade(input: {
     formatId: formato.id,
     publicIdLabel: rotulo,
     equipmentId: maquina.id,
+    tagId: null,
     baseUrl: publicBaseUrl(),
     baseUrlConfigurada: publicBaseUrlConfigurada(),
   };

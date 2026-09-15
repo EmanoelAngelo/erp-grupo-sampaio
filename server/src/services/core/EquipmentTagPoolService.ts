@@ -19,7 +19,11 @@
  *
  *   gerada     o número foi reservado; o papel ainda não existe
  *   disponivel a folha FOI exportada; o adesivo existe e pode ser colado
- *   associada  já está numa máquina — e isso não se desfaz
+ *   associada  já está numa máquina (`equipment_id`) — e isso não se desfaz —
+ *              OU colado numa moto do estoque da PJ Motors (`unit_id`, P0 das
+ *              plaquinhas: `PlaquinhaDaPjNaUnidade.ts`). Na unidade, e só
+ *              enquanto a moto está no pátio, o adesivo pode ser solto e volta
+ *              a `disponivel` — é a correção da moto errada, não um desfazer
  *   danificada o adesivo se perdeu, e o número morre com ele
  *
  * `printed_at` é o que separa `gerada` de `disponivel`. Liberar plaquinha que
@@ -66,6 +70,12 @@ export interface EquipmentTag {
   status: TagStatus;
   batch_id: string | null;
   equipment_id: string | null;
+  /**
+   * A unidade de estoque da PJ em que o adesivo foi colado (P0 das
+   * plaquinhas). `associada` com `unit_id` e sem `equipment_id` é a plaquinha
+   * da PJ na moto do pátio; na `danificada` fica guardado para a auditoria.
+   */
+  unit_id: string | null;
   printed_at: string | null;
   released_at: string | null;
   associated_at: string | null;
@@ -241,6 +251,8 @@ export function criarLoteDePlaquinhas(input: {
 export interface PlaquinhaNaLista extends EquipmentTag {
   publicIdLabel: string;
   equipment_label: string | null;
+  /** A moto do estoque da PJ em que o adesivo foi colado: marca, modelo e chassi. */
+  unit_label: string | null;
 }
 
 /**
@@ -270,12 +282,28 @@ export function listarPlaquinhas(input: {
 }): { itens: PlaquinhaNaLista[]; total: number } {
   ensureCoreSchema();
   const params: unknown[] = [input.companyId];
+  /*
+    A MOTO DO ESTOQUE TAMBÉM DÁ NOME À PLAQUINHA (P0 das plaquinhas).
+
+    O pool só sabia dizer "na máquina tal": a plaquinha da PJ colada numa
+    unidade do estoque aparecia como associada a nada. `unit_label` é marca,
+    modelo e chassi da unidade — a mesma empresa da plaquinha, e só ela.
+
+    Nenhum SELECT aninhado na lista de colunas: o total logo abaixo troca o
+    trecho até o primeiro FROM por COUNT(*), e um FROM de subconsulta aqui
+    quebraria a conta em silêncio.
+  */
   let sql = `
     SELECT t.*,
            CASE WHEN e.id IS NULL THEN NULL
-                ELSE TRIM(COALESCE(e.brand, '') || ' ' || COALESCE(e.model, '')) END AS equipment_label
+                ELSE TRIM(COALESCE(e.brand, '') || ' ' || COALESCE(e.model, '')) END AS equipment_label,
+           CASE WHEN u.id IS NULL THEN NULL
+                ELSE TRIM(COALESCE(p.brand, '') || ' ' || COALESCE(p.name, '')
+                     || CASE WHEN u.chassis IS NOT NULL THEN ' · ' || u.chassis ELSE '' END) END AS unit_label
       FROM core_equipment_tags t
       LEFT JOIN core_equipment e ON e.id = t.equipment_id
+      LEFT JOIN core_product_units u ON u.id = t.unit_id AND u.company_id = t.company_id
+      LEFT JOIN core_products p ON p.id = u.product_id
      WHERE t.company_id = ?`;
 
   if (input.status) {
@@ -297,8 +325,11 @@ export function listarPlaquinhas(input: {
       sql += ' AND t.public_id = ?';
       params.push(numero);
     } else {
-      sql += " AND TRIM(COALESCE(e.brand, '') || ' ' || COALESCE(e.model, '')) LIKE ?";
-      params.push(`%${busca}%`);
+      // A busca por texto acha também a moto do estoque (nome do produto ou
+      // chassi): é por ela que a PJ procura o adesivo que colou.
+      sql += " AND (TRIM(COALESCE(e.brand, '') || ' ' || COALESCE(e.model, '')) LIKE ?"
+        + ' OR p.name LIKE ? OR u.chassis LIKE ?)';
+      params.push(`%${busca}%`, `%${busca}%`, `%${busca}%`);
     }
   }
   /*
@@ -568,8 +599,12 @@ export function reservarPlaquinhaParaEquipamento(input: {
   if (!tag) {
     throw new ApiError(
       'CORE_TAG_NOT_FOUND',
-      `A plaquinha ${formatTagId(input.publicId)} não existe no sistema. Gere um lote e exporte a `
-      + 'folha antes de usar o número.',
+      // A frase antiga ("gere um lote e exporte a folha antes de usar o número")
+      // mandava a Oficina gerar lote — e fora da PJ Motors ninguém gera. A
+      // plaquinha da PJ nem passa por aqui: entra na moto pela unidade.
+      `A plaquinha ${formatTagId(input.publicId)} não existe no sistema. Os números saem dos lotes `
+      + 'gerados em Plaquinhas; a plaquinha da PJ Motors entra na moto pela unidade, em Estoque › '
+      + 'Unidades.',
       404,
     );
   }
@@ -583,7 +618,9 @@ export function reservarPlaquinhaParaEquipamento(input: {
   if (tag.status === 'associada') {
     throw new ApiError(
       'CORE_TAG_IN_USE',
-      `A plaquinha ${formatTagId(tag.public_id)} já está em outra máquina.`,
+      // "Outra máquina" deixou de ser verdade sozinha: a plaquinha associada
+      // pode estar colada numa moto do estoque da PJ (`unit_id`).
+      `A plaquinha ${formatTagId(tag.public_id)} já está em outra máquina ou moto.`,
       409,
     );
   }

@@ -617,6 +617,29 @@ export function vincularUnidade(input: {
         409,
       );
     }
+    /*
+      A MOTO JÁ COM O ADESIVO DA PJ NÃO GANHA UMA SEGUNDA PLAQUINHA (P0 das
+      plaquinhas).
+
+      A unidade passou a poder ter a plaquinha do lote da PJ colada
+      (`core_equipment_tags.unit_id`, `PlaquinhaDaPjNaUnidade.ts`). Este vínculo
+      só olhava `equipment_id`, e aceitaria a plaquinha de uma máquina por cima:
+      dois QR na mesma moto, cada um abrindo uma página diferente. É uma ou
+      outra — o adesivo da PJ é solto antes.
+    */
+    const doPool = db
+      .prepare(
+        "SELECT public_id FROM core_equipment_tags WHERE unit_id = ? AND company_id = ? AND status = 'associada' LIMIT 1",
+      )
+      .get(unidade.id, input.companyId) as { public_id: number } | undefined;
+    if (doPool) {
+      throw new ApiError(
+        'CORE_UNIT_ALREADY_TAGGED',
+        `Esta moto já tem a plaquinha ${rotuloPublico(doPool.public_id)} da PJ. Solte-a antes de vincular a `
+        + 'plaquinha de uma máquina.',
+        409,
+      );
+    }
 
     const plaquinha = lerPlaquinha(input.equipmentId);
 
@@ -1011,7 +1034,16 @@ export function desvincularUnidade(input: {
   });
 }
 
-/** As unidades desta lista que têm plaquinha, com a plaquinha já carregada. */
+/**
+ * As unidades desta lista que têm plaquinha, com a plaquinha já carregada.
+ *
+ * "Plaquinha" aqui é a de MÁQUINA (`equipment_id`), e só ela — de propósito.
+ * A unidade que tem apenas o adesivo do lote da PJ (`core_equipment_tags` com
+ * `unit_id`, P0 das plaquinhas) vende, baixa e volta como qualquer unidade
+ * serializada: não há máquina onde carimbar dono, e portanto nenhuma das
+ * recusas do balcão (cliente, documento, moto na bancada) se aplica. O
+ * adesivo acompanha a moto — a página pública dela continua respondendo.
+ */
 function unidadesComPlaquinha(
   companyId: string,
   unitIds: string[],
