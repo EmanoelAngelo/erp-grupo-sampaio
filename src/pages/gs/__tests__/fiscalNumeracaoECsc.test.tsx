@@ -19,10 +19,13 @@
  *     escolha, e é assim que o de teste não vira "de produção" por descuido;
  *     o caso do ambiente falha se o padrão não acompanhar a operação. Gravar o
  *     de produção ANTES da virada é escolha explícita e tem o seu próprio
- *     arquivo (fiscalCscPorAmbiente.test.tsx, GAP-PRD-022).
+ *     arquivo (fiscalCscPorAmbiente.test.tsx, GAP-PRD-022);
+ *   - o selo do CSC só afirma o que LEU: se voltar a dizer NÃO CONFIGURADO
+ *     antes de a lista do cofre chegar — ou depois de a leitura ser recusada —,
+ *     os dois casos de "o selo só afirma o que leu" ficam vermelhos.
  */
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { setSession } from '@/lib/api/client';
 import FiscalPage from '../FiscalPage';
@@ -54,11 +57,64 @@ const SERIES = [
   { model: '55', series: [] },
 ];
 
+const CSC_DE_HOMOLOGACAO = {
+  operationalUnitId: 'unit-default',
+  cscId: '000001',
+  configured: true,
+  environment: 'homologation',
+};
+
 /** Tudo o que a tela mandou para o servidor, na ordem. */
 let enviados: { url: string; method: string; body: unknown; headers: Record<string, string> }[] = [];
 let cscAtual: unknown[];
+/** Quando não-nula, a leitura da lista do CSC só responde depois dela. */
+let seguraOCsc: Promise<void> | null = null;
+/** Quando não-nula, a leitura da lista do CSC responde com esta recusa. */
+let recusaDoCsc: { status: number; code: string; message: string } | null = null;
+/** As esperas do atraso ainda no relógio — nenhuma pode sobreviver ao caso. */
+const esperasEmCurso = new Set<Promise<void>>();
+
+/*
+  A CONFIGURAÇÃO E O CSC CHEGAM DEPOIS DA NUMERAÇÃO — de propósito, e para
+  sempre.
+
+  O caso do CSC falhou uma vez na validação final, com a máquina carregada:
+  "Unable to find a label with the text of: CSC ID". A corrida era do TESTE, e
+  não da tela: `abrir()` esperava "Numeração das notas", título que o
+  `NumeracaoCard` desenha no PRIMEIRO render, sem depender de resposta
+  nenhuma; o cartão do CSC só nasce depois que `getFiscalConfig()` responde
+  (`{config && <CscCard …/>}`), e a lista dele é uma segunda ida ao servidor.
+  Entre o `findByText` e o `getByLabelText` síncrono sobrava UMA volta de
+  `setTimeout(0)` (a drenagem do `asyncWrapper` da Testing Library), e o
+  re-render com a configuração sai por `setImmediate` (o Scheduler do React,
+  fora do `act`). Com folga na máquina o re-render cabia nessa volta; com a
+  CPU disputada, o relógio vencia e o cartão ainda não existia.
+
+  Este atraso reproduz, em qualquer máquina, a ordem que só a carga produzia:
+  a numeração responde na hora, e a configuração e o CSC só depois dela e de
+  um intervalo que nenhuma drenagem de microtarefa cobre. Com ele, esperar o
+  elemento errado falha SEMPRE — e é por isso que ele fica.
+*/
+const ATRASO_DAS_LEITURAS_LENTAS_MS = 100;
 
 function servidor() {
+  let numeracaoServida: () => void = () => undefined;
+  const numeracao = new Promise<void>((resolve) => {
+    numeracaoServida = resolve;
+  });
+  const depoisDaNumeracao = async () => {
+    await numeracao;
+    const espera = new Promise<void>((resolve) => {
+      setTimeout(resolve, ATRASO_DAS_LEITURAS_LENTAS_MS);
+    });
+    esperasEmCurso.add(espera);
+    try {
+      await espera;
+    } finally {
+      esperasEmCurso.delete(espera);
+    }
+  };
+
   return vi.fn(async (
     url: string,
     init?: { method?: string; body?: string; headers?: Record<string, string> },
@@ -75,10 +131,16 @@ function servidor() {
         headers: { 'Content-Type': 'application/json' },
       });
 
-    if (alvo.includes('/core/fiscal/config')) return json(CONFIG);
+    if (alvo.includes('/core/fiscal/config')) {
+      await depoisDaNumeracao();
+      return json(CONFIG);
+    }
     if (alvo.includes('/core/fiscal/readiness')) return json({ items: [] });
     if (alvo.includes('/core/fiscal/product-pendencies')) return json({ items: [] });
-    if (alvo.includes('/core/fiscal/series')) return json({ items: SERIES });
+    if (alvo.includes('/core/fiscal/series')) {
+      numeracaoServida();
+      return json({ items: SERIES });
+    }
     if (alvo.includes('/core/fiscal/nfce/csc')) {
       if (method === 'POST') {
         cscAtual = [
@@ -91,7 +153,17 @@ function servidor() {
         ];
         return json(cscAtual[0], 201);
       }
-      return json({ items: cscAtual });
+      // A foto do cofre é a da hora do pedido; a resposta é que demora.
+      const itens = [...cscAtual];
+      await depoisDaNumeracao();
+      if (seguraOCsc) await seguraOCsc;
+      if (recusaDoCsc) {
+        return json(
+          { error: { code: recusaDoCsc.code, message: recusaDoCsc.message } },
+          recusaDoCsc.status,
+        );
+      }
+      return json({ items: itens });
     }
     return json({ items: [] });
   });
@@ -114,29 +186,68 @@ function entrarComoGestor() {
   );
 }
 
+/**
+ * Nenhuma resposta atrasada sobrevive ao caso.
+ *
+ * O atraso deixa leituras no relógio depois do último `expect` — a releitura
+ * que a tela faz depois de gravar, por exemplo. Vencida depois do fim do
+ * arquivo, ela roda o cliente HTTP sem o jsdom, e o Vitest acusa "window is
+ * not defined" (visto na reprodução). A volta de `setTimeout(0)` deixa entrar
+ * no relógio a leitura que ainda esperava a porta da numeração.
+ */
+async function esvaziarAsEsperas() {
+  do {
+    await Promise.all([...esperasEmCurso]);
+    await new Promise((resolve) => {
+      setTimeout(resolve, 0);
+    });
+  } while (esperasEmCurso.size > 0);
+}
+
 beforeEach(() => {
   enviados = [];
   cscAtual = [];
+  seguraOCsc = null;
+  recusaDoCsc = null;
   localStorage.clear();
   vi.stubGlobal('fetch', servidor());
   entrarComoGestor();
 });
 
-afterEach(() => {
+afterEach(async () => {
   cleanup();
+  await esvaziarAsEsperas();
   setSession(null, 'LOGOUT', 'fim do teste');
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
   localStorage.clear();
 });
 
-async function abrir() {
+function montar() {
   render(
     <MemoryRouter>
       <FiscalPage />
     </MemoryRouter>,
   );
-  await screen.findByText('Numeração das notas');
+}
+
+/**
+ * Abre a tela e espera o cartão do CSC LIDO — e não um vizinho dele.
+ *
+ * Esperava "Numeração das notas", que existe desde o primeiro render e não diz
+ * nada sobre o CSC (ver o atraso acima). O que os casos consultam logo depois
+ * é o campo "CSC ID", que só nasce com a configuração, e os dois selos, que só
+ * afirmam depois que a lista do cofre chega. É exatamente isso que se espera:
+ * o cofre destes casos começa vazio, então lido quer dizer dois NÃO
+ * CONFIGURADO — enquanto a lista não chega, o selo diz CONSULTANDO….
+ */
+async function abrir() {
+  montar();
+  await screen.findByLabelText('CSC ID');
+  const lista = screen.getByLabelText('CSC por ambiente');
+  await waitFor(() => {
+    expect(within(lista).getAllByText('NÃO CONFIGURADO')).toHaveLength(2);
+  });
 }
 
 describe('numeração das séries', () => {
@@ -213,5 +324,63 @@ describe('CSC', () => {
 
     // E o token não aparece em lugar nenhum da tela.
     expect(document.body.textContent).not.toContain('SEGREDO-XYZ');
+  });
+});
+
+/*
+  O SELO SÓ AFIRMA O QUE LEU.
+
+  Sem a lista do cofre, `atual` ficava `null` e os dois selos diziam NÃO
+  CONFIGURADO — enquanto a leitura não chegava e, se ela fosse recusada, para
+  sempre. É o que via o `gerente_oficina`: a configuração fiscal o admite, o
+  GET do CSC não, e a tela afirmava "não configurado" com o código gravado no
+  cofre. Os dois casos abaixo têm o CSC de homologação GRAVADO de propósito.
+*/
+describe('o selo do CSC só afirma o que leu', () => {
+  it('enquanto a lista do cofre não chega, o selo diz que está consultando — não NÃO CONFIGURADO', async () => {
+    cscAtual = [CSC_DE_HOMOLOGACAO];
+    let soltar: () => void = () => undefined;
+    seguraOCsc = new Promise<void>((resolve) => {
+      soltar = resolve;
+    });
+    montar();
+
+    // O cartão nasceu (a configuração chegou), e a lista está presa.
+    await screen.findByLabelText('CSC ID');
+    const lista = screen.getByLabelText('CSC por ambiente');
+    expect(within(lista).getAllByText('CONSULTANDO…')).toHaveLength(2);
+    expect(within(lista).queryByText('NÃO CONFIGURADO')).toBeNull();
+
+    soltar();
+
+    // Lida: o de homologação aparece gravado, e só o de produção — lido e
+    // vazio — passa a ser NÃO CONFIGURADO.
+    expect(await within(lista).findByText('CONFIGURADO')).toBeTruthy();
+    expect(within(lista).getByText('CSC ID 000001')).toBeTruthy();
+    expect(within(lista).getAllByText('NÃO CONFIGURADO')).toHaveLength(1);
+    expect(within(lista).queryByText('CONSULTANDO…')).toBeNull();
+  });
+
+  it('leitura recusada: o selo diz que não sabe, e a recusa aparece na tela', async () => {
+    cscAtual = [CSC_DE_HOMOLOGACAO];
+    recusaDoCsc = {
+      status: 403,
+      code: 'API_PERMISSION_DENIED',
+      message: 'Ler o CSC é gesto da gerência da loja.',
+    };
+    montar();
+
+    /*
+      Em DOIS tempos, cada um com o seu estado real: o cartão nasce com a
+      configuração, e só depois a leitura do cofre volta recusada. Um `findBy`
+      só para a cadeia inteira (dois atrasos e três renders) estourou o prazo
+      de 1 s da Testing Library uma vez com a CPU saturada.
+    */
+    await screen.findByLabelText('CSC ID');
+    expect(await screen.findByText('Ler o CSC é gesto da gerência da loja.')).toBeTruthy();
+    const lista = screen.getByLabelText('CSC por ambiente');
+    expect(within(lista).getAllByText('SITUAÇÃO DESCONHECIDA')).toHaveLength(2);
+    expect(within(lista).queryByText('NÃO CONFIGURADO')).toBeNull();
+    expect(within(lista).queryByText('CONSULTANDO…')).toBeNull();
   });
 });

@@ -65,8 +65,35 @@ const PRODUCAO = {
 let config: typeof CONFIG_BASE;
 let cscAtual: Record<string, unknown>[];
 let enviados: { url: string; method: string; body: unknown }[] = [];
+/** As esperas do atraso ainda no relógio — nenhuma pode sobreviver ao caso. */
+const esperasEmCurso = new Set<Promise<void>>();
+
+/*
+  A CONFIGURAÇÃO E O CSC CHEGAM DEPOIS DA NUMERAÇÃO — de propósito, e para
+  sempre. É a ordem lenta que derrubou o caso do CSC na validação final
+  (fiscalNumeracaoECsc.test.tsx): com ela, um `abrir()` que esperasse o
+  elemento errado falharia em qualquer máquina, e não só na carregada.
+*/
+const ATRASO_DAS_LEITURAS_LENTAS_MS = 100;
 
 function servidor() {
+  let numeracaoServida: () => void = () => undefined;
+  const numeracao = new Promise<void>((resolve) => {
+    numeracaoServida = resolve;
+  });
+  const depoisDaNumeracao = async () => {
+    await numeracao;
+    const espera = new Promise<void>((resolve) => {
+      setTimeout(resolve, ATRASO_DAS_LEITURAS_LENTAS_MS);
+    });
+    esperasEmCurso.add(espera);
+    try {
+      await espera;
+    } finally {
+      esperasEmCurso.delete(espera);
+    }
+  };
+
   return vi.fn(async (url: string, init?: { method?: string; body?: string }) => {
     const alvo = String(url);
     const method = init?.method ?? 'GET';
@@ -79,10 +106,17 @@ function servidor() {
         headers: { 'Content-Type': 'application/json' },
       });
 
-    if (alvo.includes('/core/fiscal/config')) return json(config);
+    if (alvo.includes('/core/fiscal/config')) {
+      const lida = { ...config };
+      await depoisDaNumeracao();
+      return json(lida);
+    }
     if (alvo.includes('/core/fiscal/readiness')) return json({ items: [] });
     if (alvo.includes('/core/fiscal/product-pendencies')) return json({ items: [] });
-    if (alvo.includes('/core/fiscal/series')) return json({ items: [] });
+    if (alvo.includes('/core/fiscal/series')) {
+      numeracaoServida();
+      return json({ items: [] });
+    }
     if (alvo.includes('/core/fiscal/nfce/csc')) {
       if (method === 'POST') {
         const gravado = {
@@ -94,10 +128,26 @@ function servidor() {
         cscAtual = [...cscAtual.filter((c) => c.environment !== body?.environment), gravado];
         return json(gravado, 201);
       }
-      return json({ items: cscAtual });
+      // A foto do cofre é a da hora do pedido; a resposta é que demora.
+      const itens = [...cscAtual];
+      await depoisDaNumeracao();
+      return json({ items: itens });
     }
     return json({ items: [] });
   });
+}
+
+/**
+ * Nenhuma resposta atrasada sobrevive ao caso: vencida depois do fim do
+ * arquivo, ela roda o cliente HTTP sem o jsdom ("window is not defined").
+ */
+async function esvaziarAsEsperas() {
+  do {
+    await Promise.all([...esperasEmCurso]);
+    await new Promise((resolve) => {
+      setTimeout(resolve, 0);
+    });
+  } while (esperasEmCurso.size > 0);
 }
 
 beforeEach(() => {
@@ -122,21 +172,38 @@ beforeEach(() => {
   );
 });
 
-afterEach(() => {
+afterEach(async () => {
   cleanup();
+  await esvaziarAsEsperas();
   setSession(null, 'LOGOUT', 'fim do teste');
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
   localStorage.clear();
 });
 
+/**
+ * Abre a tela e espera o cartão do CSC LIDO — e não só desenhado.
+ *
+ * Esperava a lista "CSC por ambiente", que existe desde o render que monta o
+ * cartão, quando os efeitos de montagem dele podem ainda não ter rodado. Um
+ * deles é `setDestino(ambiente)`. Com a CPU disputada, o React adia esses
+ * efeitos para outra volta do Scheduler; a troca do seletor que o segundo caso
+ * faz entra ANTES, e o efeito atrasado a desfaz quando o `act` do `fireEvent`
+ * o descarrega — e "fica guardado" some (visto 2 vezes em 30 rodadas, uma
+ * delas sem carga nenhuma). A leitura do cofre é pedida pelo MESMO lote de
+ * efeitos: os dois selos lidos provam que o `setDestino` de montagem já
+ * passou.
+ */
 async function abrir() {
   render(
     <MemoryRouter>
       <FiscalPage />
     </MemoryRouter>,
   );
-  await screen.findByLabelText('CSC por ambiente');
+  const lista = await screen.findByLabelText('CSC por ambiente');
+  await waitFor(() => {
+    expect(within(lista).getAllByText(/^(NÃO )?CONFIGURADO$/)).toHaveLength(2);
+  });
 }
 
 describe('o cartão do CSC conhece os dois ambientes', () => {

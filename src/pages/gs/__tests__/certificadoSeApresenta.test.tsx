@@ -183,8 +183,43 @@ const PAINEL_BASE = {
 let enviados: { url: string; method: string; body: unknown }[] = [];
 let producao: unknown = SEM_HOMOLOGACAO;
 let alertaDoPainel: unknown = ALERTA_23;
+/** As esperas do atraso ainda no relógio — nenhuma pode sobreviver ao caso. */
+const esperasEmCurso = new Set<Promise<void>>();
+
+/*
+  A CONFIGURAÇÃO FISCAL CHEGA DEPOIS DA NUMERAÇÃO — de propósito, e para
+  sempre.
+
+  O `abrirFiscal()` da chave da produção esperava "Numeração das notas", título
+  que o `NumeracaoCard` desenha no PRIMEIRO render, e os casos consultavam logo
+  depois, síncronos, o botão "Liberar produção" e os passos — que só nascem
+  quando `getFiscalConfig()` e `getFiscalReadiness()` respondem. É a corrida que
+  derrubou o caso do CSC na validação final (fiscalNumeracaoECsc.test.tsx):
+  sobrava uma volta de `setTimeout(0)` para o re-render, que sai por
+  `setImmediate`, e com a CPU disputada ele não cabia. Este atraso faz a ordem
+  lenta acontecer sempre. Só a tela fiscal pede a configuração, e ela sempre
+  pede as séries: a porta da numeração não prende o certificado nem o painel.
+*/
+const ATRASO_DAS_LEITURAS_LENTAS_MS = 100;
 
 function servidor() {
+  let numeracaoServida: () => void = () => undefined;
+  const numeracao = new Promise<void>((resolve) => {
+    numeracaoServida = resolve;
+  });
+  const depoisDaNumeracao = async () => {
+    await numeracao;
+    const espera = new Promise<void>((resolve) => {
+      setTimeout(resolve, ATRASO_DAS_LEITURAS_LENTAS_MS);
+    });
+    esperasEmCurso.add(espera);
+    try {
+      await espera;
+    } finally {
+      esperasEmCurso.delete(espera);
+    }
+  };
+
   return vi.fn(async (url: string, init?: { method?: string; body?: string }) => {
     const alvo = String(url);
     const method = init?.method ?? 'GET';
@@ -203,7 +238,10 @@ function servidor() {
       producao = { ...COM_HOMOLOGACAO, unlocked: true, unlockedAt: '2026-08-30T10:00:00.000Z', unlockedBy: 'u-dono', canUnlock: false, alreadyUnlocked: false };
       return json(producao);
     }
-    if (alvo.includes('/core/fiscal/config')) return json(CONFIG);
+    if (alvo.includes('/core/fiscal/config')) {
+      await depoisDaNumeracao();
+      return json(CONFIG);
+    }
     if (alvo.includes('/core/fiscal/readiness')) {
       return json({
         items: [
@@ -220,7 +258,10 @@ function servidor() {
         productionUnlock: producao,
       });
     }
-    if (alvo.includes('/core/fiscal/series')) return json({ items: [] });
+    if (alvo.includes('/core/fiscal/series')) {
+      numeracaoServida();
+      return json({ items: [] });
+    }
     if (alvo.includes('/core/fiscal/product-pendencies')) return json({ items: [] });
     if (alvo.includes('/core/fiscal/nfce/csc')) return json({ items: [] });
     if (alvo.includes('/core/dashboard')) {
@@ -228,6 +269,19 @@ function servidor() {
     }
     return json({ items: [] });
   });
+}
+
+/**
+ * Nenhuma resposta atrasada sobrevive ao caso: vencida depois do fim do
+ * arquivo, ela roda o cliente HTTP sem o jsdom ("window is not defined").
+ */
+async function esvaziarAsEsperas() {
+  do {
+    await Promise.all([...esperasEmCurso]);
+    await new Promise((resolve) => {
+      setTimeout(resolve, 0);
+    });
+  } while (esperasEmCurso.size > 0);
 }
 
 function entrarComoDono() {
@@ -256,8 +310,9 @@ beforeEach(() => {
   entrarComoDono();
 });
 
-afterEach(() => {
+afterEach(async () => {
   cleanup();
+  await esvaziarAsEsperas();
   setSession(null, 'LOGOUT', 'fim do teste');
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
@@ -379,13 +434,19 @@ describe('o aviso de vencimento alcança quem não foi procurá-lo', () => {
 // ===========================================================================
 
 describe('a chave da produção na tela', () => {
+  /*
+    Espera os passos da produção, e não "Numeração das notas" (ver o atraso no
+    dublê): eles saem no MESMO render que o botão "Liberar produção", a prova
+    da homologação e o selo PRODUÇÃO BLOQUEADA — os quatro `set` do `carregar`
+    da tela são um lote só —, que é o que os casos leem logo depois.
+  */
   async function abrirFiscal() {
     render(
       <MemoryRouter>
         <FiscalPage />
       </MemoryRouter>,
     );
-    await screen.findByText('Numeração das notas');
+    await screen.findByText(/Liberar produção não liga produção/i);
   }
 
   it('sem homologação real, o botão existe DESLIGADO e diz por quê', async () => {

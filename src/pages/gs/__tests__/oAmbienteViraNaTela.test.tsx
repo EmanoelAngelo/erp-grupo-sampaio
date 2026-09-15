@@ -112,8 +112,41 @@ let config: Record<string, unknown> = { ...BASE_CONFIG };
 let producao: unknown = TRANCADA;
 /** Quando não-nulo, o PATCH da configuração responde com esta recusa. */
 let recusaDoPatch: { status: number; code: string; message: string } | null = null;
+/** As esperas do atraso ainda no relógio — nenhuma pode sobreviver ao caso. */
+const esperasEmCurso = new Set<Promise<void>>();
+
+/*
+  A CONFIGURAÇÃO CHEGA DEPOIS DA NUMERAÇÃO — de propósito, e para sempre.
+
+  `abrirFiscal()` esperava "Numeração das notas", título que o `NumeracaoCard`
+  desenha no PRIMEIRO render, e os casos consultavam logo depois, síncronos, o
+  botão da virada e os passos da produção — que só nascem quando
+  `getFiscalConfig()` e `getFiscalReadiness()` respondem. É a corrida que
+  derrubou o caso do CSC na validação final (fiscalNumeracaoECsc.test.tsx):
+  sobrava uma volta de `setTimeout(0)` para o re-render, que sai por
+  `setImmediate`, e com a CPU disputada ele não cabia. Este atraso faz a ordem
+  lenta acontecer sempre: esperar o elemento errado falha em qualquer máquina.
+*/
+const ATRASO_DAS_LEITURAS_LENTAS_MS = 100;
 
 function servidor() {
+  let numeracaoServida: () => void = () => undefined;
+  const numeracao = new Promise<void>((resolve) => {
+    numeracaoServida = resolve;
+  });
+  const depoisDaNumeracao = async () => {
+    await numeracao;
+    const espera = new Promise<void>((resolve) => {
+      setTimeout(resolve, ATRASO_DAS_LEITURAS_LENTAS_MS);
+    });
+    esperasEmCurso.add(espera);
+    try {
+      await espera;
+    } finally {
+      esperasEmCurso.delete(espera);
+    }
+  };
+
   return vi.fn(async (url: string, init?: { method?: string; body?: string }) => {
     const alvo = String(url);
     const method = init?.method ?? 'GET';
@@ -135,8 +168,12 @@ function servidor() {
           );
         }
         config = { ...config, ...(body as object) };
+        return json(config);
       }
-      return json(config);
+      // A leitura é a lenta (ver o atraso acima); a foto é a da hora do pedido.
+      const lida = { ...config };
+      await depoisDaNumeracao();
+      return json(lida);
     }
     if (alvo.includes('/core/fiscal/readiness')) {
       return json({
@@ -154,11 +191,27 @@ function servidor() {
         productionUnlock: producao,
       });
     }
-    if (alvo.includes('/core/fiscal/series')) return json({ items: [] });
+    if (alvo.includes('/core/fiscal/series')) {
+      numeracaoServida();
+      return json({ items: [] });
+    }
     if (alvo.includes('/core/fiscal/product-pendencies')) return json({ items: [] });
     if (alvo.includes('/core/fiscal/nfce/csc')) return json({ items: [] });
     return json({ items: [] });
   });
+}
+
+/**
+ * Nenhuma resposta atrasada sobrevive ao caso: vencida depois do fim do
+ * arquivo, ela roda o cliente HTTP sem o jsdom ("window is not defined").
+ */
+async function esvaziarAsEsperas() {
+  do {
+    await Promise.all([...esperasEmCurso]);
+    await new Promise((resolve) => {
+      setTimeout(resolve, 0);
+    });
+  } while (esperasEmCurso.size > 0);
 }
 
 function entrarComoDono() {
@@ -178,13 +231,23 @@ function entrarComoDono() {
   );
 }
 
+/**
+ * Abre a tela e espera o cartão do AMBIENTE montado com o que ele lê.
+ *
+ * Esperava "Numeração das notas", que existe desde o primeiro render e não diz
+ * nada sobre o ambiente (ver o atraso acima). Os passos da produção saem no
+ * MESMO render que a configuração — os quatro `set` do `carregar` da tela são
+ * um lote só, depois do `Promise.all` —, então esperá-los é esperar pelo botão
+ * da virada, pelo selo do ambiente e pelo motivo do desligado, que é o que os
+ * casos leem.
+ */
 async function abrirFiscal() {
   render(
     <MemoryRouter>
       <FiscalPage />
     </MemoryRouter>,
   );
-  await screen.findByText('Numeração das notas');
+  await screen.findByText(/Liberar produção não liga produção/);
 }
 
 const botao = (nome: RegExp | string) =>
@@ -200,8 +263,9 @@ beforeEach(() => {
   entrarComoDono();
 });
 
-afterEach(() => {
+afterEach(async () => {
   cleanup();
+  await esvaziarAsEsperas();
   setSession(null, 'LOGOUT', 'fim do teste');
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
