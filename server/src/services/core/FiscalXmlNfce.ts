@@ -29,7 +29,7 @@ import {
 } from '../nfce/NfceCscService.js';
 import { UNIDADE_FISCAL } from './UnidadeFiscal.js';
 import { DIGEST_PROVISORIO, qrCodeOffline } from './NfceQrOffline.js';
-import { impostoXml, totaisDoIcms, tributacaoDoItem } from './TributacaoDoItem.js';
+import { alcanceDoCfop, impostoXml, totaisDoIcms, tributacaoDoItem } from './TributacaoDoItem.js';
 import { momentoFiscal } from './MomentoFiscal.js';
 import { getConnection } from '../../db/sqlite.js';
 import { ensureCoreSchema } from '../../db/schema.js';
@@ -414,6 +414,16 @@ export function validateNfce(sale: NfceSale, config: FiscalConfig): ValidationPr
     }
     if (digits(item.cfop).length !== 4) {
       problems.push({ field: `${onde} > CFOP`, message: 'CFOP ausente ou fora do formato (4 dígitos).', itemIndex: index });
+    } else if (!digits(item.cfop).startsWith('5')) {
+      // A NFC-e é sempre operação interna com o consumidor presente (idDest 1):
+      // CFOP de outro alcance é rejeição certa, com o número já reservado.
+      problems.push({
+        field: `${onde} > CFOP`,
+        message:
+          `A NFC-e é sempre operação interna: o CFOP ${digits(item.cfop)} é de `
+          + `${alcanceDoCfop(digits(item.cfop))}. Use o CFOP interno (5xxx) do grupo tributário.`,
+        itemIndex: index,
+      });
     }
     if (!item.origin || !/^[0-8]$/.test(String(item.origin).trim())) {
       problems.push({ field: `${onde} > origem`, message: 'Origem da mercadoria ausente ou inválida (0 a 8).', itemIndex: index });
@@ -716,7 +726,7 @@ export function buildNfceXml(input: {
             ? `\n        <cBenef>${xmlEscape(tributacoes[index].cBenef!)}</cBenef>`
             : ''
         }
-        <CFOP>${digits(item.cfop)}</CFOP>
+        <CFOP>${digits(tributacoes[index].cfop)}</CFOP>
         <uCom>${xmlEscape(unidade)}</uCom>
         <qCom>${qty(item.quantity)}</qCom>
         <vUnCom>${money(item.unitPriceCents)}</vUnCom>

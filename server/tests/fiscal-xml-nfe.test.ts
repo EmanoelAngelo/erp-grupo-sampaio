@@ -87,6 +87,19 @@ function venda(over: Partial<NfceSale> = {}): NfceSale {
   };
 }
 
+/**
+ * A venda como a emissão a monta para OUTRA UF: o CFOP interestadual do grupo.
+ *
+ * Os dois testes de destino abaixo montavam a nota para o Pará com o item em
+ * 5102 — CFOP de saída interna com idDest 2, a combinação que a SEFAZ recusa. A
+ * montagem agora confere o alcance do CFOP contra o destino (P0 fiscal), e a
+ * emissão de verdade (`completarPeloGrupo`) já troca o 5102 pelo 6102 do grupo.
+ */
+function vendaInterestadual(): NfceSale {
+  const v = venda();
+  return { ...v, items: v.items.map((i) => ({ ...i, cfop: '6102' })) };
+}
+
 beforeEach(() => {
   resetDbForTests();
   companyId = upsertCompany({
@@ -177,7 +190,7 @@ describe('destinatário — a diferença que mais importa', () => {
   });
 
   it('destinatário pessoa física sai com CPF e sem IE', () => {
-    const { xml } = buildNfeXml({ sale: venda(), config, recipient: DEST_PF, serie: 1, number: 1 });
+    const { xml } = buildNfeXml({ sale: vendaInterestadual(), config, recipient: DEST_PF, serie: 1, number: 1 });
     expect(xml).toContain('<CPF>12345678909</CPF>');
     expect(xml).toContain('<indIEDest>9</indIEDest>');
     // Não contribuinte não tem inscrição — o bloco não pode aparecer.
@@ -215,10 +228,13 @@ describe('destino da operação', () => {
 
   it('o XML reflete o destino calculado', () => {
     const interna = buildNfeXml({ sale: venda(), config, recipient: DEST_PJ, serie: 1, number: 1 });
-    const fora = buildNfeXml({ sale: venda(), config, recipient: DEST_PF, serie: 1, number: 2 });
+    const fora = buildNfeXml({ sale: vendaInterestadual(), config, recipient: DEST_PF, serie: 1, number: 2 });
 
     expect(interna.xml).toContain('<idDest>1</idDest>');
     expect(fora.xml).toContain('<idDest>2</idDest>');
+    // E o CFOP acompanha o destino.
+    expect(interna.xml).toContain('<CFOP>5102</CFOP>');
+    expect(fora.xml).toContain('<CFOP>6102</CFOP>');
   });
 });
 
