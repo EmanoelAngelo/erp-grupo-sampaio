@@ -36,6 +36,7 @@ import { montarProcEventoNfe, montarProcInutNfe } from './FiscalProcNfe.js';
 import { classifyCStat, type SefazAdapter, type SefazResponse } from './SefazAdapter.js';
 import { assertAdapterPodeAgirNoDocumento } from './FiscalAtosAdministrativos.js';
 import { numeroNaoConsumidoPelaSefaz } from './FiscalReemissao.js';
+import { lerOperacao, operacaoDoDocumento } from './FiscalOperacoes.js';
 
 /**
  * O adapter de um ato — pronto, ou a fábrica dele.
@@ -281,6 +282,8 @@ export async function requestCancel(input: {
   /** O adapter, ou quem o fabrica — chamado só depois das validações da nota. */
   adapter: AdapterDoAto;
   userId?: string | null;
+  /** O relógio do pedido — injetável para o teste do prazo. */
+  now?: Date;
 }): Promise<CancelResult> {
   ensureCoreSchema();
 
@@ -319,6 +322,39 @@ export async function requestCancel(input: {
   }
 
   const config = getFiscalConfig(input.companyId);
+
+  /*
+    O PRAZO DE CANCELAMENTO (P0 fiscal).
+
+    O defeito: nenhum prazo era conferido — o pedido fora do prazo ia à SEFAZ,
+    voltava recusado, e o gerente só descobria depois de abrir o certificado e
+    registrar "cancelamento pedido" na linha do tempo. O prazo é da UF e do
+    modelo (NFC-e e NF-e têm prazos diferentes), então ele NÃO é cravado aqui:
+    é o que o contador informou na operação fiscal da empresa. Sem prazo
+    informado, nada muda — a SEFAZ decide, e a falta aparece como pendência
+    contábil.
+  */
+  const origem = getConnection()
+    .prepare('SELECT origin_type FROM core_fiscal_documents WHERE id = ? AND company_id = ?')
+    .get(doc.id, input.companyId) as { origin_type: string | null } | undefined;
+  const operacao = lerOperacao(
+    input.companyId,
+    operacaoDoDocumento({ model: doc.model, originType: origem?.origin_type ?? null }),
+  );
+  const prazo = operacao.prazoCancelamentoMinutos;
+  const autorizadaEm = doc.authorizedAt ? new Date(doc.authorizedAt).getTime() : Number.NaN;
+  const agora = (input.now ?? new Date()).getTime();
+  if (prazo !== null && Number.isFinite(autorizadaEm) && agora - autorizadaEm > prazo * 60_000) {
+    throw new ApiError(
+      'CORE_FISCAL_CANCEL_DEADLINE_EXCEEDED',
+      `O prazo de cancelamento desta nota (${prazo} min depois da autorização, o que o contador informou `
+        + `para a UF em "${operacao.rotulo}") terminou em ${new Date(autorizadaEm + prazo * 60_000).toISOString()}. `
+        + 'Fora do prazo a SEFAZ recusa o cancelamento: o caminho é o que o contador indicar para a UF '
+        + '(nota de devolução/estorno, ou cancelamento extemporâneo onde a UF o aceita).',
+      409,
+      { prazoMinutos: prazo, autorizadaEm: doc.authorizedAt },
+    );
+  }
 
   // O adapter nasce DEPOIS das validações da nota (o certificado só é aberto
   // para um ato que vai acontecer) e ANTES do registro do pedido: um ato que

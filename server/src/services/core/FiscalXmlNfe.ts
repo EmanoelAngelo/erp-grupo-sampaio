@@ -34,8 +34,10 @@ import {
   MODEL_NFE,
   buildAccessKey,
   environmentCode,
+  isValidAccessKey,
   randomNumericCode,
 } from './FiscalKeyService.js';
+import { lerOperacao, natOpDaOperacao } from './FiscalOperacoes.js';
 import {
   TPAG,
   UF_CODE,
@@ -314,10 +316,29 @@ export function buildNfeXml(input: {
   numericCode?: string;
   issuedAt?: Date;
   additionalInfo?: string;
+  /** A natureza da operação. Ausente: a da operação desta empresa (venda ou devolução). */
+  natOp?: string;
+  /**
+   * A NF-e de DEVOLUÇÃO (finNFe 4) — P0 fiscal. A devolução de VENDA é nota de
+   * ENTRADA emitida pela loja (tpNF 0, CFOP 1202/2202 por padrão); a de COMPRA
+   * é de saída (tpNF 1, 5202/6202). O CFOP, a natureza e o grupo tributário
+   * vêm da operação fiscal da empresa (`FiscalOperacoes`), e a chave da nota
+   * devolvida vai no NFref.
+   */
+  devolucao?: { operacao: 'devolucao_venda' | 'devolucao_compra'; chaveReferenciada: string };
 }): BuiltNfe {
   const { sale, config, recipient, serie, number } = input;
 
-  const problems = validateNfe({ sale, config, recipient });
+  const operacaoDaDevolucao = input.devolucao ? lerOperacao(sale.companyId, input.devolucao.operacao) : null;
+  const direcao = operacaoDaDevolucao?.direcao ?? 'saida';
+  const problems = validateNfe({ sale, config, recipient, direcao });
+  if (input.devolucao && !isValidAccessKey(digits(input.devolucao.chaveReferenciada))) {
+    problems.push({
+      field: 'ide.NFref',
+      message:
+        'A chave da nota devolvida não é uma chave de acesso válida (44 dígitos, com o dígito verificador certo).',
+    });
+  }
   if (problems.length > 0) {
     throw new ApiError(
       'CORE_FISCAL_DOCUMENT_INVALID',
@@ -375,6 +396,12 @@ export function buildNfeXml(input: {
     tributacaoDoItem({
       companyId: sale.companyId,
       ufDestinatario: destUf,
+      // Na devolução, o CFOP e o grupo são os da OPERAÇÃO, e a direção decide o alcance (1/2 ou 5/6).
+      direcao,
+      cfopDaOperacao: operacaoDaDevolucao
+        ? { interno: operacaoDaDevolucao.cfopInterno, interestadual: operacaoDaDevolucao.cfopInterestadual }
+        : null,
+      grupoDaOperacao: operacaoDaDevolucao?.grupoTributario ?? null,
       produto: {
         id: item.productId ?? item.internalCode ?? String(index + 1),
         description: item.description,
@@ -491,23 +518,31 @@ ${impostoDoItem}${infAdProdXml(item.unidades, xmlEscape)}
     <ide>
       <cUF>${ufCode}</cUF>
       <cNF>${numericCode}</cNF>
-      <natOp>VENDA DE MERCADORIA</natOp>
+      <natOp>${xmlEscape(input.natOp ?? natOpDaOperacao(sale.companyId, input.devolucao?.operacao ?? 'venda_nfe'))}</natOp>
       <mod>${MODEL_NFE}</mod>
       <serie>${serie}</serie>
       <nNF>${number}</nNF>
       <dhEmi>${dhEmi}</dhEmi>
-      <tpNF>1</tpNF>
+      <tpNF>${direcao === 'entrada' ? '0' : '1'}</tpNF>
       <idDest>${destinationIndicator(uf, destUf)}</idDest>
       <cMunFG>${digits(config.cityIbge)}</cMunFG>
       <tpImp>1</tpImp>
       <tpEmis>${emissionType}</tpEmis>
       <cDV>${accessKey.slice(-1)}</cDV>
       <tpAmb>${environmentCode(config.environment)}</tpAmb>
-      <finNFe>1</finNFe>
+      <finNFe>${input.devolucao ? '4' : '1'}</finNFe>
       <indFinal>${indicadorDeConsumidorFinal(recipient)}</indFinal>
       <indPres>${presence}</indPres>
       <procEmi>0</procEmi>
-      <verProc>GrupoSampaio-1.0</verProc>
+      <verProc>GrupoSampaio-1.0</verProc>${
+        // O NFref é o último filho do <ide> no leiaute 4.00.
+        input.devolucao
+          ? `
+      <NFref>
+        <refNFe>${digits(input.devolucao.chaveReferenciada)}</refNFe>
+      </NFref>`
+          : ''
+      }
     </ide>
     <emit>
       <CNPJ>${digits(config.cnpj)}</CNPJ>

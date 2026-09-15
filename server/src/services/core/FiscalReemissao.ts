@@ -66,6 +66,8 @@ import { emissaoEmContingencia, emitidaOffline } from './FiscalContingenciaOffli
 import { municipioDaNotaQueNaoConfere } from './MunicipiosIbge.js';
 import { CSTAT } from './SefazAdapter.js';
 import { prepararNfeDoPedido } from './OrderInvoiceService.js';
+import { montarNfeDeDevolucao } from './FiscalDevolucao.js';
+import { exigirOperacaoConfirmadaEmProducao } from './FiscalOperacoes.js';
 
 const DENEGADOS: readonly string[] = CSTAT.DENIED;
 /** Duplicidade: a SEFAZ diz que o número (ou a chave) já existe lá. */
@@ -304,6 +306,32 @@ function remontar(input: {
     const montagem = prepararNfeDoPedido(doc.companyId, orderId);
     const built = buildNfeXml({ ...montagem, serie: doc.serie, number: doc.number, issuedAt });
     return { xml: built.xml, accessKey: built.accessKey, recipient: montagem.recipient, periodoOffline: null };
+  }
+
+  // A NF-e de devolução (P0 fiscal): remontada pelo mesmo montador da emissão.
+  const origemTipo = (row.origin_type as string | null) ?? null;
+  if (doc.model === MODEL_NFE && (origemTipo === 'devolucao_venda' || origemTipo === 'devolucao_compra') && row.origin_id) {
+    const recipient = input.recipient ?? destinatarioDoXml(xmlOriginal);
+    if (!recipient) {
+      throw new ApiError(
+        'CORE_FISCAL_REISSUE_RECIPIENT_MISSING',
+        'Não foi possível ler o destinatário da nota rejeitada — informe o destinatário para reemitir.',
+        409,
+      );
+    }
+    exigirOperacaoConfirmadaEmProducao(doc.companyId, origemTipo, config.environment);
+    const { built } = montarNfeDeDevolucao({
+      companyId: doc.companyId,
+      operacao: origemTipo,
+      returnId: String(row.origin_id),
+      recipient,
+      config,
+      serie: doc.serie,
+      number: doc.number,
+      issuedAt,
+      presence: extrasDaNfeDoXml(xmlOriginal).presence,
+    });
+    return { xml: built.xml, accessKey: built.accessKey, recipient, periodoOffline: null };
   }
 
   throw new ApiError(

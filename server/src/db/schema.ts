@@ -5326,6 +5326,30 @@ export const STATEMENTS: string[] = [
      updated_at     TEXT NOT NULL
    );`,
 
+  // AS OPERAÇÕES FISCAIS DA EMPRESA (P0 fiscal — Preço Justo). Uma linha por
+  // (empresa, operação): venda_nfce, venda_nfe, devolucao_venda,
+  // devolucao_compra. Guarda o que é da OPERAÇÃO e não do produto — a
+  // natureza da operação, o CFOP da devolução (1202/2202, 5202/6202), o grupo
+  // tributário que a devolução usa, o prazo de cancelamento que a UF aceita — e
+  // se o CONTADOR confirmou. Sem linha, valem os padrões do sistema, marcados
+  // como pendência contábil. O CFOP da VENDA continua no grupo tributário: ele
+  // varia por mercadoria, e uma segunda cópia aqui divergiria dele.
+  // Tabela NOVA: nada de coluna NOT NULL sem DEFAULT fora da chave.
+  `CREATE TABLE IF NOT EXISTS core_fiscal_operations (
+     company_id              TEXT NOT NULL REFERENCES core_companies(id) ON DELETE CASCADE,
+     operation               TEXT NOT NULL,
+     nat_op                  TEXT,
+     cfop_internal           TEXT,
+     cfop_external           TEXT,
+     tax_group_code          TEXT,
+     cancel_deadline_minutes INTEGER,
+     confirmed_by_accountant INTEGER NOT NULL DEFAULT 0,
+     note                    TEXT,
+     updated_by              TEXT,
+     updated_at              TEXT NOT NULL,
+     PRIMARY KEY (company_id, operation)
+   );`,
+
   // Os PERÍODOS de contingência da operação: quando entrou, por quê, com que
   // justificativa (o xJust das notas do período), quem ou o quê abriu e fechou,
   // e a última resposta da SEFAZ à sondagem. Um período ativo por empresa
@@ -5414,6 +5438,15 @@ export const STATEMENTS: string[] = [
      idempotency_key TEXT,
      created_at      TEXT NOT NULL,
      updated_at      TEXT NOT NULL,
+     -- A NOTA QUE NÃO NASCE DE VENDA NEM DE PEDIDO (P0 fiscal): a NF-e de
+     -- devolução (finNFe 4). origin_type diz o que a originou
+     -- (devolucao_venda, devolucao_compra) e origin_id qual registro;
+     -- referenced_access_key é a chave da nota devolvida (o NFref). Ela NÃO vai
+     -- em sale_id: a busca da nota da venda (uma por modelo) a confundiria com
+     -- a NF-e de venda. Anuláveis: o reconcile as acrescenta em banco existente.
+     origin_type           TEXT,
+     origin_id             TEXT,
+     referenced_access_key TEXT,
      UNIQUE (company_id, model, serie, number),
      UNIQUE (access_key),
      UNIQUE (company_id, idempotency_key)
@@ -5682,6 +5715,9 @@ export const CORE_TABLES_IN_DELETE_ORDER = [
   'core_fiscal_documents',
   'core_fiscal_series',
   'core_fiscal_act_policies',
+  // As operações fiscais (P0 fiscal): só apontam para core_companies —
+  // registradas no mesmo gesto em que a tabela nasceu.
+  'core_fiscal_operations',
   'core_fiscal_emission_policies',
   'core_fiscal_contingency_periods',
   'core_fiscal_contingency_policies',

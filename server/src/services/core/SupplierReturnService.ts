@@ -52,6 +52,7 @@ import { hojeNaLoja, somarDias } from './CalendarioOperacional.js';
 import { abaterTituloPorDevolucao, lancarCreditoDeDevolucao } from './FinanceService.js';
 import { systemCategoryId } from './FinanceSetupService.js';
 import { isValidAccessKey } from './FiscalKeyService.js';
+import { notaDeDevolucaoDoRegistro, type NotaDeDevolucao } from './SituacaoFiscalDaDevolucao.js';
 import { NOTA_ESTORNADA, NOTA_RECEBIDA } from './InboundNoteStatus.js';
 import { applyMovement, getAvailable } from './InventoryService.js';
 import { isSerialized } from './ProductUnitService.js';
@@ -599,6 +600,8 @@ export interface DevolucaoDetalhe extends DevolucaoResumo {
   fiscalNote: string | null;
   /** O que falta do lado fiscal, em palavras — nulo quando resolvido. */
   pendenciaFiscal: string | null;
+  /** A NF-e de devolução emitida pelo DEVORA para este registro, quando existe (P0 fiscal). */
+  notaDeDevolucao: NotaDeDevolucao | null;
 }
 
 const SELECT_DEVOLUCAO = `
@@ -637,10 +640,12 @@ function pendenciaFiscal(r: DevolucaoResumo, manual: boolean): string | null {
     return 'A compra entrou sem nota fiscal (entrada manual): confirme com o contador se a '
       + 'devolução precisa de documento fiscal e registre a decisão.';
   }
+  // A frase mandava emitir fora ("o emissor do sistema ainda não emite
+  // devolução de compra"); agora o DEVORA emite (P0 fiscal, FiscalDevolucao).
   return 'Emitir a NF-e de devolução (modelo 55, finalidade 4 — devolução) referenciando a chave '
-    + `${r.noteAccessKey}. O emissor do sistema ainda não emite devolução de compra: emita pelo `
-    + 'emissor do contador e registre aqui a chave da nota — ou, se o fornecedor emitir a nota de '
-    + 'entrada dele, registre isso.';
+    + `${r.noteAccessKey}. O DEVORA emite essa nota pela devolução, com a operação fiscal confirmada `
+    + 'pelo contador — ou emita pelo emissor do contador e registre aqui a chave; se o fornecedor '
+    + 'emitir a nota de entrada dele, registre isso.';
 }
 
 export function getDevolucao(companyId: string, id: string): DevolucaoDetalhe {
@@ -684,6 +689,7 @@ export function getDevolucao(companyId: string, id: string): DevolucaoDetalhe {
     financeDetail,
     fiscalNote: (row.fiscal_note as string | null) ?? null,
     pendenciaFiscal: pendenciaFiscal(base, String(row.note_doc_type ?? 'nfe') === 'manual'),
+    notaDeDevolucao: notaDeDevolucaoDoRegistro(companyId, 'devolucao_compra', id),
   };
 }
 

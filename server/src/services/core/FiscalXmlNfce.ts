@@ -30,6 +30,7 @@ import {
 import { UNIDADE_FISCAL } from './UnidadeFiscal.js';
 import { DIGEST_PROVISORIO, qrCodeOffline } from './NfceQrOffline.js';
 import { alcanceDoCfop, impostoXml, totaisDoIcms, tributacaoDoItem } from './TributacaoDoItem.js';
+import { natOpDaOperacao } from './FiscalOperacoes.js';
 import { momentoFiscal } from './MomentoFiscal.js';
 import { getConnection } from '../../db/sqlite.js';
 import { ensureCoreSchema } from '../../db/schema.js';
@@ -639,6 +640,8 @@ export function buildNfceXml(input: {
   contingency?: { dhCont: string; xJust: string };
   numericCode?: string;
   issuedAt?: Date;
+  /** A natureza da operação. Ausente: a da operação "venda_nfce" desta empresa. */
+  natOp?: string;
 }): BuiltNfce {
   const { sale, config, serie, number } = input;
 
@@ -851,7 +854,11 @@ ${impostoDoItem}${
     <ide>
       <cUF>${ufCode}</cUF>
       <cNF>${numericCode}</cNF>
-      <natOp>VENDA AO CONSUMIDOR</natOp>
+      <natOp>${
+        // A natureza da operação era literal para toda empresa; agora é a que
+        // o contador desta empresa confirmar (o padrão continua o mesmo texto).
+        xmlEscape(input.natOp ?? natOpDaOperacao(sale.companyId, 'venda_nfce'))
+      }</natOp>
       <mod>${MODEL_NFCE}</mod>
       <serie>${serie}</serie>
       <nNF>${number}</nNF>

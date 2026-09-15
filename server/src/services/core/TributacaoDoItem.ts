@@ -441,6 +441,8 @@ function destaqueDaContribuicao(
     contribuicao: 'pis' | 'cofins';
     cst: string;
     juiz: Juiz;
+    /** Na nota de ENTRADA (devolução de venda) a recusa do CST de crédito fala outra língua. */
+    direcao?: DirecaoDaNota;
   },
 ): { percentual: string | null; bcCents: number; valorCents: number } {
   const { produto, grupo, cst, juiz } = input;
@@ -464,6 +466,21 @@ function destaqueDaContribuicao(
         com as vendas já feitas — a mesma recusa que o CST de IPI de entrada já
         leva, e pelo mesmo motivo.
       */
+      if (input.direcao === 'entrada') {
+        /*
+          Na nota de ENTRADA que a loja emite (devolução de venda) o CST de
+          crédito seria o certo para quem apura crédito — e este sistema não
+          calcula crédito de PIS/COFINS. Dizer "nota de saída" aqui mandaria o
+          contador corrigir o que não está errado.
+        */
+        juiz.falha(
+          `o grupo ${grupo.code} declara CST de ${nome} ${cst}, de crédito na entrada, e este sistema não `
+            + 'calcula crédito de PIS/COFINS',
+          'Escolha, no grupo tributário da operação de devolução, o CST que o contador indicar para a '
+            + 'devolução sem crédito (pendência contábil).',
+        );
+        return SEM_DESTAQUE;
+      }
       juiz.falha(
         `o grupo ${grupo.code} declara CST de ${nome} ${cst}, que é de entrada (apuração de `
           + 'crédito) — esta é uma nota de saída',
@@ -880,7 +897,15 @@ function avaliar(
     não fazer.
   */
   const pis = cstPis
-    ? destaqueDaContribuicao(db, { companyId, produto, grupo, contribuicao: 'pis', cst: cstPis, juiz })
+    ? destaqueDaContribuicao(db, {
+        companyId,
+        produto,
+        grupo,
+        contribuicao: 'pis',
+        cst: cstPis,
+        juiz,
+        direcao: input.direcao,
+      })
     : SEM_DESTAQUE;
   const cofins = cstCofins
     ? destaqueDaContribuicao(db, {
@@ -890,6 +915,7 @@ function avaliar(
         contribuicao: 'cofins',
         cst: cstCofins,
         juiz,
+        direcao: input.direcao,
       })
     : SEM_DESTAQUE;
 

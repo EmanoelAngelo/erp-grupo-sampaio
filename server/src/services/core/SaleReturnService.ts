@@ -41,6 +41,7 @@ import { marcarCobrancasAEstornar } from './EstornoNaMaquininha.js';
 import { listKitComponents, produtoControlaEstoque } from './CatalogAuxService.js';
 import { fluxoDaDevolucao } from './SalePolicyService.js';
 import { fiscalStatusForSale } from './FiscalPipelineService.js';
+import { notaDeDevolucaoDoRegistro } from './SituacaoFiscalDaDevolucao.js';
 import {
   chaveReusada,
   impressaoDe,
@@ -1450,6 +1451,8 @@ export function getSaleReturn(companyId: string, returnId: string): Record<strin
       sugestao: resumo.fluxo === 'duas_etapas' ? sugestaoDeReembolso(meiosDaVenda, resumo.pendenteCents) : [],
     },
     fiscal: estadoFiscalDaVenda(companyId, saleId),
+    // A NF-e de devolução DESTE registro, quando já existe (P0 fiscal).
+    notaDeDevolucao: notaDeDevolucaoDoRegistro(companyId, 'devolucao_venda', returnId),
   };
 }
 
@@ -1689,9 +1692,17 @@ export function estadoFiscalDaVenda(companyId: string, saleId: string): EstadoFi
     return {
       estado: 'pendente_regularizacao',
       rotulo: 'PENDENTE DE REGULARIZAÇÃO',
+      /*
+        A frase dizia que o DEVORA não emite a nota de devolução — e agora emite
+        (P0 fiscal, `FiscalDevolucao`): NF-e de entrada, finalidade 4,
+        referenciando a NFC-e, com CFOP e tributação da operação que o contador
+        confirma. Cancelar a NFC-e por uma devolução continua fora de questão.
+      */
       detalhe:
-        'A venda tem NFC-e autorizada. O DEVORA não emite a nota de devolução nem cancela a NFC-e por '
-        + 'uma devolução: a regularização é feita com o contador. Estoque e reembolso seguem à parte.',
+        'A venda tem NFC-e autorizada. A devolução é regularizada com a NF-e de devolução (nota de '
+        + 'entrada, finalidade 4, referenciando a NFC-e), emitida pela devolução com a operação fiscal '
+        + 'confirmada pelo contador. A NFC-e não é cancelada por uma devolução. Estoque e reembolso '
+        + 'seguem à parte.',
       documentoStatus: status,
     };
   }

@@ -39,6 +39,7 @@ import {
   reasonFromOutcome,
 } from './FiscalContingencyService.js';
 import { avisarNotaDoPedido } from '../notifications/AvisoDaNotaDoPedido.js';
+import { aoAutorizarNotaDeDevolucao } from './SituacaoFiscalDaDevolucao.js';
 import {
   abrirPeriodo,
   emitidaOffline,
@@ -466,6 +467,8 @@ function applyResponse(input: {
     // A NF-e do pedido online vai ao cliente (GAP-PRD-037, domínio EML). Nunca
     // lança: o aviso não desfaz a autorização.
     avisarNotaDoPedido(input.companyId, autorizado.id);
+    // A devolução de compra passa a "emitida" com a chave (P0 fiscal). Nunca lança.
+    aoAutorizarNotaDeDevolucao(input.companyId, autorizado.id);
     return autorizado;
   }
 
