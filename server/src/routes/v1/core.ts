@@ -337,18 +337,15 @@ import { type SefazAdapter } from '../../services/core/SefazAdapter.js';
 import { TransportFailure } from '../../services/core/SefazTestAdapter.js';
 import { loadEnv } from '../../config/env.js';
 import { reconciliationReport } from '../../services/core/FiscalReconciliation.js';
-import {
-  listFiscalPendencies,
-  requeueFromContingency,
-} from '../../services/core/FiscalContingencyService.js';
+import { requeueFromContingency } from '../../services/core/FiscalContingencyService.js';
 import { painelDaFila, transmitirAgora } from '../../services/core/FiscalFilaPainel.js';
+import { resumoFiscalDoPdv } from '../../services/core/ResumoFiscalDoPdv.js';
 import { drenarEmpresa } from '../../services/core/FiscalQueueWorker.js';
 import {
   abrirPeriodo,
   encerrarPeriodo,
   gravarPoliticaDeContingencia,
   painelDaContingencia,
-  periodoAtivo,
 } from '../../services/core/FiscalContingenciaOffline.js';
 import { buildLabels, ensureBarcode, itemParaPrevia } from '../../services/core/BarcodeService.js';
 import { generateVariants, variantStock } from '../../services/core/VariantService.js';
@@ -8755,32 +8752,12 @@ coreRouter.get('/fiscal/pdv-summary', (req: AuthedRequest, res, next) => {
     // O operador de caixa PRECISA ver isto — é a nota da venda dele.
     requireProfile(req, 'gerente_loja', 'gerente_oficina', ...CAIXAS);
     const { companyId } = scope(req);
-    const readiness = buildReadiness(companyId, '65');
-    const pendencies = listFiscalPendencies(companyId);
-
-    // Estado honesto: nunca "pronto" quando o que existe é fixture.
-    const situacao = readiness.canEmit
-      ? readiness.readiness === 'HOMOLOGATED'
-        ? 'READY'
-        : 'TEST_ONLY'
-      : readiness.items.some((i) => i.status === 'FAIL' && i.key.startsWith('product'))
-        ? 'PENDING'
-        : 'NOT_CONFIGURED';
-
-    res.json({
-      situacao,
-      readiness: readiness.readiness,
-      canEmit: readiness.canEmit,
-      // Só o que falta — a lista inteira é ruído para quem está atendendo.
-      blocking: readiness.items
-        .filter((i) => i.status === 'FAIL')
-        .map((i) => ({ key: i.key, label: i.label, detail: i.detail })),
-      pendencies,
-      pendencyCount: pendencies.length,
-      // O balcão precisa saber que está em contingência off-line: a NFC-e sai
-      // com tpEmis 9 e o cliente leva o DANFCE de contingência (GAP-PRD-098).
-      contingencia: periodoAtivo(companyId),
-    });
+    /*
+      O RESUMO MORA NUM SERVIÇO (auditoria P0 da Preço Justo): a situação, o
+      ambiente, a frase com o que falta e quem resolve, e a lista no texto do
+      balcão — sem o detalhe do checklist, que carrega titular e CSC ID.
+    */
+    res.json(resumoFiscalDoPdv(companyId));
   } catch (err) {
     next(err);
   }

@@ -3038,6 +3038,20 @@ export interface FiscalPdvSummary {
   situacao: 'READY' | 'TEST_ONLY' | 'PENDING' | 'NOT_CONFIGURED';
   readiness: string;
   canEmit: boolean;
+  /** Ambiente em que a operação emite — em homologação a nota não tem valor fiscal. */
+  ambiente?: 'homologation' | 'production';
+  /** Uma frase pronta: o que falta e quem resolve (auditoria P0). */
+  resumo?: string;
+  /** O que trava, item a item, no texto do balcão — nunca com segredo. */
+  faltas?: {
+    key: string;
+    label: string;
+    texto: string;
+    quemResolve: 'administrador' | 'contador' | 'SEFAZ';
+    onde: string;
+  }[];
+  /** Quando o servidor conferiu. */
+  verificadoEm?: string;
   blocking: { key: string; label: string; detail: string | null }[];
   pendencies: FiscalPendency[];
   pendencyCount: number;
