@@ -122,6 +122,8 @@ function entrarComo(profileCode: string) {
       refreshToken: 'r',
       expiresAt: Date.now() + 3_600_000,
       user: { id: 'user-1', login: 'u', displayName: 'Pessoa', profileCode },
+      // Uma oficina que não é a PJ Motors: o botão do cadastro é "Salvar
+      // equipamento" — "Salvar e gerar plaquinha" só na PJ (P0 das plaquinhas).
       company: { id: 'co', slug: 'co', tradeName: 'Oficina', kind: 'workshop' },
       companies: [{ id: 'co', slug: 'co', tradeName: 'Oficina', kind: 'workshop', profileCode }],
     },
@@ -292,7 +294,7 @@ describe('GAP-PRD-106 — o cadastro pergunta o tipo, a placa e o km', () => {
     fireEvent.change(screen.getByLabelText(/^Tipo/), { target: { value: 'moto' } });
     fireEvent.change(screen.getByLabelText(/^Placa/), { target: { value: 'abc1d23' } });
     fireEvent.change(screen.getByLabelText(/^Quilometragem/), { target: { value: '1200' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Salvar e gerar plaquinha' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Salvar equipamento' }));
     await waitFor(() => expect(pedidos.some((p) => p.metodo === 'POST' && p.url.endsWith('/core/equipment'))).toBe(true));
     const post = pedidos.find((p) => p.metodo === 'POST' && p.url.endsWith('/core/equipment'))!;
     expect(post.corpo).toMatchObject({ category: 'moto', plate: 'ABC1D23', odometerKm: 1200 });
@@ -307,7 +309,7 @@ describe('GAP-PRD-106 — o cadastro pergunta o tipo, a placa e o km', () => {
     expect(screen.queryByLabelText(/^Quilometragem/)).toBeNull();
 
     fireEvent.change(screen.getByLabelText(/^Tipo/), { target: { value: 'outro' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Salvar e gerar plaquinha' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Salvar equipamento' }));
     expect(await screen.findByText(/Para o tipo "Outro", informe ao menos a marca ou o modelo/)).toBeTruthy();
     expect(pedidos.some((p) => p.metodo === 'POST' && p.url.endsWith('/core/equipment'))).toBe(false);
   });

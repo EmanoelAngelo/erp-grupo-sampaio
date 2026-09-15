@@ -9,6 +9,14 @@
  *     Oficina para um adesivo descolado no pátio;
  *   - tire a coluna "Plaquinha com QR" e o campo da criação e a sétima oficina
  *     volta a precisar de UPDATE à mão.
+ *
+ * ## O que mudou no P0 das plaquinhas
+ *
+ * Plaquinha é EXCLUSIVA da PJ Motors. A ficha da máquina fora dela (a Oficina)
+ * não tem mais cartão de plaquinha — só o número, para leitura; a tela de
+ * Unidades só mostra plaquinha na sessão da PJ; e a tela de Empresas só tem o
+ * botão na linha da PJ, e a criação não oferece mais a caixa. Os blocos abaixo
+ * cobravam o contrário e foram reescritos dizendo o porquê.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
@@ -53,15 +61,15 @@ function servidor() {
   );
 }
 
-function entrarComo(profileCode: string, kind = 'workshop') {
+function entrarComo(profileCode: string, kind = 'workshop', slug = 'co') {
   setSession(
     {
       accessToken: 't',
       refreshToken: 'r',
       expiresAt: Date.now() + 3_600_000,
       user: { id: 'user-1', login: 'u', displayName: 'Pessoa', profileCode },
-      company: { id: 'co', slug: 'co', tradeName: 'Empresa', kind },
-      companies: [{ id: 'co', slug: 'co', tradeName: 'Empresa', kind, profileCode }],
+      company: { id: 'co', slug, tradeName: 'Empresa', kind },
+      companies: [{ id: 'co', slug, tradeName: 'Empresa', kind, profileCode }],
     },
     'LOGIN',
     'client.login',
@@ -188,14 +196,25 @@ describe('GAP-PRD-107 — trocar a plaquinha pela ficha da máquina', () => {
     expect(pedido.corpo).toEqual({ equipmentIds: ['eq-1'] });
   });
 
-  it('empresa fora do pool: sem troca, com a explicação; bancada de celular: sem cartão de plaquinha', async () => {
+  it('empresa fora do pool (a Oficina): sem cartão, o número só leitura; bancada de celular: sem cartão', async () => {
+    /*
+      P0 DAS PLAQUINHAS. Antes, a empresa fora do pool ainda via "Reimprimir
+      plaquinha" e uma frase mandando ligar a plaquinha em Empresas — as duas
+      coisas o servidor agora recusa (403). A ficha fica com o número da
+      máquina no topo, rotulado "Número", e nenhum gesto de plaquinha; nenhum
+      pedido de plaquinha ou de etiqueta sai da tela.
+    */
     entrarComo('gerente_oficina');
     let flags = { empresaUsa: false, bancadaUsa: true };
     rotas = (p) => (p.url.endsWith('/core/equipment/eq-1') ? { body: ficha(flags) } : null);
     montarFicha();
-    await screen.findByRole('button', { name: 'Reimprimir plaquinha' });
+    await screen.findByText('Identificação');
+    expect(screen.queryByRole('button', { name: 'Reimprimir plaquinha' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Trocar plaquinha' })).toBeNull();
-    expect(screen.getByText(/não usa o pool de plaquinhas/)).toBeTruthy();
+    expect(screen.queryByText(/não usa o pool de plaquinhas/)).toBeNull();
+    expect(screen.getByText('Número')).toBeTruthy();
+    expect(screen.getAllByText('#0007').length).toBeGreaterThan(0);
+    expect(pedidos.some((p) => p.url.includes('/equipment-tags') || p.url.includes('/labels/equipment'))).toBe(false);
     cleanup();
 
     flags = { empresaUsa: true, bancadaUsa: false };
@@ -252,7 +271,9 @@ describe('GAP-PRD-190 — a PJ reimprime a plaquinha pela unidade', () => {
   }
 
   it('o gerente da loja escolhe o produto, vê a plaquinha da unidade e reimprime pela unidade', async () => {
-    entrarComo('gerente_loja', 'retail');
+    // A sessão é a da PJ Motors (P0 das plaquinhas): só nela a tela de Unidades
+    // mostra plaquinha.
+    entrarComo('gerente_loja', 'retail', 'pj-motors');
     rotas = (p) => {
       if (p.url.includes('/core/units/summary')) return { body: { semPlaquinha: 0 } };
       if (p.url.includes('/core/stock?')) {
@@ -279,7 +300,7 @@ describe('GAP-PRD-190 — a PJ reimprime a plaquinha pela unidade', () => {
   });
 
   it('o caixa da loja não recebe o botão (a rota é de gerente e estoquista)', async () => {
-    entrarComo('operador_caixa_loja', 'retail');
+    entrarComo('operador_caixa_loja', 'retail', 'pj-motors');
     rotas = (p) => {
       if (p.url.includes('/core/units/summary')) return { body: { semPlaquinha: 0 } };
       if (p.url.includes('/core/stock?')) {
@@ -298,22 +319,63 @@ describe('GAP-PRD-190 — a PJ reimprime a plaquinha pela unidade', () => {
     await screen.findByText('#0009');
     expect(screen.queryByRole('button', { name: 'Reimprimir plaquinha' })).toBeNull();
   });
+
+  /*
+    A LOJA FORA DA PJ MOTORS (P0 das plaquinhas): a mesma tela, com a mesma
+    unidade — até com o bloco da plaquinha que um servidor antigo mandaria —,
+    não mostra coluna, número, reimpressão nem vínculo. É a tela de identidade
+    da unidade, e nada mais.
+  */
+  it('a Preço Justo não vê plaquinha na unidade: sem coluna, sem reimprimir, sem vincular', async () => {
+    entrarComo('gerente_loja', 'retail', 'preco-justo');
+    rotas = (p) => {
+      if (p.url.includes('/core/units/summary')) return { body: { semPlaquinha: 3, vendidasSemPlaquinha: 2 } };
+      if (p.url.includes('/core/stock?')) {
+        return { body: { items: [{ product_id: 'p-moto', internal_code: 'M', name: 'Shineray Jet 50', unit: 'UN', quantity: 1, reserved: 0, min_stock: 0, price_cents: 1, cost_cents: 1 }] } };
+      }
+      if (p.url.endsWith('/core/units/p-moto')) {
+        return { body: { items: [unidade(), unidade({ id: 'un-2', equipment_id: null, plaquinha: null })] } };
+      }
+      return null;
+    };
+    render(
+      <MemoryRouter>
+        <UnidadesEstoquePage />
+      </MemoryRouter>,
+    );
+    fireEvent.change(screen.getByPlaceholderText('Nome ou código do produto'), { target: { value: 'Shin' } });
+    fireEvent.click(await screen.findByRole('button', { name: 'Shineray Jet 50' }, { timeout: 2000 }));
+    await screen.findAllByRole('button', { name: 'Identificar' });
+    expect(screen.queryByText('#0009')).toBeNull();
+    expect(screen.queryByRole('columnheader', { name: 'Plaquinha' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Reimprimir plaquinha' })).toBeNull();
+    expect(screen.queryByRole('button', { name: /Vincular plaquinha/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Desvincular' })).toBeNull();
+    expect(screen.queryByText(/sem plaquinha da oficina/)).toBeNull();
+    expect(pedidos.some((p) => p.url.includes('/equipment-candidates') || p.url.includes('/equipment/sheet'))).toBe(false);
+  });
 });
 
 // ---------------------------------------------------------------- GAP-PRD-185
 
-describe('GAP-PRD-185 — a plaquinha da operação pela tela de Empresas', () => {
+describe('GAP-PRD-185 — a plaquinha da operação pela tela de Empresas (só a PJ Motors, P0)', () => {
   const EMPRESAS = [
     { id: 'c1', slug: 'loja', legalName: 'Loja Ltda', tradeName: 'Loja', cnpj: null, kind: 'retail', active: true, usesEquipmentTags: false },
     { id: 'c2', slug: 'setima', legalName: 'Sétima Ltda', tradeName: 'Sétima Oficina', cnpj: null, kind: 'workshop', active: true, usesEquipmentTags: false },
+    { id: 'c3', slug: 'pj-motors', legalName: 'PJ Motors Ltda', tradeName: 'PJ Motors', cnpj: null, kind: 'retail', active: true, usesEquipmentTags: false },
   ];
 
-  it('a lista mostra quem usa e liga a plaquinha da sétima oficina', async () => {
+  /*
+    Antes: "a lista mostra quem usa e liga a plaquinha da sétima oficina". O
+    P0 das plaquinhas tirou o botão das operações que não são a PJ Motors — o
+    servidor as recusa com 403 — e a linha delas diz de quem a plaquinha é.
+  */
+  it('só a linha da PJ Motors tem o botão; as outras dizem que é exclusiva dela', async () => {
     let lista = EMPRESAS;
     rotas = (p) => {
-      if (p.metodo === 'PATCH' && p.url.endsWith('/core/companies/c2/equipment-tags')) {
-        lista = EMPRESAS.map((c) => (c.id === 'c2' ? { ...c, usesEquipmentTags: true } : c));
-        return { body: { companyId: 'c2', usesEquipmentTags: true } };
+      if (p.metodo === 'PATCH' && p.url.endsWith('/core/companies/c3/equipment-tags')) {
+        lista = EMPRESAS.map((c) => (c.id === 'c3' ? { ...c, usesEquipmentTags: true } : c));
+        return { body: { companyId: 'c3', usesEquipmentTags: true } };
       }
       if (p.url.endsWith('/core/companies')) return { body: { items: lista } };
       return null;
@@ -323,15 +385,23 @@ describe('GAP-PRD-185 — a plaquinha da operação pela tela de Empresas', () =
         <EmpresasPage />
       </MemoryRouter>,
     );
-    fireEvent.click(await screen.findByRole('button', { name: 'Ligar plaquinha de Sétima Oficina' }));
+    await screen.findByText('Sétima Oficina');
+    expect(screen.queryByRole('button', { name: 'Ligar plaquinha de Sétima Oficina' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Ligar plaquinha de Loja' })).toBeNull();
+    expect(screen.getAllByText('Exclusiva da PJ Motors')).toHaveLength(2);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Ligar plaquinha de PJ Motors' }));
     await waitFor(() =>
       expect(pedidos.find((p) => p.metodo === 'PATCH')?.corpo).toEqual({ enabled: true }),
     );
-    expect(await screen.findByText(/Sétima Oficina passou a usar plaquinha com QR/)).toBeTruthy();
-    expect(await screen.findByRole('button', { name: 'Desligar plaquinha de Sétima Oficina' })).toBeTruthy();
+    expect(pedidos.filter((p) => p.metodo === 'PATCH').map((p) => p.url)).toEqual([
+      expect.stringContaining('/core/companies/c3/equipment-tags'),
+    ]);
+    expect(await screen.findByText(/PJ Motors passou a usar plaquinha com QR/)).toBeTruthy();
+    expect(await screen.findByRole('button', { name: 'Desligar plaquinha de PJ Motors' })).toBeTruthy();
   });
 
-  it('desligar com adesivo no pool mostra a recusa do servidor', async () => {
+  it('desligar a da PJ com adesivo no pool mostra a recusa do servidor', async () => {
     rotas = (p) => {
       if (p.metodo === 'PATCH') {
         return {
@@ -339,13 +409,13 @@ describe('GAP-PRD-185 — a plaquinha da operação pela tela de Empresas', () =
           body: {
             error: {
               code: 'CORE_COMPANY_TAGS_PENDING',
-              message: 'Sétima Oficina tem 5 plaquinha(s) no pool esperando máquina.',
+              message: 'PJ Motors tem 5 plaquinha(s) no pool esperando máquina.',
             },
           },
         };
       }
       if (p.url.endsWith('/core/companies')) {
-        return { body: { items: EMPRESAS.map((c) => ({ ...c, usesEquipmentTags: c.id === 'c2' })) } };
+        return { body: { items: EMPRESAS.map((c) => ({ ...c, usesEquipmentTags: c.id === 'c3' })) } };
       }
       return null;
     };
@@ -354,11 +424,17 @@ describe('GAP-PRD-185 — a plaquinha da operação pela tela de Empresas', () =
         <EmpresasPage />
       </MemoryRouter>,
     );
-    fireEvent.click(await screen.findByRole('button', { name: 'Desligar plaquinha de Sétima Oficina' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Desligar plaquinha de PJ Motors' }));
     expect((await screen.findByRole('alert')).textContent).toContain('5 plaquinha(s) no pool');
   });
 
-  it('criar oficina de mobilidade manda a plaquinha ligada; celular desmarca sozinho; a escolha manual vence', async () => {
+  /*
+    Antes: "criar oficina de mobilidade manda a plaquinha ligada; celular
+    desmarca sozinho; a escolha manual vence". A caixa saiu (P0): operação nova
+    nunca é a PJ Motors, e o servidor recusaria a marca. O aviso diz que ela
+    nasce sem, e o pedido não carrega o campo.
+  */
+  it('criar operação não oferece plaquinha, e o pedido não liga a marca', async () => {
     rotas = (p) => {
       if (p.metodo === 'POST') {
         return {
@@ -380,16 +456,12 @@ describe('GAP-PRD-185 — a plaquinha da operação pela tela de Empresas', () =
       </MemoryRouter>,
     );
     await screen.findByText('Sétima Oficina');
-    const caixa = screen.getByLabelText(/Esta operação usa plaquinha com QR/) as HTMLInputElement;
-    // Loja: desmarcada.
-    expect(caixa.checked).toBe(false);
+    expect(screen.queryByLabelText(/Esta operação usa plaquinha com QR/)).toBeNull();
     fireEvent.change(screen.getByLabelText(/Tipo de operação/), { target: { value: 'workshop' } });
-    expect(caixa.checked).toBe(true);
+    expect(screen.queryByLabelText(/Esta operação usa plaquinha com QR/)).toBeNull();
     const aviso = screen.getByText('O que este botão faz').closest('div')!;
-    expect(within(aviso).getByText(/Liga a plaquinha com QR/)).toBeTruthy();
-
-    fireEvent.change(screen.getByLabelText(/Tipo da primeira bancada/), { target: { value: 'phones' } });
-    expect(caixa.checked).toBe(false);
+    expect(within(aviso).getByText(/exclusiva da PJ Motors/)).toBeTruthy();
+    expect(within(aviso).queryByText(/Liga a plaquinha com QR/)).toBeNull();
     fireEvent.change(screen.getByLabelText(/Tipo da primeira bancada/), { target: { value: 'mobility' } });
 
     fireEvent.change(screen.getByLabelText(/Razão social/), { target: { value: 'Oitava Oficina Ltda' } });
@@ -400,6 +472,7 @@ describe('GAP-PRD-185 — a plaquinha da operação pela tela de Empresas', () =
 
     await waitFor(() => expect(pedidos.some((p) => p.metodo === 'POST')).toBe(true));
     const criacao = pedidos.find((p) => p.metodo === 'POST')!;
-    expect(criacao.corpo).toMatchObject({ kind: 'workshop', workshopKind: 'mobility', usesEquipmentTags: true });
+    expect(criacao.corpo).toMatchObject({ kind: 'workshop', workshopKind: 'mobility' });
+    expect(criacao.corpo).not.toHaveProperty('usesEquipmentTags');
   });
 });

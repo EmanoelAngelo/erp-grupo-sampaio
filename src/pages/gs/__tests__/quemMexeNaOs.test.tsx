@@ -119,6 +119,8 @@ function entrarComo(profileCode: string, userId = 'user-1', displayName = 'Pesso
       refreshToken: 'r',
       expiresAt: Date.now() + 3_600_000,
       user: { id: userId, login: userId, displayName, profileCode },
+      // A Oficina não tem plaquinha (P0 das plaquinhas): o botão do cadastro de
+      // máquina é "Salvar equipamento", e não "Salvar e gerar plaquinha".
       company: { id: 'oficina', slug: 'oficina', tradeName: 'Oficina', kind: 'workshop' },
       companies: [{ id: 'oficina', slug: 'oficina', tradeName: 'Oficina', kind: 'workshop', profileCode }],
     },
@@ -311,11 +313,11 @@ describe('GAP-PRD-099 — o balcão da oficina abre a OS', () => {
     const seletor = (await screen.findByLabelText(/Bancada/)) as HTMLSelectElement;
     fireEvent.click(screen.getByRole('radio', { name: 'Do grupo' }));
 
-    fireEvent.click(screen.getByRole('button', { name: 'Salvar e gerar plaquinha' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Salvar equipamento' }));
     expect(await screen.findByText('Escolha a bancada da máquina.')).toBeTruthy();
 
     fireEvent.change(seletor, { target: { value: 'wk-b' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Salvar e gerar plaquinha' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Salvar equipamento' }));
     await waitFor(() =>
       expect(pedidos.filter((p) => /\/core\/equipment$/.test(p.alvo)).map((p) => p.corpo.workshopId)).toEqual(['wk-b']),
     );

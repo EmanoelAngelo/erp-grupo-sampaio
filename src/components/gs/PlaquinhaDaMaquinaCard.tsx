@@ -71,7 +71,13 @@ export function PlaquinhaDaMaquinaCard({
   }, [trocando, livres]);
 
   // Celular não ganha plaquinha: a ficha não fala de adesivo nenhum.
-  if (!bancadaUsa) return null;
+  //
+  // E a empresa fora da PJ Motors também não (P0 das plaquinhas). O cartão
+  // oferecia "Reimprimir" à Oficina — `POST /labels/equipment/sheet` agora é
+  // 403 fora da PJ — e, sem pool, uma frase mandando ligar a plaquinha em
+  // Empresas, que também é recusado. O número da máquina continua no topo da
+  // ficha, só leitura.
+  if (!bancadaUsa || !empresaUsa) return null;
 
   const reimprimir = async () => {
     setErro(null);
@@ -135,18 +141,12 @@ export function PlaquinhaDaMaquinaCard({
             Reimprimir plaquinha
           </Button>
         )}
-        {podeTrocar && empresaUsa && !trocando && (
+        {podeTrocar && !trocando && (
           <Button variant="secondary" onClick={() => setTrocando(true)}>
             Trocar plaquinha
           </Button>
         )}
       </div>
-      {podeTrocar && !empresaUsa && (
-        <p className="mt-2 mb-0 text-[length:var(--gs-text-sm)] text-[var(--gs-muted)]">
-          Esta operação não usa o pool de plaquinhas: a troca de adesivo não se aplica. Quem responde
-          pelo grupo liga a plaquinha em Configurações › Empresas do grupo.
-        </p>
-      )}
 
       {aviso && (
         <p role="status" className="mt-3 mb-0 text-[length:var(--gs-text-sm)] font-semibold">

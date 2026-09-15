@@ -33,15 +33,15 @@ function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
 }
 
-function entrarComo(profileCode: string, kind = 'workshop') {
+function entrarComo(profileCode: string, kind = 'workshop', slug = 'co') {
   setSession(
     {
       accessToken: 't',
       refreshToken: 'r',
       expiresAt: Date.now() + 3_600_000,
       user: { id: 'user-1', login: 'u', displayName: 'Pessoa', profileCode },
-      company: { id: 'co', slug: 'co', tradeName: 'Empresa', kind },
-      companies: [{ id: 'co', slug: 'co', tradeName: 'Empresa', kind, profileCode }],
+      company: { id: 'co', slug, tradeName: 'Empresa', kind },
+      companies: [{ id: 'co', slug, tradeName: 'Empresa', kind, profileCode }],
     },
     'LOGIN',
     'client.login',
@@ -228,7 +228,9 @@ describe('GAP-PRD-189 — a venda à mão tem volta pela ficha', () => {
 
 describe('GAP-PRD-110 — a operação sem bancada adota, e não gera', () => {
   it('a tela explica o caminho e não oferece "Gerar lote"', async () => {
-    entrarComo('gerente_loja', 'retail');
+    // A PJ Motors (P0 das plaquinhas): fora dela a rota nem abre o pool — a
+    // sessão de loja genérica ('co') cairia no estado "não disponível".
+    entrarComo('gerente_loja', 'retail', 'pj-motors');
     rotas = (p) => {
       if (/\/core\/equipment-tags(\?|$)/.test(p.url)) {
         return {

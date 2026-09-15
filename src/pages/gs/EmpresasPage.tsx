@@ -61,7 +61,8 @@ import {
 } from '@/components/gs/ui';
 import { ApiRequestError } from '@/lib/api/client';
 import { coreApi, type Company, type CompanyCreated, type CompanyKind } from '@/lib/api/core';
-import { empresaPlaquinhaApi, plaquinhaPadrao } from '@/lib/api/empresaPlaquinha';
+import { empresaPlaquinhaApi } from '@/lib/api/empresaPlaquinha';
+import { empresaTemPlaquinha } from '@/lib/acesso/plaquinhaDaEmpresa';
 import { resumoDaImplantacao, type ResumoDaEmpresa } from '@/lib/api/implantacaoDasEmpresas';
 import { SITUACAO_NA_TELA } from '@/pages/gs/implantacaoRotulos';
 
@@ -97,12 +98,15 @@ export default function EmpresasPage() {
    * `workshopKind` e a tela nunca mandava: toda oficina nascia mobilidade.
    */
   const [workshopKind, setWorkshopKind] = useState<'mobility' | 'phones'>('mobility');
-  /**
-   * PLAQUINHA COM QR (GAP-PRD-185): nulo = seguir o padrão da bancada
-   * (mobilidade usa; celular e loja, não). Marcar ou desmarcar vira escolha.
-   */
-  const [escolhaPlaquinha, setEscolhaPlaquinha] = useState<boolean | null>(null);
-  const usaPlaquinha = escolhaPlaquinha ?? plaquinhaPadrao(kind, workshopKind);
+  /*
+    PLAQUINHA COM QR NA CRIAÇÃO — saiu (P0 das plaquinhas).
+
+    A caixa "Esta operação usa plaquinha com QR" nascia marcada para oficina de
+    mobilidade e deixava ligar em qualquer loja. Plaquinha é exclusiva da PJ
+    Motors, e operação nova nunca é a PJ (o slug é único, e ela já existe): a
+    caixa não tem o que oferecer, e o servidor recusaria com 403. A operação
+    nasce sem plaquinha e o pedido não carrega o campo.
+  */
   /** A empresa cuja marca de plaquinha está sendo trocada na lista. */
   const [trocandoPlaquinha, setTrocandoPlaquinha] = useState<string | null>(null);
   const [avisoPlaquinha, setAvisoPlaquinha] = useState<string | null>(null);
@@ -172,8 +176,6 @@ export default function EmpresasPage() {
         cnpj: cnpj.trim() || null,
         kind,
         ...(kind === 'workshop' ? { workshopKind } : {}),
-        // Sempre explícito: o que a pessoa viu marcado é o que nasce.
-        usesEquipmentTags: usaPlaquinha,
         manager: {
           login: gerenteLogin.trim(),
           displayName: gerenteNome.trim(),
@@ -196,7 +198,6 @@ export default function EmpresasPage() {
       setCnpj('');
       setKind('retail');
       setWorkshopKind('mobility');
-      setEscolhaPlaquinha(null);
       setGerenteNome('');
       setGerenteLogin('');
       setGerenteEmail('');
@@ -360,6 +361,13 @@ export default function EmpresasPage() {
                   PLAQUINHA COM QR (GAP-PRD-185): a marca que decide se a
                   operação gera plaquinhas no pool do grupo. Era gravada só
                   pelo passo de migração, por slug.
+
+                  Desde o P0 das plaquinhas o botão só existe na linha da PJ
+                  Motors: ligar em outra operação é 403 no servidor, e botão
+                  que sempre falha ensina a desconfiar da tela. As outras linhas
+                  dizem de quem a plaquinha é. O selo mostra o valor EFETIVO
+                  que o servidor manda (a marca velha da Oficina não aparece
+                  como "Usa").
                 */
                 header: 'Plaquinha com QR',
                 render: (c) => (
@@ -367,15 +375,21 @@ export default function EmpresasPage() {
                     <Badge tone={c.usesEquipmentTags ? 'success' : 'neutral'}>
                       {c.usesEquipmentTags ? 'Usa' : 'Não usa'}
                     </Badge>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      aria-label={`${c.usesEquipmentTags ? 'Desligar' : 'Ligar'} plaquinha de ${c.tradeName}`}
-                      loading={trocandoPlaquinha === c.id}
-                      onClick={() => void alternarPlaquinha(c)}
-                    >
-                      {c.usesEquipmentTags ? 'Desligar' : 'Ligar'}
-                    </Button>
+                    {empresaTemPlaquinha(c.slug) ? (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        aria-label={`${c.usesEquipmentTags ? 'Desligar' : 'Ligar'} plaquinha de ${c.tradeName}`}
+                        loading={trocandoPlaquinha === c.id}
+                        onClick={() => void alternarPlaquinha(c)}
+                      >
+                        {c.usesEquipmentTags ? 'Desligar' : 'Ligar'}
+                      </Button>
+                    ) : (
+                      <span className="text-[length:var(--gs-text-xs)] text-[var(--gs-muted)]">
+                        Exclusiva da PJ Motors
+                      </span>
+                    )}
                   </div>
                 ),
               },
@@ -391,7 +405,6 @@ export default function EmpresasPage() {
             kind={kind}
             nome={nomeDaOperacao}
             login={gerenteLogin.trim()}
-            usaPlaquinha={usaPlaquinha}
           />
 
           {erro && (
@@ -505,27 +518,6 @@ export default function EmpresasPage() {
                   )}
                 </Field>
               )}
-
-              <Field
-                label="Plaquinha com QR"
-                hint={
-                  'Numera as máquinas do pátio com adesivo e QR (como a Oficina e a PJ Motors). '
-                  + 'Loja de roupa ou de variedades usa etiqueta de produto e fica sem.'
-                }
-              >
-                {({ id, 'aria-describedby': describedBy }) => (
-                  <label className="flex items-center gap-2 h-10">
-                    <input
-                      id={id}
-                      aria-describedby={describedBy}
-                      type="checkbox"
-                      checked={usaPlaquinha}
-                      onChange={(e) => setEscolhaPlaquinha(e.target.checked)}
-                    />
-                    Esta operação usa plaquinha com QR
-                  </label>
-                )}
-              </Field>
             </div>
 
             <div className="border-t border-[var(--gs-border)] pt-5">
@@ -627,12 +619,10 @@ function OQueVaiAcontecer({
   kind,
   nome,
   login,
-  usaPlaquinha,
 }: {
   kind: CompanyKind;
   nome: string;
   login: string;
-  usaPlaquinha: boolean;
 }) {
   return (
     <div
@@ -670,16 +660,8 @@ function OQueVaiAcontecer({
           </li>
         )}
         <li>
-          {usaPlaquinha ? (
-            <>
-              <strong>Liga a plaquinha com QR</strong>: o gerente gera e imprime lotes de adesivos
-              com número do grupo, sem precisar de ninguém do sistema.
-            </>
-          ) : (
-            <>
-              <strong>Não</strong> usa plaquinha com QR. Dá para ligar depois, na lista acima.
-            </>
-          )}
+          <strong>Não</strong> usa plaquinha com QR: ela é exclusiva da PJ Motors. A mercadoria da
+          operação nova é identificada pela etiqueta de produto.
         </li>
       </ol>
     </div>
