@@ -2676,8 +2676,63 @@ export const STATEMENTS: string[] = [
      -- (ativarDevolucaoEmDuasEtapasNaPrecoJusto); as outras operações migram
      -- numa missão própria. Leitor: SaleReturnService, via fluxoDaDevolucao.
      return_refund_flow TEXT,
+     -- O MOTIVO DA LIBERAÇÃO DE DESCONTO É OBRIGATÓRIO (P0 da Preço Justo).
+     --
+     -- O DEFEITO: a liberação acima da alçada gravava "reason" — uma frase que
+     -- a TELA montava sozinha ("Concessão de R$ 3.400 (28%) sobre R$ 12.000") —
+     -- e nenhum porquê dito por gente. O dono lia a trilha e via QUANTO foi
+     -- liberado e por QUEM, nunca POR QUE; "cliente antigo" e "o gerente é
+     -- amigo do cliente" ficavam indistinguíveis.
+     --
+     -- 1 = a senha do gestor só vale com core_authorizations.justification (o
+     -- motivo digitado) preenchida. Nulo ou 0 = o comportamento de sempre
+     -- (motivo opcional). É por operação, e não uma regra do grupo: ligado só
+     -- na Preço Justo, pelo passo idempotente
+     -- exigirMotivoDaLiberacaoNaPrecoJusto, que só escreve onde está nulo.
+     -- Leitor: AuthorizationService.authorizeAction.
+     discount_reason_required INTEGER,
      created_at             TEXT NOT NULL,
      updated_at             TEXT NOT NULL
+   );`,
+
+  // LIMITE DE DESCONTO POR PERFIL — o P0 da Preço Justo.
+  //
+  // O DEFEITO: a alçada tinha UM número por operação (discount_limit_percent),
+  // só em percentual, só sobre a venda inteira, e valia igual para o caixa
+  // novo, a atendente e o operador de dez anos. E quem tinha perfil de gerente
+  // não tinha limite NENHUM — dava 90% sem ninguém ver. Não havia como dizer
+  // "a atendente dá até 5% e nunca mais de R$ 50" nem "nenhuma linha sai com
+  // mais de 15%".
+  //
+  // Uma linha por (operação, perfil), quatro tetos, e cada nulo significa "sem
+  // este teto" — com UMA exceção, que é o que mantém o balcão de hoje intacto:
+  //
+  //   max_percent nulo num perfil SEM alçada = o discount_limit_percent da
+  //   operação (os 10% de sempre). Num perfil COM alçada (gerente, gestor) =
+  //   sem teto, como sempre foi.
+  //
+  // Operação sem linha nenhuma nesta tabela vende EXATAMENTE como antes. Os
+  // valores em centavos são guardados em CENTAVOS e digitados em REAIS — a
+  // conversão mora na escrita (SalePolicyService.salvarLimitesPorPerfil).
+  //
+  //   max_percent      : concessão da VENDA inteira sobre o bruto, em %.
+  //   max_cents        : concessão da VENDA inteira, em centavos.
+  //   item_max_percent : concessão de UMA linha sobre o bruto da linha, em %.
+  //   item_max_cents   : concessão de UMA linha, em centavos.
+  //
+  // Leitor: LimiteDeDesconto.limiteDosPerfis, chamado por createSale e pela
+  // alçada do documento (QuoteService.cobrarAlcadaDoDocumento).
+  `CREATE TABLE IF NOT EXISTS core_discount_limits (
+     company_id       TEXT NOT NULL REFERENCES core_companies(id) ON DELETE CASCADE,
+     profile_code     TEXT NOT NULL,
+     max_percent      REAL,
+     max_cents        INTEGER,
+     item_max_percent REAL,
+     item_max_cents   INTEGER,
+     updated_by       TEXT,
+     created_at       TEXT NOT NULL,
+     updated_at       TEXT NOT NULL,
+     PRIMARY KEY (company_id, profile_code)
    );`,
 
   // TRANSPORTADORA — quem trouxe a mercadoria até a porta.
@@ -5165,7 +5220,14 @@ export const STATEMENTS: string[] = [
      consumed_at              TEXT,
      terminal_id   TEXT,
      ip            TEXT,
-     created_at    TEXT NOT NULL
+     created_at    TEXT NOT NULL,
+     -- O PORQUÊ, DITO POR GENTE (P0 da Preço Justo). reason é a frase que a
+     -- tela monta com os números; justification é o motivo que o operador ou
+     -- o gestor digitou. Obrigatório quando a operação liga
+     -- core_sale_policies.discount_reason_required. Nulo em linha antiga e na
+     -- liberação sem motivo das operações que não o exigem. Leitores: a venda
+     -- que gasta a liberação (trilha sale.create) e a lista de liberações.
+     justification TEXT
    );`,
   `CREATE INDEX IF NOT EXISTS ix_authorizations_company
      ON core_authorizations (company_id, created_at);`,
@@ -5691,6 +5753,8 @@ export const CORE_TABLES_IN_DELETE_ORDER = [
   'core_inbound_configs',
   // Mesmo molde: só aponta para core_companies, que é a última da lista.
   'core_sale_policies',
+  // O limite de desconto por perfil: só aponta para a empresa, mesmo molde.
+  'core_discount_limits',
   // A política de gestão (GAP-PRD-165/166): uma linha por empresa, mesmo molde.
   'core_management_policies',
   'core_workshop_sla_configs',

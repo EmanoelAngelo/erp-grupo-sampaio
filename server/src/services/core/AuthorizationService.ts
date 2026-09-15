@@ -16,6 +16,7 @@ import { ApiError } from '../../utils/errors.js';
 import { emReais } from './Money.js';
 import { assertMembership, findUserByLogin } from '../auth/IdentityService.js';
 import { verifyPassword, wasteVerificationTime } from '../auth/PasswordService.js';
+import { politicaDaEmpresa } from './SalePolicyService.js';
 
 /** Perfis com alçada para liberar ação restrita. */
 const AUTHORIZERS = new Set(['admin_geral', 'gestor', 'gerente_loja', 'gerente_oficina']);
@@ -191,6 +192,33 @@ export interface AuthorizationResult {
   ip: string | null;
   /** Até quando este bilhete vale — derivado de `created_at`, não gravado. */
   expiresAt: string;
+  /** O motivo digitado (`justification`). Nulo quando ninguém o disse. */
+  justificativa: string | null;
+}
+
+/** O motivo mais curto que ainda diz alguma coisa ("ok" e "." não dizem). */
+const MOTIVO_MINIMO = 3;
+/** Motivo é uma frase de balcão; texto maior que isto é colagem por engano. */
+const MOTIVO_MAXIMO = 500;
+
+/**
+ * O MOTIVO DIGITADO, conferido — nulo quando ninguém disse nada.
+ *
+ * Recusa alto o que passa do tamanho em vez de cortar: cortar em silêncio
+ * guardaria na trilha uma frase que ninguém escreveu.
+ */
+function motivoDigitado(valor: unknown): string | null {
+  if (valor === null || valor === undefined) return null;
+  const texto = String(valor).replace(/\s+/g, ' ').trim();
+  if (texto.length > MOTIVO_MAXIMO) {
+    throw new ApiError(
+      'CORE_AUTHORIZATION_REASON_INVALID',
+      `O motivo da liberação passa de ${MOTIVO_MAXIMO} caracteres. Resuma em uma frase.`,
+      400,
+      { maximo: MOTIVO_MAXIMO },
+    );
+  }
+  return texto === '' ? null : texto;
 }
 
 /**
@@ -254,11 +282,45 @@ export async function authorizeAction(input: {
    * R$ 7.200 passa a ser recusado.
    */
   concessao?: { concedidoCents?: unknown; brutoCents?: unknown } | null;
+  /**
+   * O PORQUÊ, digitado por gente (P0 da Preço Justo) — vai para `justification`.
+   *
+   * `reason` é a frase que a tela monta com os números; esta é a que alguém
+   * escreveu. Obrigatória no desconto quando a operação liga
+   * `core_sale_policies.discount_reason_required`.
+   */
+  justificativa?: unknown;
 }): Promise<AuthorizationResult> {
   ensureCoreSchema();
 
   if (!RESTRICTED_ACTIONS.has(input.action)) {
     throw new ApiError('CORE_UNKNOWN_ACTION', `Ação não reconhecida: ${input.action}`, 400);
+  }
+
+  /*
+    O MOTIVO É CONFERIDO ANTES DA SENHA, pela mesma razão do alvo logo abaixo:
+    recusar depois faria o gestor digitar a credencial para nada, e a recusa
+    cairia no ponto em que `wasteVerificationTime` gasta tempo de propósito.
+
+    O DEFEITO: a liberação de desconto não exigia porquê nenhum. A trilha dizia
+    QUANTO foi liberado e QUEM assinou, e a frase de `reason` era montada pela
+    tela com os números — "cliente antigo" e "o gerente é amigo do cliente"
+    ficavam indistinguíveis. Onde a operação exige, sem motivo não há senha.
+  */
+  const justificativa = motivoDigitado(input.justificativa);
+  if (
+    input.action === 'desconto_acima_limite'
+    && (justificativa === null || justificativa.length < MOTIVO_MINIMO)
+    && politicaDaEmpresa(input.companyId).discountReasonRequired
+  ) {
+    throw new ApiError(
+      'CORE_AUTHORIZATION_REASON_REQUIRED',
+      'Nesta operação a liberação de desconto exige o motivo: diga por que este desconto '
+        + 'está sendo dado (ex.: "cliente fiel, compra de atacado"). Ele fica na trilha com o '
+        + 'nome de quem liberou.',
+      400,
+      { action: input.action, minimo: MOTIVO_MINIMO },
+    );
   }
 
   /*
@@ -324,8 +386,9 @@ export async function authorizeAction(input: {
     .prepare(
       `INSERT INTO core_authorizations
          (id, company_id, action, requested_by, authorized_by, reason, detail, reference_id,
-          granted_concession_cents, granted_gross_cents, terminal_id, ip, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          granted_concession_cents, granted_gross_cents, terminal_id, ip, created_at,
+          justification)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .run(
       id,
@@ -341,6 +404,7 @@ export async function authorizeAction(input: {
       terminal,
       ip,
       now,
+      justificativa,
     );
 
   return {
@@ -355,6 +419,7 @@ export async function authorizeAction(input: {
     terminalId: terminal,
     ip,
     expiresAt: new Date(Date.parse(now) + VALIDADE_DA_LIBERACAO_MS).toISOString(),
+    justificativa,
   };
 }
 
@@ -383,6 +448,7 @@ interface LinhaDaLiberacao {
   terminal_id: string | null;
   ip: string | null;
   created_at: string;
+  justification: string | null;
 }
 
 function liberacaoValida(input: {
@@ -396,7 +462,7 @@ function liberacaoValida(input: {
     .prepare(
       `SELECT id, requested_by, authorized_by, reference_id,
               granted_concession_cents, granted_gross_cents,
-              consumed_ref_type, consumed_ref_id, terminal_id, ip, created_at
+              consumed_ref_type, consumed_ref_id, terminal_id, ip, created_at, justification
          FROM core_authorizations
         WHERE id = ? AND company_id = ? AND action = ?`,
     )
@@ -634,7 +700,14 @@ export function consumirLiberacaoDeConcessao(input: {
   refType: 'sale' | 'quote' | 'cash_movement';
   refId: string;
   now: string;
-}): { id: string; grantedConcessionCents: number | null } | null {
+}): {
+  id: string;
+  grantedConcessionCents: number | null;
+  /** Quem ASSINOU — lido da liberação gravada, nunca do corpo da requisição. */
+  authorizedBy: string;
+  /** O motivo digitado na liberação (`justification`). */
+  justificativa: string | null;
+} | null {
   const acao = input.action ?? 'desconto_acima_limite';
   // As três recusas que valem para toda ação — já gasta, de outro operador,
   // vencida — moram em `liberacaoValida`, com as das ações sem valor. Uma cópia
@@ -732,7 +805,12 @@ export function consumirLiberacaoDeConcessao(input: {
 
   gastarBilhete({ linha, refType: input.refType, refId: input.refId, now: input.now });
 
-  return { id: linha.id, grantedConcessionCents: linha.granted_concession_cents };
+  return {
+    id: linha.id,
+    grantedConcessionCents: linha.granted_concession_cents,
+    authorizedBy: linha.authorized_by,
+    justificativa: linha.justification ?? null,
+  };
 }
 
 /**
@@ -754,6 +832,34 @@ export function consumirLiberacaoDeConcessao(input: {
 export function percentualDaConcessao(brutoCents: number, concedidoCents: number): number {
   if (brutoCents > 0) return Math.round((concedidoCents / brutoCents) * 10000) / 100;
   return concedidoCents > 0 ? 100 : 0;
+}
+
+/**
+ * A CONCESSÃO PASSA DO LIMITE EM PERCENTUAL? — em inteiros, e não em ponto
+ * flutuante (P0 da Preço Justo).
+ *
+ * O DEFEITO: a comparação era `(concedido / bruto) * 100 > limite`. Em
+ * JavaScript, `(7 / 100) * 100` é 7,000000000000001: numa operação com limite de
+ * 7%, o desconto de EXATOS 7% (R$ 7,00 sobre R$ 100,00) pedia gestor — a trava
+ * errava para o lado de fechar o balcão sem motivo, e o operador aprendia que o
+ * número da tela não é o número do servidor.
+ *
+ * Aqui tudo vira inteiro: o limite em centésimos de ponto (2,5% → 250) e a
+ * comparação cruzada `concedido × 10000 > limite × bruto`, que não arredonda
+ * nada. Com centavos até a casa do bilhão o produto fica abaixo de 2^53.
+ *
+ * Bruto zero com algo concedido passa do limite por definição — deu-se
+ * mercadoria cujo preço a loja nunca definiu. Nada concedido nunca passa.
+ */
+export function passaDoPercentual(
+  brutoCents: number,
+  concedidoCents: number,
+  limitePercent: number,
+): boolean {
+  if (!(concedidoCents > 0)) return false;
+  if (!(brutoCents > 0)) return true;
+  const limiteEmCentesimos = Math.round(limitePercent * 100);
+  return Math.round(concedidoCents) * 10000 > limiteEmCentesimos * Math.round(brutoCents);
 }
 
 /**
@@ -783,9 +889,9 @@ export function discountNeedsAuthorization(
   if (temAlcadaParaLiberar(profileCodes)) return false;
   // Conceder alguma coisa sobre bruto zero é dar mercadoria cujo preço a loja
   // nunca definiu. Não há percentual que descreva isso, e passar em silêncio
-  // seria a trava falhando aberta — então pede gestor.
-  if (brutoCents <= 0) return true;
-  return (concedidoCents / brutoCents) * 100 > limitePercent;
+  // seria a trava falhando aberta — então pede gestor. E a conta é em
+  // inteiros: ver `passaDoPercentual`.
+  return passaDoPercentual(brutoCents, concedidoCents, limitePercent);
 }
 
 /**

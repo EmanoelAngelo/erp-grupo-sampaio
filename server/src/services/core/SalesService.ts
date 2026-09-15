@@ -45,10 +45,19 @@ import {
 import { effectivePriceCents } from './PricingService.js';
 import {
   consumirLiberacaoDeConcessao,
-  discountNeedsAuthorization,
   percentualDaConcessao,
   temAlcadaParaLiberar,
 } from './AuthorizationService.js';
+import {
+  conferirAlcadaDoAutorizador,
+  excessosDaConcessao,
+  fraseDoExcesso,
+  limiteDaAlcada,
+  type ExcessoDeDesconto,
+  type LimiteDeDesconto,
+  type LinhaDaConcessao,
+  type MedidaDaConcessao,
+} from './LimiteDeDesconto.js';
 import {
   origemDoPrecoDaGestao,
   pisoDoPreco,
@@ -484,6 +493,14 @@ export interface CreateSaleInput {
     profileCodes: string[];
     /** Liberação de gestor já obtida para esta venda, se houver. */
     authorizationId?: string | null;
+    /**
+     * Os perfis de QUEM VENDEU, quando não é quem envia — a venda guardada sem
+     * servidor que a fila reenvia com a sessão de outra pessoa (P0 da Preço
+     * Justo / G-offline-sync-M03). O limite de desconto passa a ser o mais
+     * ESTREITO das duas pessoas (`limiteDaAlcada`): o caixa de limite largo
+     * que reenvia a fila não abre para a atendente o que o perfil dela não abre.
+     */
+    perfisDeQuemVendeu?: string[] | null;
   };
   /**
    * QUEM está convertendo um documento, só para o PISO DE PREÇO do produto
@@ -585,6 +602,37 @@ export interface Concessao {
      */
     precoDesatualizado?: number;
   };
+}
+
+/**
+ * A TRILHA DA ALÇADA DESTA VENDA — quem aplicou, com que limite, o que passou
+ * dele e quem liberou (P0 da Preço Justo).
+ *
+ * O DEFEITO que ela fecha: a auditoria de `sale.create` gravava
+ * `authorizationId: req.body.authorizationId` — o que o CLIENTE disse. Venda
+ * dentro do limite com um id qualquer no corpo ficava na trilha como "liberada
+ * pelo gestor"; venda liberada não dizia QUEM assinou nem POR QUÊ sem abrir a
+ * tabela de liberações. Tudo aqui é do servidor: o limite é o dos perfis do
+ * token, a liberação é a que foi GASTA nesta venda, e o autorizador e o motivo
+ * vêm da linha gravada — nunca do corpo. Sem senha nem PIN: nada aqui é
+ * credencial.
+ */
+export interface TrilhaDaAlcada {
+  /** Quem registrou a venda (do token). */
+  aplicadoPor: string;
+  /** Com que limite a concessão foi medida. Nulo quando a venda não passou pela alçada. */
+  limite: LimiteDeDesconto | null;
+  /** Os tetos que a concessão ultrapassou — vazio quando coube. */
+  excessos: ExcessoDeDesconto[];
+  /** A liberação GASTA nesta venda, lida do banco. */
+  liberacao: { id: string; autorizadoPor: string; justificativa: string | null } | null;
+  /** O antes (bruto), a concessão e o depois (total cobrado). */
+  brutoCents: number;
+  concedidoCents: number;
+  percentual: number;
+  totalCents: number;
+  /** As linhas que concederam alguma coisa, com o bruto de cada uma. */
+  linhas: LinhaDaConcessao[];
 }
 
 export interface SaleRecord {
@@ -821,6 +869,8 @@ export function createSale(entrada: CreateSaleInput): {
    * comum e no reenvio idempotente.
    */
   horaDaVenda: HoraDaVenda | null;
+  /** A trilha da alçada (limite, excessos, liberação). Nulo no reenvio idempotente. */
+  alcada: TrilhaDaAlcada | null;
 } {
   ensureCoreSchema();
   /*
@@ -930,6 +980,8 @@ export function createSale(entrada: CreateSaleInput): {
         concessao: null,
         cancelados: 0,
         horaDaVenda: null,
+        // O reenvio não mede nada de novo: a trilha é a da venda original.
+        alcada: null,
       };
     }
 
@@ -1848,15 +1900,39 @@ export function createSale(entrada: CreateSaleInput): {
         },
       ];
     });
-    const precisaPelaConcessao = Boolean(
-      input.alcada
-      && discountNeedsAuthorization(
-        bruto,
-        concedido,
-        input.alcada.profileCodes,
-        politica.discountLimitPercent,
-      ),
-    );
+    /*
+      O LIMITE DE QUEM ESTÁ NO BALCÃO — por perfil, em % e em R$, na venda e em
+      cada linha (P0 da Preço Justo).
+
+      O DEFEITO: a pergunta era uma só — `discountNeedsAuthorization(bruto,
+      concedido, perfis, limiteDaOperacao)` —, com um percentual igual para a
+      operação inteira, sem teto em valor, sem teto por linha, e quem tinha
+      perfil de gerente não tinha teto nenhum. 60% numa linha barata cabiam
+      dentro dos 10% de uma venda grande; R$ 1.200 de desconto numa moto cabiam
+      nos 10% dela.
+
+      Agora a medida é a da venda inteira E a de cada linha, contra os tetos do
+      perfil de quem está no balcão (`limiteDaAlcada`). Operação que não
+      configurou limite por perfil mede exatamente como antes. A linha mede o
+      que ELA concede (desconto + preço rebaixado); o rodapé entra só no teto da
+      venda, somado às linhas — item dentro e rodapé dentro podem, juntos,
+      passar do teto da venda, e aí passam pela alçada.
+    */
+    const limiteDaVenda = input.alcada ? limiteDaAlcada(input.companyId, input.alcada) : null;
+    const medidaDaConcessao: MedidaDaConcessao = {
+      brutoCents: bruto,
+      concedidoCents: concedido,
+      linhas: priced.map((l) => ({
+        productId: l.product.id,
+        nome: l.product.name,
+        brutoCents: l.brutoLinha,
+        concedidoCents: l.discount + l.rebaixado,
+      })),
+    };
+    const excessos = limiteDaVenda ? excessosDaConcessao(limiteDaVenda, medidaDaConcessao) : [];
+    const precisaPelaConcessao = excessos.length > 0;
+    /** A liberação GASTA nesta venda — lida da linha gravada, para a trilha. */
+    let liberacaoDaVenda: TrilhaDaAlcada['liberacao'] = null;
     /*
       QUEM RESPONDE PELO PISO: a alçada do balcão, ou — na conversão de
       documento, que não passa `alcada` — a de quem está convertendo
@@ -1884,6 +1960,25 @@ export function createSale(entrada: CreateSaleInput): {
             now: agora,
           })
         : null;
+
+      if (autorizacao) {
+        /*
+          QUEM ASSINOU PRECISA TER ALÇADA PARA ESTA CONCESSÃO (P0 da Preço
+          Justo): a senha do gerente limitado a 20% não libera 70% para o caixa.
+          Estoura DENTRO da transação, então o consumo acima é desfeito e a
+          liberação continua servindo para uma venda menor.
+        */
+        conferirAlcadaDoAutorizador({
+          companyId: input.companyId,
+          authorizedBy: autorizacao.authorizedBy,
+          medida: medidaDaConcessao,
+        });
+        liberacaoDaVenda = {
+          id: autorizacao.id,
+          autorizadoPor: autorizacao.authorizedBy,
+          justificativa: autorizacao.justificativa,
+        };
+      }
 
       if (!autorizacao) {
         /*
@@ -1964,10 +2059,24 @@ export function createSale(entrada: CreateSaleInput): {
               ]
             : [],
         );
+        /*
+          O TETO ULTRAPASSADO É DITO PELO NOME. Quando é o percentual da venda,
+          a frase é a de sempre (a tela e o gestor já a conhecem); os tetos
+          novos — valor da venda, percentual e valor por linha — vêm depois,
+          cada um com a linha e os números. "Do seu perfil" só quando o limite
+          veio da tabela de perfis: dizer isso de um limite da operação mandaria
+          o operador reclamar com quem não o configurou.
+        */
+        const excessoDaVenda = excessos.find((e) => e.regra === 'percentual_venda');
+        const outrosTetos = excessos.filter((e) => e.regra !== 'percentual_venda').map(fraseDoExcesso);
+        const deQuem = limiteDaVenda?.doPerfil ? 'do seu perfil nesta operação' : 'desta operação';
         const mensagem = precisaPelaConcessao
           ? `Esta venda concede ${emReais(concedido)} sobre ${emReais(bruto)} `
-            + `(${concessao.percentual}%), acima do limite de `
-            + `${politica.discountLimitPercent}% desta operação. `
+            + `(${concessao.percentual}%)`
+            + (excessoDaVenda ? `, acima do limite de ${excessoDaVenda.limite}% ${deQuem}. ` : '. ')
+            + (outrosTetos.length > 0
+              ? `Passa ${excessoDaVenda ? 'também ' : ''}dos tetos ${deQuem}: ${outrosTetos.join('; ')}. `
+              : '')
             + (de.length > 0 ? `Vem de ${de.join(', ')}. ` : '')
             + (doPiso.length > 0 ? `Além disso, ${doPiso.join('; ')}. ` : '')
             + 'Peça a liberação de um gestor ou reduza um desses valores.'
@@ -2021,12 +2130,33 @@ export function createSale(entrada: CreateSaleInput): {
             concedidoCents: concedido,
             brutoCents: bruto,
             origens: concessao.origens,
-            limite: politica.discountLimitPercent,
+            // O percentual que vale para ESTA pessoa; nulo quando o perfil dela
+            // não tem teto em percentual (só em valor ou por linha).
+            limite: limiteDaVenda ? limiteDaVenda.percentual : politica.discountLimitPercent,
+            ...(limiteDaVenda ? { limites: limiteDaVenda } : {}),
+            ...(excessos.length > 0 ? { excessos } : {}),
             ...(abaixoDoPiso.length > 0 ? { abaixoDoPiso } : {}),
           },
         );
       }
     }
+
+    // A trilha sai daqui mesmo quando a venda coube no limite: é a venda que
+    // PASSOU que o dono revisa depois (ver `TrilhaDaAlcada`).
+    const trilhaDaAlcada: TrilhaDaAlcada | null =
+      input.alcada || liberacaoDaVenda
+        ? {
+            aplicadoPor: input.userId,
+            limite: limiteDaVenda,
+            excessos,
+            liberacao: liberacaoDaVenda,
+            brutoCents: bruto,
+            concedidoCents: concedido,
+            percentual: concessao.percentual,
+            totalCents: total,
+            linhas: medidaDaConcessao.linhas.filter((l) => l.concedidoCents > 0),
+          }
+        : null;
 
     // QUEM VENDEU PRECISA SER DA CASA — a conferência mora em
     // `exigirVendedorDaCasa` (topo deste arquivo), porque o DOCUMENTO precisa
@@ -3490,6 +3620,7 @@ export function createSale(entrada: CreateSaleInput): {
       concessao,
       cancelados: rastroDeCancelados.length,
       horaDaVenda,
+      alcada: trilhaDaAlcada,
     };
   });
 
