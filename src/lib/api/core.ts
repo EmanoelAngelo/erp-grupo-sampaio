@@ -81,6 +81,22 @@ export interface Product {
    * entende; um UUID não é. Nulo em mercadoria de revenda.
    */
   workshop_name?: string | null;
+  /**
+   * A MINIATURA do balcão (P0 da Preço Justo): até 160 px e 40 KB, a da foto
+   * principal — ou a do modelo, na variante sem galeria. Só a busca do balcão
+   * a manda; e a busca NÃO manda `image_url` (o original), de propósito: a
+   * tela da venda não tem como baixar o arquivo grande. Nula = sem foto ou
+   * foto antiga sem miniatura, e a tela mostra o espaço neutro.
+   */
+  thumb_url?: string | null;
+  /** 1 quando o produto tem foto (com ou sem miniatura). */
+  tem_foto?: number | boolean;
+  /**
+   * Os NOMES dos campos que a NFC-e recusaria ('NCM', 'CFOP', 'origem',
+   * 'CEST', 'tributação') — a régua da nota, lida na busca. Nunca valores.
+   * Lista vazia ou ausente = nada a avisar.
+   */
+  fiscal_pendencias?: string[];
 }
 
 export interface StockItem {
@@ -1729,6 +1745,17 @@ export interface ProductImage {
   position: number;
   is_primary: number;
   created_at: string;
+  /** A miniatura do balcão; nula em foto antiga que ainda não ganhou uma. */
+  thumb_url?: string | null;
+  thumb_bytes?: number | null;
+}
+
+/** Uma foto sem miniatura — a fila do preenchimento (`GET /products/fotos-sem-miniatura`). */
+export interface FotoSemMiniatura {
+  id: string;
+  product_id: string;
+  product_name: string;
+  url: string;
 }
 
 export interface VariantStock {
@@ -4527,14 +4554,31 @@ export const coreApi = {
   listProductImages: (productId: string) =>
     apiRequest<{ items: ProductImage[] }>(`/core/products/${productId}/images`).then(envelope('items')),
 
+  /**
+   * `thumbDataUrl` é a miniatura do balcão, gerada em `normalizeImage` — sobe
+   * junto com a foto. Ausente, a foto entra na fila do preenchimento.
+   */
   addProductImage: (
     productId: string,
-    input: { dataUrl: string; fileName?: string; mimeType?: string },
+    input: { dataUrl: string; fileName?: string; mimeType?: string; thumbDataUrl?: string | null },
   ) =>
     apiRequest<ProductImage>(`/core/products/${productId}/images`, {
       method: 'POST',
       body: input,
     }),
+
+  /** Preenche a miniatura de uma foto antiga (409 se ela já tem uma). */
+  definirMiniatura: (productId: string, imageId: string, dataUrl: string) =>
+    apiRequest<ProductImage>(`/core/products/${productId}/images/${imageId}/thumbnail`, {
+      method: 'PUT',
+      body: { dataUrl },
+    }),
+
+  /** As fotos da empresa sem miniatura, principal primeiro. */
+  fotosSemMiniatura: (limit = 200) =>
+    apiRequest<{ items: FotoSemMiniatura[]; total: number }>(
+      `/core/products/fotos-sem-miniatura?limit=${limit}`,
+    ),
 
   setPrimaryImage: (productId: string, imageId: string) =>
     apiRequest<{ items: ProductImage[] }>(

@@ -371,6 +371,42 @@ export interface ValidationProblem {
  * queimaria um número fiscal por erro de cadastro, e número queimado só se
  * resolve por inutilização.
  */
+/** Um campo do CADASTRO do item que a nota recusaria. */
+export interface ProblemaFiscalDoCadastro {
+  campo: 'NCM' | 'CFOP' | 'origem' | 'CEST';
+  message: string;
+}
+
+/**
+ * As conferências da nota que dependem só do CADASTRO do produto — NCM, CFOP,
+ * origem e CEST —, sem as que dependem da venda (quantidade, identidade da
+ * unidade).
+ *
+ * Moravam dentro do laço de `validateNfce`. O balcão precisava da MESMA régua
+ * para avisar o operador ANTES de o item entrar (o "fiscal incompleto" da
+ * busca do PDV): uma cópia do laço lá divergiria desta no primeiro ajuste, e o
+ * balcão passaria a mostrar como completo o que a nota recusa. Agora a nota e
+ * o balcão chamam esta função.
+ */
+export function problemasFiscaisDoCadastro(
+  item: Pick<NfceSaleItem, 'ncm' | 'cfop' | 'origin' | 'cest'>,
+): ProblemaFiscalDoCadastro[] {
+  const problemas: ProblemaFiscalDoCadastro[] = [];
+  if (digits(item.ncm).length !== 8) {
+    problemas.push({ campo: 'NCM', message: 'NCM ausente ou fora do formato (8 dígitos).' });
+  }
+  if (digits(item.cfop).length !== 4) {
+    problemas.push({ campo: 'CFOP', message: 'CFOP ausente ou fora do formato (4 dígitos).' });
+  }
+  if (!item.origin || !/^[0-8]$/.test(String(item.origin).trim())) {
+    problemas.push({ campo: 'origem', message: 'Origem da mercadoria ausente ou inválida (0 a 8).' });
+  }
+  if (item.cest && digits(item.cest).length !== 7) {
+    problemas.push({ campo: 'CEST', message: 'CEST fora do formato (7 dígitos).' });
+  }
+  return problemas;
+}
+
 export function validateNfce(sale: NfceSale, config: FiscalConfig): ValidationProblem[] {
   const problems: ValidationProblem[] = [];
 
@@ -409,17 +445,8 @@ export function validateNfce(sale: NfceSale, config: FiscalConfig): ValidationPr
 
   sale.items.forEach((item, index) => {
     const onde = `det[${index + 1}] ${item.description}`;
-    if (digits(item.ncm).length !== 8) {
-      problems.push({ field: `${onde} > NCM`, message: 'NCM ausente ou fora do formato (8 dígitos).', itemIndex: index });
-    }
-    if (digits(item.cfop).length !== 4) {
-      problems.push({ field: `${onde} > CFOP`, message: 'CFOP ausente ou fora do formato (4 dígitos).', itemIndex: index });
-    }
-    if (!item.origin || !/^[0-8]$/.test(String(item.origin).trim())) {
-      problems.push({ field: `${onde} > origem`, message: 'Origem da mercadoria ausente ou inválida (0 a 8).', itemIndex: index });
-    }
-    if (item.cest && digits(item.cest).length !== 7) {
-      problems.push({ field: `${onde} > CEST`, message: 'CEST fora do formato (7 dígitos).', itemIndex: index });
+    for (const p of problemasFiscaisDoCadastro(item)) {
+      problems.push({ field: `${onde} > ${p.campo}`, message: p.message, itemIndex: index });
     }
     // A identidade da unidade cabe no campo do leiaute (GAP-PRD-026).
     const identidade = problemaDaIdentidadeNoItem(item);

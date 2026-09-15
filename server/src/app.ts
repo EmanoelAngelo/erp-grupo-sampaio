@@ -226,6 +226,14 @@ export function createApp(): Express {
     '/uploads/produtos',
     express.static(uploadsDir(), {
       maxAge: '7d',
+      /*
+        IMUTÁVEL (P0 da Preço Justo): todo arquivo desta pasta nasce com nome
+        gerado e nunca é reescrito — foto nova, miniatura nova e clone são
+        sempre um NOME novo. `immutable` tira a revalidação a cada recarga: a
+        miniatura do balcão sai do cache do navegador sem ir à rede, que é o
+        que a deixa aparecer com a rede fraca ou caída.
+      */
+      immutable: true,
       // Nada de listar diretório nem servir arquivo desconhecido como HTML.
       index: false,
       dotfiles: 'deny',

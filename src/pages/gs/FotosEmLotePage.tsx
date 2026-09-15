@@ -19,7 +19,7 @@ import { AppShell } from '@/components/gs/AppShell';
 import { Badge, Button, Card, DataTable, EmptyState, PageHeader } from '@/components/gs/ui';
 import { ApiRequestError, apiRequest } from '@/lib/api/client';
 import { coreApi } from '@/lib/api/core';
-import { normalizeImage } from '@/lib/image';
+import { miniaturaDaUrl, normalizeImage } from '@/lib/image';
 
 interface NomeResolvido {
   name: string;
@@ -82,6 +82,75 @@ export default function FotosEmLotePage() {
     void carregarSemFoto();
   }, [carregarSemFoto]);
 
+  /*
+    AS MINIATURAS DAS FOTOS ANTIGAS (P0 da Preço Justo).
+
+    A foto que subiu antes da miniatura existir aparece no PDV como o espaço
+    neutro — o balcão nunca baixa o original. Este botão é o preenchimento:
+    baixa cada original UMA vez, aqui na retaguarda, desenha a miniatura no
+    canvas e grava só ela (`PUT .../thumbnail`, que só preenche o vazio). A
+    ficha do produto faz o mesmo sozinha, para as fotos dela, quando é aberta.
+  */
+  const [semMiniatura, setSemMiniatura] = useState<number | null>(null);
+  const [gerandoMiniaturas, setGerandoMiniaturas] = useState(false);
+  const [relatorioMiniaturas, setRelatorioMiniaturas] = useState<string | null>(null);
+
+  const carregarSemMiniatura = useCallback(async () => {
+    try {
+      const r = await coreApi.fotosSemMiniatura(1);
+      setSemMiniatura(Number.isFinite(Number(r.total)) ? Number(r.total) : null);
+    } catch {
+      // Sem a medida, a tela não afirma "nenhuma faltando".
+      setSemMiniatura(null);
+    }
+  }, []);
+
+  useEffect(() => {
+    void carregarSemMiniatura();
+  }, [carregarSemMiniatura]);
+
+  const gerarMiniaturas = async () => {
+    setGerandoMiniaturas(true);
+    setRelatorioMiniaturas(null);
+    let geradas = 0;
+    let falhas = 0;
+    // Foto que falhou nesta rodada não é tentada de novo: sem isto, um
+    // original ausente do disco prenderia o lote num laço.
+    const tentadas = new Set<string>();
+    try {
+      for (;;) {
+        const { items } = await coreApi.fotosSemMiniatura(50);
+        const novas = items.filter((f) => !tentadas.has(f.id));
+        if (novas.length === 0) break;
+        for (const foto of novas) {
+          tentadas.add(foto.id);
+          const mini = await miniaturaDaUrl(coreApi.imageUrl(foto.url));
+          if (!mini) {
+            falhas += 1;
+            continue;
+          }
+          try {
+            await coreApi.definirMiniatura(foto.product_id, foto.id, mini.dataUrl);
+            geradas += 1;
+          } catch (err) {
+            // 409: outra aba (ou a ficha do produto) preencheu antes — não é falha.
+            if (!(err instanceof ApiRequestError && err.code === 'CORE_THUMB_EXISTS')) falhas += 1;
+          }
+        }
+      }
+      setRelatorioMiniaturas(
+        `${geradas} miniatura(s) gerada(s)${falhas > 0 ? `, ${falhas} foto(s) não puderam ser lidas` : ''}.`,
+      );
+    } catch (err) {
+      setRelatorioMiniaturas(
+        err instanceof ApiRequestError ? err.message : 'Falha ao gerar as miniaturas.',
+      );
+    } finally {
+      setGerandoMiniaturas(false);
+      await carregarSemMiniatura();
+    }
+  };
+
   /** Escolheu os arquivos → o servidor casa os nomes ANTES de subir qualquer byte. */
   const onArquivos = async (lista: FileList | null) => {
     if (!lista || lista.length === 0) return;
@@ -141,6 +210,8 @@ export default function FotosEmLotePage() {
           dataUrl: normalizada.dataUrl,
           fileName: item.name,
           mimeType: normalizada.mimeType,
+          // A miniatura do balcão sobe junto (P0 da Preço Justo).
+          thumbDataUrl: normalizada.miniatura?.dataUrl ?? null,
         });
         enviadas += 1;
         setSituacao((s) => ({ ...s, [item.name]: 'enviada' }));
@@ -292,6 +363,34 @@ export default function FotosEmLotePage() {
             )
           }
         />
+      </Card>
+
+      <Card
+        title="Miniaturas do balcão"
+        subtitle="O PDV mostra só a miniatura leve de cada foto, nunca o original. Fotos enviadas antes dela aparecem lá sem imagem até a miniatura ser gerada."
+        className="mt-5"
+        actions={
+          <Button
+            onClick={() => void gerarMiniaturas()}
+            loading={gerandoMiniaturas}
+            disabled={!semMiniatura}
+          >
+            Gerar miniaturas
+          </Button>
+        }
+      >
+        <p data-testid="fotos-sem-miniatura" className="m-0 text-[length:var(--gs-text-sm)]">
+          {semMiniatura === null
+            ? 'Não foi possível contar as fotos sem miniatura — recarregue a página.'
+            : semMiniatura === 0
+              ? 'Todas as fotos já têm miniatura.'
+              : `${semMiniatura} foto(s) sem miniatura.`}
+        </p>
+        {relatorioMiniaturas && (
+          <p role="status" className="m-0 mt-2 text-[length:var(--gs-text-sm)] text-[var(--gs-text-soft)]">
+            {relatorioMiniaturas}
+          </p>
+        )}
       </Card>
     </AppShell>
   );

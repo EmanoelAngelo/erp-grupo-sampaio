@@ -63,9 +63,11 @@ import { caixaDesteComputador, guardarCaixaDesteComputador } from '@/lib/api/ter
 import { ClientePdvDialog } from '@/components/gs/ClientePdvDialog';
 import {
   achadoExato,
+  avisoFiscalIncompleto,
   destinoDaBusca,
   distintivoDePeca,
   ehPecaDeBancada,
+  rotuloFiscalIncompleto,
   ehPesavel,
   etiquetaDaBalancaUnica,
   PDV_SHORTCUT_KEYS,
@@ -89,6 +91,7 @@ import {
   unitarioCobradoCents,
 } from './pdvConcessao';
 import { PesquisaAvancadaDialog } from '@/components/gs/PesquisaAvancadaDialog';
+import { MiniaturaDoProduto } from '@/components/gs/MiniaturaDoProduto';
 import {
   aplicarPrecificacao,
   clienteDaVenda,
@@ -1859,6 +1862,17 @@ export default function PdvPage() {
         setUnitPrice('');
         esquecerRascunhos(product.id);
       });
+      /*
+        O FISCAL INCOMPLETO NA FAIXA (P0 da Preço Justo).
+
+        O item bipado entra direto, sem passar pela lista onde o distintivo
+        aparece — e era aí que o operador ficava sem saber de nada até a NFC-e
+        ser recusada, depois do pagamento. A venda continua (travar o balcão por
+        cadastro pararia a loja); a faixa diz o que falta, na cor de atenção, e
+        a linha do carrinho carrega o distintivo até o fim.
+      */
+      const aviso = avisoFiscalIncompleto(product);
+      if (aviso) setMessage({ tone: 'error', text: aviso });
       searchRef.current?.focus();
       return true;
     },
@@ -5609,25 +5623,41 @@ export default function PdvPage() {
                             : 'bg-transparent'
                         }`}
                     >
-                      <span>
-                        <span className="flex items-center gap-2 flex-wrap font-semibold text-[var(--gs-text)]">
-                          {product.name}
-                          {/* Peça achada pela bipagem ou pelo interruptor: sem
-                              este distintivo ela é indistinguível de
-                              mercadoria na lista, que é como ela entrava no
-                              carrinho sem ninguém perceber. */}
-                          {ehPecaDeBancada(product) && (
-                            <Badge tone="warning">{distintivoDePeca(product)}</Badge>
-                          )}
-                        </span>
-                        <span className="block text-[length:var(--gs-text-sm)] text-[var(--gs-muted)]">
-                          {product.internal_code}
-                          {product.barcode ? ` · ${product.barcode}` : ''} · saldo{' '}
-                          {formatQuantity(product.stock_quantity ?? 0)}
-                          {/* Na lista, a etiqueta diz quanto entra se escolhida (D-pdv-teclado-16). */}
-                          {temEtiquetaDaBalanca(product) && product.balanca.quantidade !== null
-                            ? ` · etiqueta da balança: ${formatQuantity(product.balanca.quantidade)} kg`
-                            : ''}
+                      {/*
+                        A FOTO NA LISTA DA BUSCA (P0 da Preço Justo).
+
+                        A lista não tinha foto, e o operador distinguia dois
+                        tamanhos da mesma blusa lendo o código. A miniatura é
+                        a do balcão (160 px, poucos KB): o original nem chega
+                        a esta tela — a busca não o manda. Sem foto, ou sem
+                        rede, o espaço neutro do mesmo tamanho.
+                      */}
+                      <span className="flex items-center gap-3 min-w-0">
+                        <MiniaturaDoProduto thumbUrl={product.thumb_url} />
+                        <span className="min-w-0">
+                          <span className="flex items-center gap-2 flex-wrap font-semibold text-[var(--gs-text)]">
+                            {product.name}
+                            {/* Peça achada pela bipagem ou pelo interruptor: sem
+                                este distintivo ela é indistinguível de
+                                mercadoria na lista, que é como ela entrava no
+                                carrinho sem ninguém perceber. */}
+                            {ehPecaDeBancada(product) && (
+                              <Badge tone="warning">{distintivoDePeca(product)}</Badge>
+                            )}
+                            {/* O que a NFC-e recusaria, ANTES do pagamento. */}
+                            {rotuloFiscalIncompleto(product) && (
+                              <Badge tone="warning">{rotuloFiscalIncompleto(product)}</Badge>
+                            )}
+                          </span>
+                          <span className="block text-[length:var(--gs-text-sm)] text-[var(--gs-muted)]">
+                            {product.internal_code}
+                            {product.barcode ? ` · ${product.barcode}` : ''} · saldo{' '}
+                            {formatQuantity(product.stock_quantity ?? 0)}
+                            {/* Na lista, a etiqueta diz quanto entra se escolhida (D-pdv-teclado-16). */}
+                            {temEtiquetaDaBalanca(product) && product.balanca.quantidade !== null
+                              ? ` · etiqueta da balança: ${formatQuantity(product.balanca.quantidade)} kg`
+                              : ''}
+                          </span>
                         </span>
                       </span>
                       {/* Em promoção, o operador precisa ver o "de/por": é o que
@@ -5832,6 +5862,13 @@ export default function PdvPage() {
                         {ehPecaDeBancada(line.product) && (
                           <span className="block mt-0.5">
                             <Badge tone="warning">{distintivoDePeca(line.product)}</Badge>
+                          </span>
+                        )}
+                        {/* O fiscal incompleto também acompanha a linha: o item
+                            que entrou pela bipagem nunca passou pela lista. */}
+                        {rotuloFiscalIncompleto(line.product) && (
+                          <span className="block mt-0.5">
+                            <Badge tone="warning">{rotuloFiscalIncompleto(line.product)}</Badge>
                           </span>
                         )}
                         {/*

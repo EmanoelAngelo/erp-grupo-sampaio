@@ -34,7 +34,16 @@ vi.mock('@/lib/image', () => ({
     height: 1,
     bytes: 3,
     fileName: file.name,
+    // A miniatura do balcão, que a mesma leitura desenha (P0 da Preço Justo).
+    miniatura: {
+      dataUrl: 'data:image/webp;base64,bWluaQ==',
+      mimeType: 'image/webp',
+      width: 160,
+      height: 120,
+      bytes: 4,
+    },
   }),
+  miniaturaDaUrl: async () => null,
 }));
 
 const IDENTIFICACAO = {
@@ -77,6 +86,7 @@ function servidor() {
 
     if (alvo.includes('/loja/identificacao')) return json(IDENTIFICACAO);
     if (alvo.includes('/fotos-em-lote/resolver')) return json({ items: resolvidos });
+    if (alvo.includes('/fotos-sem-miniatura')) return json({ items: [], total: 0 });
     if (/\/products\/[^/]+\/images$/.test(alvo)) return json({ id: 'img-x' }, 201);
     if (alvo.includes('/prontidao-online')) {
       if (prontidaoQuebrada) return json({ error: { code: 'X', message: 'quebrou' } }, 500);
@@ -182,6 +192,8 @@ describe('fotos em lote', () => {
     expect(uploads).toHaveLength(1);
     expect(uploads[0].url).toContain('/products/p-1/images');
     expect(String(uploads[0].corpo.dataUrl)).toContain('base64');
+    // A miniatura do balcão viaja junto com a foto (P0 da Preço Justo).
+    expect(uploads[0].corpo.thumbDataUrl).toBe('data:image/webp;base64,bWluaQ==');
     await screen.findByText(/1 foto\(s\) enviada\(s\), 1 sem produto/);
   });
 

@@ -255,6 +255,10 @@ export const PASSOS: readonly DefinicaoDoPasso[] = [
 /** Onde moram os arquivos que as linhas citam — e que o CASCADE não apaga do disco. */
 const ARQUIVOS: ReadonlyArray<{ tabela: string; coluna: string; pasta: PastaDeArquivo }> = [
   { tabela: 'core_product_images', coluna: 'url', pasta: 'produtos' },
+  // A miniatura do balcão (P0 da Preço Justo) mora na mesma pasta: sem esta
+  // linha, a foto de demonstração ia para a quarentena e a miniatura dela
+  // ficava na pasta viva, citada por ninguém.
+  { tabela: 'core_product_images', coluna: 'thumb_url', pasta: 'produtos' },
   { tabela: 'core_products', coluna: 'image_url', pasta: 'produtos' },
   { tabela: 'core_service_order_photos', coluna: 'url', pasta: 'os' },
   { tabela: 'core_equipment_photos', coluna: 'url', pasta: 'equipamentos' },
