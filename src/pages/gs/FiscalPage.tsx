@@ -806,6 +806,18 @@ function CscCard({
   onErro: (mensagem: string) => void;
 }) {
   const [atual, setAtual] = useState<NfceCscSetting[] | null>(null);
+  /*
+    O SELO SÓ AFIRMA O QUE LEU (auditoria P0 da Preço Justo).
+
+    Sem a lista do cofre, `atual` ficava `null`, `doAmbiente` devolvia
+    `undefined` e os dois selos diziam NÃO CONFIGURADO — enquanto a leitura não
+    chegava e, quando ela era recusada, para sempre. O `gerente_oficina` abre
+    esta tela (o GET da configuração o admite), mas o GET do CSC é só da
+    gerência da loja: ele via os dois ambientes "não configurados" com o código
+    gravado no cofre. Sem leitura, o selo diz que não sabe — como o
+    `AmbienteCard` faz com o ambiente desconhecido.
+  */
+  const [leituraFalhou, setLeituraFalhou] = useState(false);
   const [cscId, setCscId] = useState('');
   const [cscToken, setCscToken] = useState('');
   const [destino, setDestino] = useState<AmbienteDoCsc>(ambiente);
@@ -819,7 +831,11 @@ function CscCard({
   const carregar = useCallback(async () => {
     try {
       setAtual(await coreApi.getNfceCsc());
+      setLeituraFalhou(false);
     } catch (err) {
+      // A última lista lida (se houver) continua valendo; sem nenhuma, o selo
+      // passa a dizer que não sabe.
+      setLeituraFalhou(true);
       onErro(err instanceof ApiRequestError ? err.message : 'Falha ao ler o CSC.');
     }
   }, [onErro]);
@@ -862,7 +878,11 @@ function CscCard({
             return (
               <li key={a} className="flex items-center gap-3 flex-wrap">
                 <span className="font-semibold min-w-[7rem]">{TITULO_DO_AMBIENTE[a]}</span>
-                {gravado ? (
+                {atual === null ? (
+                  <Badge tone="neutral">
+                    {leituraFalhou ? 'SITUAÇÃO DESCONHECIDA' : 'CONSULTANDO…'}
+                  </Badge>
+                ) : gravado ? (
                   <Badge tone="success">CONFIGURADO</Badge>
                 ) : (
                   <Badge tone={a === ambiente ? 'warning' : 'neutral'}>NÃO CONFIGURADO</Badge>
