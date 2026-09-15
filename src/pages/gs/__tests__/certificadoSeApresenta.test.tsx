@@ -27,7 +27,7 @@
  *   - marcar o botão como habilitado sem `canUnlock` e o caso da alçada cai.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { setSession } from '@/lib/api/client';
 import CertificadoPage from '../CertificadoPage';
@@ -168,6 +168,13 @@ const COM_HOMOLOGACAO = {
   },
 };
 
+/**
+ * Quem vendeu no período — só o painel lido o desenha. É a prova, para as
+ * negativas do painel, de que o `/core/dashboard` respondeu: os números do
+ * topo nascem "R$ 0,00" com o painel ainda nulo, e não provam nada.
+ */
+const VENDEDOR_DO_PAINEL = 'Vendedora do Painel';
+
 const PAINEL_BASE = {
   revenueCents: 0,
   salesCount: 0,
@@ -175,7 +182,7 @@ const PAINEL_BASE = {
   openReceivablesCents: 0,
   byDay: [],
   topProducts: [],
-  bySeller: [],
+  bySeller: [{ seller_id: 'u-vendedora', seller_name: VENDEDOR_DO_PAINEL, sales_count: 1, revenue_cents: 1000 }],
   lowStock: [],
 };
 
@@ -390,11 +397,20 @@ describe('o cartão CERTIFICADO VALIDADO', () => {
   it('lista as operações com vínculo, com titular, validade e situação', async () => {
     await abrirCertificado();
 
-    expect(await screen.findByText('Certificados das suas operações')).toBeTruthy();
-    expect(screen.getAllByText('Oficina').length).toBeGreaterThan(0);
-    expect(screen.getByText('Oficina Ltda')).toBeTruthy();
+    /*
+      O título "Certificados das suas operações" sai com "Carregando…", ANTES
+      da lista: esperá-lo não provava nada, e o caso só passava porque o dublê
+      responde o cartão e a lista na mesma volta — atrasada só a lista, as
+      leituras síncronas caíam. A razão social da operação sem certificado só
+      existe depois que `/core/fiscal/certificates/group` responde, e a lista
+      entra num `setItens` só. As leituras ficam DENTRO do cartão: "Oficina"
+      solto casava com outro texto da tela mesmo sem a lista.
+    */
+    const lista = (await screen.findByText('Oficina Ltda')).closest('section')!;
+    expect(within(lista).getByText('Certificados das suas operações')).toBeTruthy();
+    expect(within(lista).getByText('Oficina')).toBeTruthy();
     // A que não tem A1 é a informação mais útil da lista.
-    expect(screen.getAllByText('NÃO CONFIGURADO').length).toBeGreaterThan(0);
+    expect(within(lista).getAllByText('NÃO CONFIGURADO').length).toBeGreaterThan(0);
   });
 });
 
@@ -417,7 +433,15 @@ describe('o aviso de vencimento alcança quem não foi procurá-lo', () => {
         <PainelPage />
       </MemoryRouter>,
     );
-    await screen.findByText('Dashboard');
+    /*
+      "Dashboard" é o título fixo do painel, desenhado antes de o
+      `/core/dashboard` responder — e a faixa só existe depois dele. Esperar o
+      título deixava a negativa verde por sorte de relógio: medido com o
+      servidor MANDANDO o alerta, ela passava sob carga. O vendedor do dublê
+      vem no MESMO payload (um `setData` só): com ele na tela, o painel leu a
+      resposta, e a falta da faixa passa a ser a do servidor.
+    */
+    await screen.findByText(VENDEDOR_DO_PAINEL);
     expect(screen.queryByText(/A1 vence em/i)).toBeNull();
   });
 

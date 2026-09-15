@@ -304,11 +304,24 @@ function bipar(campo: HTMLInputElement, codigo: string) {
   fireEvent.keyDown(campo, { key: 'Enter' });
 }
 
+/**
+ * A venda concluída PRONTA para o teclado. O Esc dela e o foco no Imprimir são
+ * ligados no mesmo lote de efeitos, DEPOIS do render que desenha a tela: o Esc
+ * disparado logo depois do `findByRole` caía sem ouvinte, e a tela não fechava
+ * (M03 e PED-pdv-07 vermelhos sob carga). O foco dentro dela é a prova de que
+ * o lote rodou.
+ */
+async function vendaConcluidaPronta(): Promise<HTMLElement> {
+  const dialogo = await screen.findByRole('dialog', { name: 'Venda concluída' });
+  await waitFor(() => expect(dialogo.contains(document.activeElement)).toBe(true));
+  return dialogo;
+}
+
 async function venderRapido(campo: HTMLInputElement, codigo: string, nome: string) {
   bipar(campo, codigo);
   await waitFor(() => expect(screen.getByLabelText(`Quantidade de ${nome}`)).toBeTruthy());
   fireEvent.keyDown(campo, { key: 'F8' });
-  return screen.findByRole('dialog', { name: 'Venda concluída' });
+  return vendaConcluidaPronta();
 }
 
 /** A janela do comprovante offline: o HTML que o navegador mandaria imprimir. */
@@ -530,7 +543,7 @@ describe('F-cupom-fiscal-M03 — o painel é da venda que acabou de sair', () =>
     await waitFor(() => expect(screen.getAllByText(/Dinheiro/).length).toBeGreaterThan(0));
     fireEvent.keyDown(document.activeElement ?? document.body, { key: 'F10' });
 
-    const dialogo = await screen.findByRole('dialog', { name: 'Venda concluída' });
+    const dialogo = await vendaConcluidaPronta();
     expect(within(dialogo).getByTestId('venda-concluida-numero').textContent).toContain('345');
     fireEvent.keyDown(document.activeElement ?? document.body, { key: 'Escape' });
     fireEvent.click(await screen.findByRole('button', { name: 'imprimir comprovante' }));

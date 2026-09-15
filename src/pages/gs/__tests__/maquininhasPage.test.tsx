@@ -200,7 +200,11 @@ describe('GAP-PRD-076 — a maquininha pela tela', () => {
     fireEvent.change(within(dialogo).getByRole('textbox', { name: 'Nome da maquininha' }), {
       target: { value: 'PinPad Cielo' },
     });
-    fireEvent.change(within(dialogo).getByRole('combobox', { name: 'Caixa da maquininha' }), { target: { value: 'cx1' } });
+    // A mesma espera do pareamento: a opção do caixa vem de `/core/terminals`,
+    // que o botão "Nova maquininha" não espera.
+    const caixaDaMaquininha = within(dialogo).getByRole('combobox', { name: 'Caixa da maquininha' });
+    await within(caixaDaMaquininha).findByRole('option', { name: 'Caixa 1' });
+    fireEvent.change(caixaDaMaquininha, { target: { value: 'cx1' } });
     fireEvent.click(within(dialogo).getByRole('button', { name: 'Cadastrar' }));
     await waitFor(() =>
       expect(chamadas.find((c) => c.metodo === 'POST' && c.url.endsWith('/payment-terminals/configurations'))).toBeTruthy(),
@@ -252,7 +256,13 @@ describe('GAP-PRD-076 — a maquininha pela tela', () => {
   it('o código de pareamento sai para o caixa escolhido, com o comando do agente', async () => {
     montar();
     const card = (await screen.findByText('Agente local')).closest('section')!;
-    fireEvent.change(within(card).getByRole('combobox', { name: 'Caixa da maquininha' }), { target: { value: 'cx1' } });
+    const seletor = within(card).getByRole('combobox', { name: 'Caixa da maquininha' });
+    // O cartão "Agente local" sai antes de `/core/terminals` responder, com o
+    // seletor sem os caixas: trocar o valor antes de a opção existir deixava o
+    // select em "" e o código saía para a operação inteira. A opção do caixa é
+    // a resposta — espera por ela.
+    await within(seletor).findByRole('option', { name: 'Caixa 1' });
+    fireEvent.change(seletor, { target: { value: 'cx1' } });
     fireEvent.click(within(card).getByRole('button', { name: 'Gerar código de pareamento' }));
     const codigo = await screen.findByRole('status', { name: 'Código de pareamento' });
     expect(codigo.textContent).toContain('A1B2C3D4');

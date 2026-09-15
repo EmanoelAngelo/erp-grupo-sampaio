@@ -13,7 +13,7 @@
  * Agora a descartada sai da fila sem nova entrega, e a barra diz o que houve.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { EstadoConexao } from '../EstadoConexao';
 import { setSession } from '@/lib/api/client';
 import { enqueue, queued } from '@/lib/api/offlineQueue';
@@ -136,8 +136,13 @@ describe('G-offline-sync-16 — a venda descartada pela gerência não fica tent
     render(<EstadoConexao />);
 
     fireEvent.click(await screen.findByRole('button', { name: /Enviar agora/i }));
-    expect((await screen.findByTestId('estado-conexao')).textContent).toMatch(
-      /1 venda\(s\) recusada\(s\) pelo servidor foi\(ram\) para "Regularizar"/,
+    // A barra existe ANTES do envio ("1 venda guardada aguardando envio"):
+    // esperá-la não provava que a recusa tinha voltado. Espera a frase da
+    // recusa encaminhada, que só nasce com o resultado do envio.
+    await waitFor(() =>
+      expect(screen.getByTestId('estado-conexao').textContent).toMatch(
+        /1 venda\(s\) recusada\(s\) pelo servidor foi\(ram\) para "Regularizar"/,
+      ),
     );
     expect(pedidos.some((p) => p.url.includes('/core/offline-sales') && p.method === 'POST')).toBe(true);
     expect(screen.queryByTestId('vendas-descartadas')).toBeNull();

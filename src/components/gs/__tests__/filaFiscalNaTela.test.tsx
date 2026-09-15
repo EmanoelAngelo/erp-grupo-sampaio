@@ -131,8 +131,15 @@ describe('o quadro da fila na tela de documentos', () => {
       </MemoryRouter>,
     );
 
-    expect(await screen.findByText('Transmissão à SEFAZ')).toBeTruthy();
-    expect(screen.getByText(/Transmissão automática ligada/)).toBeTruthy();
+    /*
+      O título "Transmissão à SEFAZ" sai no PRIMEIRO render, com o painel ainda
+      nulo ("Consultando a fila…"): esperá-lo não provava que a fila tinha
+      chegado, e as leituras síncronas logo abaixo corriam contra a resposta.
+      A frase da transmissão automática só existe com o painel lido — e o
+      painel inteiro entra num `setPainel` só, então o resto vem no mesmo render.
+    */
+    expect(await screen.findByText(/Transmissão automática ligada/)).toBeTruthy();
+    expect(screen.getByText('Transmissão à SEFAZ')).toBeTruthy();
     expect(screen.getByText(/SEFAZ fora do ar ou sem resposta/)).toBeTruthy();
     expect(screen.getByText(/cStat 108/)).toBeTruthy();
     expect(screen.getByText('Falha de rede ao contatar a SEFAZ.')).toBeTruthy();

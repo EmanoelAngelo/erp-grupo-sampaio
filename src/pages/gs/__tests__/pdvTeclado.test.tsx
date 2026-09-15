@@ -234,7 +234,10 @@ describe('N, O, P, Q. pagamento em dinheiro, venda concluída, imprimir ou não'
     expect(within(dialogo).getByTestId('venda-concluida-fiscal').getAttribute('data-estado')).toBe('nao_fiscal');
     expect(within(dialogo).getByTestId('venda-concluida-fiscal').textContent).toContain('COMPROVANTE NÃO FISCAL');
     // O botão Imprimir nasce com o foco: Enter imprimiria.
-    expect(document.activeElement?.textContent).toContain('Imprimir');
+    // O foco entra num efeito do diálogo, depois do render que o desenha — no
+    // mesmo lote de efeitos que liga o Esc dele. Lido logo depois do
+    // `findByRole`, ainda estava fora; e o Esc abaixo caía sem ouvinte.
+    await waitFor(() => expect(document.activeElement?.textContent).toContain('Imprimir'));
 
     fireEvent.keyDown(document.activeElement!, { key: 'Escape' });
     await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Venda concluída' })).toBeNull());

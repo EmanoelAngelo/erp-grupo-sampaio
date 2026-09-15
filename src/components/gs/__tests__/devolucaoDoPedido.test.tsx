@@ -3,7 +3,7 @@
  * (GAP-PRD-122, GAP-PRD-031).
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { BotaoDevolverPedido } from '../AcoesDoPedido';
 import { resumoDaDevolucao } from '@/lib/api/pedidos';
 import { RecebimentoDaDevolucao } from '../RecebimentoDaDevolucao';
@@ -112,7 +112,10 @@ describe('Devolver', () => {
     await responderMotivo(/Devolver o pedido #6/, 'desistiu com o pacote a caminho');
     const pergunta = await screen.findByRole('dialog', { name: MERCADORIA });
     // O foco começa em "Ainda não voltou": Enter por reflexo não põe no estoque o que não chegou.
-    expect(document.activeElement).toBe(within(pergunta).getByRole('button', { name: 'Ainda não voltou' }));
+    // O foco entra no diálogo num efeito, depois do render que o desenha: lido
+    // logo depois do `findByRole`, ele ainda podia estar no corpo da página.
+    const naoVoltou = within(pergunta).getByRole('button', { name: 'Ainda não voltou' });
+    await waitFor(() => expect(document.activeElement).toBe(naoVoltou));
     fireEvent.click(within(pergunta).getByRole('button', { name: 'Ainda não voltou' }));
     await vi.waitFor(() => expect(aoConcluir).toHaveBeenCalled());
     expect(chamadas[0].body).toEqual({ reason: 'desistiu com o pacote a caminho', mercadoriaNaMao: false });

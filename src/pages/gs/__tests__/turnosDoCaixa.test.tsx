@@ -157,7 +157,10 @@ describe('a seção Turnos anteriores', () => {
   it('a diferença fica em vermelho quando não é zero — e SÓ quando não é', async () => {
     entrarComo('gerente_loja');
     montar();
-    await screen.findByText('Turnos anteriores');
+    // "Turnos anteriores" é o título do cartão, desenhado antes de
+    // `/core/cash/sessions` responder; as células da diferença só existem com
+    // a lista. Quem fechou o turno com falta vem na MESMA resposta.
+    await screen.findByText('Gerente Gilda');
 
     // Comparação pelo `textContent` CRU: `formatCents` separa "R$" do número
     // com espaço rígido, e o normalizador do getByText o achataria.

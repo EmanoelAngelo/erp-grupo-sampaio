@@ -154,7 +154,18 @@ async function montar(profileCode = 'gerente_loja') {
       <EntradaNotasPage />
     </MemoryRouter>,
   );
+  /*
+    "Notas importadas" é o título do cartão, desenhado antes de a lista chegar
+    — e o botão Estornar, os selos e a linha da entrada manual só existem com
+    ela. Os casos liam tudo isso logo depois, síncronos: o positivo falhava
+    com a lista atrasada, e as negativas ("estoquista não vê o botão", "nota
+    em conferência sem botão") ficavam verdes com a lista ainda VAZIA. A
+    célula "número/série" da primeira nota prova que `/core/purchases/notes`
+    respondeu; a lista entra num `setNotes` só.
+  */
   await screen.findByText(/Notas importadas/);
+  const primeira = notas[0];
+  await screen.findByText(`${primeira.number}/${primeira.series ?? '—'}`);
 }
 
 function escritas(): [string, Record<string, unknown>][] {

@@ -434,8 +434,12 @@ describe('M05: o rastro de cancelados é do carrinho', () => {
     expect(itensCancelados()).toBe('0');
 
     fireEvent.keyDown(campo, { key: 'F8' });
-    await screen.findByRole('dialog', { name: 'Venda concluída' });
+    const concluida = await screen.findByRole('dialog', { name: 'Venda concluída' });
     expect(vendas[0].corpo.cancelledItems).toBeUndefined();
+    // O Esc da venda concluída é ligado no mesmo lote de efeitos que põe o foco
+    // dentro dela, DEPOIS do render que a desenha: disparado antes, caía sem
+    // ouvinte e a tela não fechava. O foco dentro dela é a prova do lote.
+    await waitFor(() => expect(concluida.contains(document.activeElement)).toBe(true));
     fireEvent.keyDown(document.activeElement!, { key: 'Escape' });
     await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Venda concluída' })).toBeNull());
 

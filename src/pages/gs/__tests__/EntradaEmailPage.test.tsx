@@ -222,7 +222,14 @@ describe('a caixa não entope, e a tela diz quantas faltam (GAP-PRD-035)', () =>
     const pedidos = servidor({ status: ACEITA });
     montar();
     // Espera a caixa chegar do servidor: o formulário se preenche com ela.
+    //
+    // O selo "CONFIGURADA" sai no render em que a caixa chega, mas o formulário
+    // só se preenche com ela no efeito seguinte (`setDepoisDeLer` e os demais).
+    // Trocar a escolha antes disso era desfeito pelo preenchimento atrasado — e
+    // o campo da pasta nunca aparecia. O servidor IMAP no campo vem do MESMO
+    // preenchimento: com ele lá, o formulário já é o da caixa.
     await screen.findByText('CONFIGURADA');
+    await screen.findByDisplayValue('imap.gmail.com');
     const escolha = screen.getByLabelText('Depois de ler cada mensagem') as HTMLSelectElement;
     expect(escolha.value).toBe('lida');
 

@@ -15,7 +15,7 @@
  * continuam todos lá, só a rolagem encurta.
  */
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { setSession } from '@/lib/api/client';
 import InventarioPage from '../InventarioPage';
@@ -126,7 +126,16 @@ describe('a abertura envia o recorte', () => {
     renderizar();
     await screen.findByText('Nova contagem');
 
-    fireEvent.change(await screen.findByLabelText(/Categoria/), {
+    /*
+      O seletor de Categoria nasce VAZIO: as opções vêm de `/core/taxonomy`,
+      que o título "Nova contagem" e o próprio seletor não esperam. Escolher
+      "Bebidas" antes de a opção existir deixava o select em "" — e a abertura
+      ia sem recorte (visto sozinho, 3 de 3 rodadas vermelhas com o React
+      atrasado em 20 ms). A opção é a resposta: espera por ela.
+    */
+    const categoria = await screen.findByLabelText(/Categoria/);
+    await within(categoria).findByRole('option', { name: 'Bebidas' });
+    fireEvent.change(categoria, {
       target: { value: 'Bebidas' },
     });
     fireEvent.change(screen.getByLabelText(/Recorte por busca/), {

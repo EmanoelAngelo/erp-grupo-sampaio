@@ -359,6 +359,16 @@ async function abrirAGaveta() {
   await waitFor(() =>
     expect(pedidos.some((p) => p.includes('/core/workshop/parts'))).toBe(true),
   );
+  /*
+    O PEDIDO não é a RESPOSTA. Esperar só a URL da busca deixava os casos
+    lerem logo depois, síncronos, a "Quantidade de …" e os botões "Lançar" da
+    gaveta — que só nascem quando a resposta é desenhada. Sob carga, a lista
+    ainda era "Abrindo a gaveta…" (visto sozinho, 2 de 3 rodadas vermelhas com
+    o React atrasado em 20 ms). A gaveta chega num `setAchados` só: quando a
+    frase de espera some, a lista inteira — ou o estado vazio dela — está na
+    tela.
+  */
+  await waitFor(() => expect(screen.queryByText('Abrindo a gaveta…')).toBeNull());
 }
 
 describe('acrescentar peça à OS', () => {

@@ -108,7 +108,16 @@ async function montar(companies?: { id: string; tradeName: string }[]) {
       <PainelPage />
     </MemoryRouter>,
   );
-  await screen.findByText('Vendas por marca');
+  /*
+    "Vendas por marca" é o título do cartão, desenhado no PRIMEIRO render com o
+    painel ainda nulo — e os casos liam logo depois, síncronos, as marcas e o
+    seletor de operação, que só nascem com o payload. "Nike" vem dele, e o
+    payload inteiro entra num `setData` só: as marcas, a parcela não rateada e
+    a lista de operações do seletor chegam no mesmo render. As negativas dos
+    casos ("quem tem UMA operação não vê seletor") passam a valer só depois da
+    resposta, e não por ela ainda não ter chegado.
+  */
+  await screen.findByText('Nike');
 }
 
 beforeEach(() => {
@@ -149,8 +158,14 @@ describe('vendas por marca aparecem no painel', () => {
     );
     // Um cartão que desaparece faz quem procurou o recorte achar que ele não
     // existe no sistema.
-    await screen.findByText('Vendas por marca');
-    await screen.findByText('Nenhuma venda no período');
+    //
+    // O estado vazio também é o do PRIMEIRO render, com o painel ainda nulo:
+    // esperá-lo direto ficava verde mesmo sem resposta nenhuma. O seletor de
+    // operação vem no MESMO payload (duas operações no dublê) e prova que a
+    // resposta — sem marca nenhuma — já está na tela.
+    await screen.findByLabelText('Operação:');
+    const cartao = screen.getByText('Vendas por marca').closest('section')!;
+    expect(within(cartao).getByText('Nenhuma venda no período')).toBeTruthy();
   });
 
   it('A PARCELA NÃO RATEADA é declarada quando existe', async () => {

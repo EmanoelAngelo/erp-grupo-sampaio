@@ -173,6 +173,20 @@ async function montar(rota = `/sistema/produtos/${PRODUTO_ID}`) {
 
 const abrir = (secao: string) => fireEvent.click(screen.getByRole('tab', { name: secao }));
 const salvar = () => fireEvent.click(screen.getByRole('button', { name: 'Salvar' }));
+
+/**
+ * O Salvar DEPOIS de uma pergunta cancelada. O "Cancelar" some com a pergunta
+ * na hora, mas o botão só é solto no `finally` do Salvar anterior
+ * (`setBusy(false)`), que chega numa volta seguinte do React: o segundo clique,
+ * dado assim que a pergunta sumia, caía no botão ainda travado — e a pergunta
+ * nova nunca aparecia (A-produto-08 e 17 vermelhos sob carga). Espera o botão
+ * aceitar o clique, como o caso do cadastro novo (A-produto-01) já fazia.
+ */
+async function salvarDeNovo() {
+  const botao = screen.getByRole('button', { name: 'Salvar' }) as HTMLButtonElement;
+  await waitFor(() => expect(botao.disabled).toBe(false));
+  fireEvent.click(botao);
+}
 const esperar = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const puts = () => pedidos.filter((p) => p.metodo === 'PUT' && /\/core\/products\/[^/]+$/.test(p.url));
 
@@ -266,7 +280,7 @@ describe('trocar o EAN principal pergunta antes (A-produto-08)', () => {
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
     expect(puts()).toHaveLength(0);
 
-    salvar();
+    await salvarDeNovo();
     fireEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Trocar o código' }));
     expect((await corpoDoPut()).barcode).toBe('7891000100103');
     expect(await screen.findByText(/código antigo 7890000000024 continua valendo/)).toBeTruthy();
@@ -393,7 +407,7 @@ describe('preço abaixo do piso pede confirmação (A-produto-17)', () => {
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
     expect(puts()).toHaveLength(0);
 
-    salvar();
+    await salvarDeNovo();
     fireEvent.click(
       within(await screen.findByRole('dialog')).getByRole('button', { name: 'Salvar mesmo assim' }),
     );
@@ -485,7 +499,11 @@ describe('o histórico e os campos próprios (A-produto-18)', () => {
     await montar();
     abrir('Histórico');
 
-    expect(screen.getByText('Produto cadastrado.')).toBeTruthy();
+    // A trilha é a ÚLTIMA leitura do `carregar` (depois do estoque e das
+    // seções), e o `montar()` só espera o nome: lida síncrona, ela corria
+    // contra a resposta — e as negativas abaixo valiam para a trilha vazia.
+    // A linha da criação vem da trilha.
+    expect(await screen.findByText('Produto cadastrado.')).toBeTruthy();
     expect(screen.getByText(/Campos alterados: VOLTAGEM/)).toBeTruthy();
     expect(document.body.textContent).not.toContain('→');
     expect(screen.queryByText(/Registro anterior ao detalhamento/)).toBeNull();
@@ -560,7 +578,13 @@ describe('o EAN que a impressão gravou aparece no formulário (A-produto-25)', 
     expect(screen.queryByText(/EAN 2000000000015/)).toBeNull();
 
     abrir('Etiqueta');
-    fireEvent.click(await screen.findByRole('button', { name: 'Imprimir 1 etiqueta(s)' }));
+    // O texto do botão sai antes de os modelos de etiqueta chegarem, com o
+    // botão DESLIGADO (`!modeloId`): o clique caía num botão travado, nada era
+    // impresso e o cabeçalho nunca era relido. Espera o botão aceitar o clique
+    // — o modelo padrão lido é a condição dele.
+    const imprimir = (await screen.findByRole('button', { name: 'Imprimir 1 etiqueta(s)' })) as HTMLButtonElement;
+    await waitFor(() => expect(imprimir.disabled).toBe(false));
+    fireEvent.click(imprimir);
 
     // Sem `onImpresso`, a tela só relia o produto ao SAIR da aba: o cabeçalho
     // continuava "Código LJ-0009", sem o EAN que a etiqueta acabou de usar.

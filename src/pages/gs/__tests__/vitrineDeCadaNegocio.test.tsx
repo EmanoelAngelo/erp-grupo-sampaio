@@ -146,12 +146,26 @@ afterEach(() => {
 
 // ============================================================================
 
+/**
+ * A vitrine DEPOIS de a loja chegar.
+ *
+ * O nó `vitrine` existe desde o primeiro render, com `data-arranjo="neutro"`:
+ * o arranjo só se conhece quando `/loja/stores` responde. Esperar o nó e ler o
+ * arranjo logo depois corria contra a resposta — e o caso do "neutro" ficava
+ * verde com o valor de nascença, sem loja nenhuma. O herói da marca nasce da
+ * MESMA resposta (é a loja da página), no mesmo render que o arranjo e a busca.
+ */
+async function vitrineComALoja(): Promise<HTMLElement> {
+  await screen.findByTestId('heroi-da-loja');
+  return screen.getByTestId('vitrine');
+}
+
 describe('o tipo da loja arruma a página', () => {
   it('a vitrine declara o arranjo que está usando', async () => {
     montar('/gringa');
     // O arranjo é DADO no DOM, e não só classes soltas: é o que deixa medir
     // que a loja de moda não está saindo com a página da importadora.
-    const vitrine = await screen.findByTestId('vitrine');
+    const vitrine = await vitrineComALoja();
     expect(vitrine.getAttribute('data-arranjo')).toBe('moda');
   });
 
@@ -159,7 +173,7 @@ describe('o tipo da loja arruma a página', () => {
     lojas = [lojaDublada({ slug: 'preco-justo', tradeName: 'Preço Justo', storefrontPreset: 'variedades' })];
     montar('/preco-justo');
 
-    const vitrine = await screen.findByTestId('vitrine');
+    const vitrine = await vitrineComALoja();
     expect(vitrine.getAttribute('data-arranjo')).toBe('variedades');
     /*
       Quem entra numa importadora sabe o que quer e PROCURA; quem entra numa
@@ -181,7 +195,9 @@ describe('o tipo da loja arruma a página', () => {
   it('loja sem tipo declarado cai no neutro, e não numa página quebrada', async () => {
     lojas = [lojaDublada({ storefrontPreset: null })];
     montar('/gringa');
-    const vitrine = await screen.findByTestId('vitrine');
+    // Com a loja NA TELA: "neutro" aqui é a escolha para loja sem tipo, e não
+    // o valor de nascença da vitrine antes de `/loja/stores` responder.
+    const vitrine = await vitrineComALoja();
     expect(vitrine.getAttribute('data-arranjo')).toBe('neutro');
     // A página continua inteira: é loja nova, não loja com defeito.
     expect(screen.getByLabelText('Buscar produto')).toBeTruthy();
