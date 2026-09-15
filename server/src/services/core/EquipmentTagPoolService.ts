@@ -140,45 +140,33 @@ export function exigirEmpresaComPlaquinha(companyId: string): void {
   );
 }
 
-/**
- * QUEM GERA PLAQUINHA É QUEM TEM BANCADA PARA COLÁ-LA (GAP-PRD-110).
+/*
+ * A REGRA DA BANCADA SAIU DA PLAQUINHA (decisão do dono, depois do P0).
  *
- * `uses_equipment_tags` responde "esta operação lida com máquina de plaquinha"
- * — e a PJ Motors lida: a moto dela recebe a plaquinha da Oficina pelo vínculo
- * da unidade. Mas a PJ não tem bancada, nenhum perfil dela cadastra máquina, e
- * a Oficina recusa plaquinha de outra operação (`CORE_TAG_OTHER_COMPANY`). O
- * lote gerado na PJ queimava números do GRUPO em adesivos que jamais entrariam
- * numa máquina — e o QR impresso respondia 404 para quem o escaneasse.
+ * ## O defeito
  *
- * O padrão seguro, escolhido aqui: gerar, imprimir e liberar exigem bancada
- * ativa na empresa. A operação sem bancada continua ADOTANDO a plaquinha da
- * Oficina (Estoque › Unidades), que é o fluxo que sempre funcionou. Se um dia a
- * PJ ganhar bancada, esta regra passa a deixá-la gerar sem mudar uma linha.
+ * Duas regras diziam coisas opostas sobre a mesma empresa. A de cima fez a
+ * plaquinha EXCLUSIVA da PJ Motors; uma mais velha (GAP-PRD-110, "quem gera
+ * plaquinha é quem tem bancada para colá-la") exigia bancada ativa na empresa
+ * para gerar, imprimir a folha e liberar — com 409 `CORE_TAGS_NEED_WORKSHOP`.
+ * A PJ Motors não tem bancada. Somadas, as duas davam: a única empresa que
+ * pode ter plaquinha era justamente a que não podia gerar. NINGUÉM gerava lote
+ * novo, e a tela da PJ trocava "Gerar lote" por um aviso de "sem bancada".
+ *
+ * ## Por que a regra velha não se sustenta mais
+ *
+ * Ela nasceu quando a plaquinha era da PJ E da Oficina, e protegia contra lote
+ * gerado onde ninguém cola o adesivo — o de quem cola era a Oficina. Hoje a
+ * Oficina não tem plaquinha nenhuma (403 em toda rota), e o dono decidiu que a
+ * PJ Motors gera, imprime, libera, consulta e administra as dela. O portão é a
+ * EMPRESA (`exigirEmpresaComPlaquinha`), e só ele: quem não é a PJ continua com
+ * 403 `CORE_COMPANY_NO_TAGS`, exatamente como antes.
+ *
+ * As regras de bancada que NÃO são de plaquinha continuam onde estão: a peça
+ * exige bancada que trabalhe com peça (`WorkshopPartsEntryService`), e a
+ * bancada de celulares não dá QR à máquina dela (`capabilitiesFor(kind)`, nas
+ * rotas por máquina e na reimpressão pela unidade).
  */
-export function empresaTemBancada(companyId: string): boolean {
-  ensureCoreSchema();
-  const row = getConnection()
-    .prepare('SELECT 1 AS ok FROM core_workshops WHERE company_id = ? AND active = 1 LIMIT 1')
-    .get(companyId) as { ok?: number } | undefined;
-  return Boolean(row?.ok);
-}
-
-/** O mesmo guarda, em forma de recusa — para gerar, imprimir e liberar. */
-export function exigirBancadaQueColaPlaquinha(companyId: string): void {
-  if (empresaTemBancada(companyId)) return;
-  const nome = (
-    getConnection()
-      .prepare('SELECT trade_name FROM core_companies WHERE id = ?')
-      .get(companyId) as { trade_name?: string } | undefined
-  )?.trade_name;
-  throw new ApiError(
-    'CORE_TAGS_NEED_WORKSHOP',
-    `${nome ?? 'Esta empresa'} não tem bancada: quem gera, imprime e cola a plaquinha é a oficina que monta `
-    + 'a moto. Aqui a moto recebe a plaquinha da oficina em Estoque › Unidades (Vincular plaquinha) — um lote '
-    + 'gerado nesta empresa queimaria números do grupo em adesivos que nunca entrariam numa máquina.',
-    409,
-  );
-}
 
 /** O token do QR: imprevisível, porque é o que protege a página pública. */
 function novoToken(): string {
@@ -199,8 +187,8 @@ export function criarLoteDePlaquinhas(input: {
   quantidade: number;
 }): { batchId: string; criadas: number; primeira: number; ultima: number } {
   ensureCoreSchema();
+  // Só a regra da empresa: a PJ Motors gera sem bancada (ver o bloco acima).
   exigirEmpresaComPlaquinha(input.companyId);
-  exigirBancadaQueColaPlaquinha(input.companyId);
 
   const quantidade = Math.trunc(Number(input.quantidade));
   if (!Number.isFinite(quantidade) || quantidade < 1) {
@@ -462,10 +450,10 @@ export function liberarPlaquinhas(input: {
   batchId?: string;
 }): { liberadas: number } {
   ensureCoreSchema();
+  // Liberar pedia também bancada ativa (GAP-PRD-110), e a PJ Motors — a única
+  // com plaquinha — não tem: o lote impresso ficava preso em `gerada`. O que
+  // decide é a empresa; o papel continua obrigatório logo abaixo.
   exigirEmpresaComPlaquinha(input.companyId);
-  // Liberar é dizer "o adesivo existe e pode ser colado" — só onde há bancada
-  // para colá-lo (GAP-PRD-110).
-  exigirBancadaQueColaPlaquinha(input.companyId);
 
   return withTransaction(() => {
     const db = getConnection();

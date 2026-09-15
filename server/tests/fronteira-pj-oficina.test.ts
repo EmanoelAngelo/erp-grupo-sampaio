@@ -20,8 +20,13 @@
  * Plaquinha passou a ser EXCLUSIVA da PJ Motors. O caso GAP-PRD-110 terminava
  * provando que "a Oficina segue gerando" — e esse é justamente o comportamento
  * que o dono tirou: a Oficina leva 403 `CORE_COMPANY_NO_TAGS` no pool inteiro,
- * leitura inclusive. A regra da bancada continua valendo para a PJ (sem bancada,
- * não gera). As OS da Oficina (GAP-PRD-109/189) não mudam.
+ * leitura inclusive. As OS da Oficina (GAP-PRD-109/189) não mudam.
+ *
+ * ## O que mudou depois, por decisão do dono
+ *
+ * A regra da bancada saiu da plaquinha: somada à do P0, ela deixava o grupo
+ * sem ninguém que gerasse lote (a PJ não tem bancada). A PJ Motors gera,
+ * imprime e libera sem bancada, e o caso GAP-PRD-110 abaixo agora prova isso.
  */
 import { beforeEach, describe, expect, it } from 'vitest';
 import request from 'supertest';
@@ -303,22 +308,36 @@ describe('GAP-PRD-189 — a moto do pátio não é "vendida à mão"', () => {
 
 // ---------------------------------------------------------------- GAP-PRD-110
 
-describe('GAP-PRD-110 — quem gera plaquinha é quem tem bancada', () => {
-  it('a PJ sem bancada não gera, não imprime nem libera, e a tela sabe por quê; a Oficina não tem pool nenhum', async () => {
+/*
+  A DECISÃO DO DONO VIROU ESTE CASO DE CABEÇA PARA BAIXO.
+
+  Ele provava "quem gera plaquinha é quem tem bancada": a PJ sem bancada levava
+  409 `CORE_TAGS_NEED_WORKSHOP` no lote, na folha e na liberação, e o pool
+  dizia `temBancada: false` para a tela esconder o botão. Somada à regra do P0
+  (plaquinha só na PJ Motors), ela deixava o grupo sem ninguém que gerasse
+  lote. O dono decidiu que a PJ gera, imprime e libera as plaquinhas dela sem
+  bancada — o portão é a empresa. A outra metade do caso continua valendo: a
+  Oficina, COM bancada, não tem pool nenhum.
+*/
+describe('GAP-PRD-110 — a PJ gera sem bancada; a bancada não dá plaquinha a ninguém', () => {
+  it('a PJ sem bancada gera, imprime e libera — o adesivo antigo também; a Oficina, com bancada, leva 403', async () => {
     const gerentePj = await entrar('GER.PJ.FRONTEIRA');
+    const bancadasDaPj = getConnection()
+      .prepare('SELECT COUNT(*) AS n FROM core_workshops WHERE company_id = ?')
+      .get(pj) as { n: number };
+    expect(bancadasDaPj.n).toBe(0);
 
     const pool = await request(app).get('/api/v1/core/equipment-tags').set(gerentePj);
     expect(pool.status, JSON.stringify(pool.body)).toBe(200);
-    expect(pool.body).toMatchObject({ usaPlaquinha: true, temBancada: false });
+    expect(pool.body.usaPlaquinha).toBe(true);
+    // O campo que escondia "Gerar lote" da tela saiu junto com a regra.
+    expect(pool.body.temBancada).toBeUndefined();
 
     const lote = await request(app).post('/api/v1/core/equipment-tags/batches').set(gerentePj).send({ quantidade: 2 });
-    expect(lote.status).toBe(409);
-    expect(lote.body.error.code).toBe('CORE_TAGS_NEED_WORKSHOP');
-    expect(lote.body.error.message).toMatch(/Estoque › Unidades/);
-    const numeros = getConnection().prepare('SELECT COUNT(*) AS n FROM core_equipment_tags').get() as { n: number };
-    expect(numeros.n).toBe(0);
+    expect(lote.status, JSON.stringify(lote.body)).toBe(201);
+    expect(lote.body.criadas).toBe(2);
 
-    // Adesivo gerado ANTES da regra (o legado do banco): nem folha, nem liberação.
+    // Adesivo gerado ANTES da decisão (o legado do banco): vai à folha e é liberado.
     const legado = randomUUID();
     getConnection()
       .prepare(
@@ -327,12 +346,12 @@ describe('GAP-PRD-110 — quem gera plaquinha é quem tem bancada', () => {
       )
       .run(legado, pj, `tok-${legado}`, vendedor, new Date().toISOString(), new Date().toISOString());
     const folha = await request(app).post('/api/v1/core/equipment-tags/sheet').set(gerentePj).send({ tagIds: [legado] });
-    expect(folha.status).toBe(409);
-    expect(folha.body.error.code).toBe('CORE_TAGS_NEED_WORKSHOP');
-    const libera = await request(app).post('/api/v1/core/equipment-tags/release').set(gerentePj).send({ ids: [legado] });
-    expect(libera.status).toBe(409);
-    expect(libera.body.error.code).toBe('CORE_TAGS_NEED_WORKSHOP');
-    // A prévia do layout continua: não gasta número nem papel.
+    expect(folha.status, JSON.stringify(folha.body)).toBe(200);
+    expect(folha.body.plaquinhas).toBe(1);
+    const libera = await request(app).post('/api/v1/core/equipment-tags/release').set(gerentePj).send({ tagIds: [legado] });
+    expect(libera.status, JSON.stringify(libera.body)).toBe(200);
+    expect(libera.body).toEqual({ liberadas: 1 });
+    // A prévia do layout continua como sempre.
     const previa = await request(app).post('/api/v1/core/equipment-tags/sheet').set(gerentePj).send({ preview: true });
     expect(previa.status).toBe(200);
 
@@ -340,8 +359,8 @@ describe('GAP-PRD-110 — quem gera plaquinha é quem tem bancada', () => {
       A OFICINA NÃO TEM POOL (P0 das plaquinhas). Aqui a asserção antiga era
       "a Oficina segue gerando" (201) e "o pool dela tem bancada". A regra do
       dono tirou a plaquinha da Oficina: ela tem bancada, e mesmo assim gerar e
-      ler o pool são 403 — a bancada decide ONDE a PJ gera, não QUEM tem
-      plaquinha. Nenhum número foi reservado pela tentativa.
+      ler o pool são 403 — a bancada não decide quem tem plaquinha. Nenhum
+      número foi reservado pela tentativa.
     */
     const gerenteOf = await entrar('GER.OF.FRONTEIRA');
     const daOficina = await request(app)

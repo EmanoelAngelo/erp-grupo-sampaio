@@ -26,8 +26,8 @@
  *      Justo, a Oficina e outra loja — MESMO com a marca ligada no cadastro,
  *      como um banco antigo pode ter — e a recusa não carrega número, token ou
  *      máquina de ninguém;
- *   2. as mesmas rotas atendem a PJ Motors (ou param na regra seguinte, a da
- *      bancada, que é dela), e o que a PJ lê é só dela;
+ *   2. as mesmas rotas atendem a PJ Motors — sem bancada, que ela não tem e
+ *      não precisa ter desde a decisão do dono —, e o que a PJ lê é só dela;
  *   3. a migração marca SÓ a PJ, é idempotente e não apaga nada: a plaquinha
  *      que a Oficina já tinha continua no banco, inalcançável.
  *
@@ -313,15 +313,28 @@ describe('a PJ Motors usa as mesmas rotas', () => {
     expect(previa.status).toBe(200);
   });
 
-  it('gerar, imprimir e liberar passam pela regra da empresa e param na da BANCADA (a PJ não monta moto)', async () => {
-    for (const res of [
-      await request(app).post('/api/v1/core/equipment-tags/batches').set(pj.auth).send({ quantidade: 2 }),
-      await request(app).post('/api/v1/core/equipment-tags/sheet').set(pj.auth).send({ tagIds: [tagDaPj] }),
-      await request(app).post('/api/v1/core/equipment-tags/release').set(pj.auth).send({ tagIds: [tagDaPj] }),
-    ]) {
-      expect(res.status, JSON.stringify(res.body)).toBe(409);
-      expect(res.body.error.code).toBe('CORE_TAGS_NEED_WORKSHOP');
-    }
+  /*
+    Este caso cobrava o contrário: a PJ passava pela regra da empresa e parava
+    na da BANCADA (409 `CORE_TAGS_NEED_WORKSHOP`), porque não monta moto — e
+    assim ninguém no grupo gerava lote novo. O dono decidiu que a PJ gera,
+    imprime e libera as plaquinhas dela sem bancada: a regra da empresa é o
+    portão inteiro.
+  */
+  it('gerar, imprimir e liberar passam só pela regra da empresa — a PJ não tem bancada, e não precisa', async () => {
+    const lote = await request(app).post('/api/v1/core/equipment-tags/batches').set(pj.auth).send({ quantidade: 2 });
+    expect(lote.status, JSON.stringify(lote.body)).toBe(201);
+    const folha = await request(app)
+      .post('/api/v1/core/equipment-tags/sheet')
+      .set(pj.auth)
+      .send({ batchId: lote.body.batchId });
+    expect(folha.status, JSON.stringify(folha.body)).toBe(200);
+    expect(folha.body.plaquinhas).toBe(2);
+    const libera = await request(app)
+      .post('/api/v1/core/equipment-tags/release')
+      .set(pj.auth)
+      .send({ batchId: lote.body.batchId });
+    expect(libera.status, JSON.stringify(libera.body)).toBe(200);
+    expect(libera.body).toEqual({ liberadas: 2 });
   });
 
   it('marca o próprio adesivo como danificado; o da Oficina não existe para ela', async () => {

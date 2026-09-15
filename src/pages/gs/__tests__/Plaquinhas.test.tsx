@@ -48,6 +48,8 @@ let folhaAvisa: { abaixoDoPiso: boolean; moduloMm: number; baseUrlConfigurada: b
 let poolResponde500: boolean;
 /** O servidor recusa a empresa (403 da regra de ouro) — a PJ com a marca desligada. */
 let poolRecusaAEmpresa: boolean;
+/** O campo que o servidor ANTIGO mandava no pool (`temBancada`); ausente = servidor de hoje. */
+let temBancadaNoPool: boolean | undefined;
 let pedidos: { metodo: string; url: string; corpo: Record<string, unknown> }[];
 
 function plaquinha(n: number, extra: Partial<Plaquinha> = {}): Plaquinha {
@@ -205,6 +207,7 @@ function servidor() {
           danificada: pool.filter((t) => t.status === 'danificada').length,
         },
         usaPlaquinha,
+        ...(temBancadaNoPool === undefined ? {} : { temBancada: temBancadaNoPool }),
       });
     }
     return responder({});
@@ -237,6 +240,7 @@ beforeEach(() => {
   folhaAvisa = { abaixoDoPiso: false, moduloMm: 0.87, baseUrlConfigurada: true };
   poolResponde500 = false;
   poolRecusaAEmpresa = false;
+  temBancadaNoPool = undefined;
   localStorage.clear();
   vi.stubGlobal('fetch', servidor());
   // A folha abre numa janela nova; no teste ela é dublada.
@@ -572,6 +576,51 @@ describe('fora da PJ Motors a rota não abre o pool', () => {
       expect(pedidos.map((p) => p.url).filter((u) => !daCasca.test(u))).toEqual([]);
     });
   }
+});
+
+/**
+ * A PJ MOTORS GERA SEM BANCADA (decisão do dono, depois do P0).
+ *
+ * A tela escondia "Gerar lote" quando o pool dizia `temBancada: false` e punha
+ * no lugar o aviso "Esta operação não tem bancada: a plaquinha vem da oficina".
+ * A PJ — a única empresa com plaquinha — não tem bancada: o gestor dela nunca
+ * via o botão, e o grupo ficou sem ninguém que gerasse lote. O caso manda o
+ * campo como o servidor ANTIGO mandava: a tela não pode mais obedecê-lo.
+ */
+describe('a PJ Motors sem bancada gera lote', () => {
+  it('o gestor da PJ vê "Gerar lote", nenhum aviso de bancada, e o lote nasce', async () => {
+    temBancadaNoPool = false;
+    entrarComo('gerente_loja');
+    montar();
+
+    // Espera a leitura do pool TERMINAR: antes dela a tela antiga também
+    // mostrava o cartão, e só o escondia quando chegava `temBancada: false`.
+    await screen.findByText('Nenhuma plaquinha');
+    expect(screen.getByText('Gerar lote')).toBeTruthy();
+    expect(screen.queryByRole('region', { name: 'Operação sem bancada' })).toBeNull();
+    expect(screen.queryByText(/não tem bancada/)).toBeNull();
+
+    fireEvent.change(screen.getByLabelText('Quantas plaquinhas'), { target: { value: '2' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Gerar' }));
+    await waitFor(() => expect(screen.getByText(/2 plaquinha\(s\) reservadas/)).toBeTruthy());
+    const pedido = pedidos.find((p) => p.metodo === 'POST' && p.url.includes('/equipment-tags/batches'))!;
+    expect(pedido.corpo).toEqual({ quantidade: 2 });
+    // O gestor da PJ também edita o layout e libera: é ele quem administra.
+    expect(screen.getByRole('button', { name: 'Editar o layout' })).toBeTruthy();
+    expect(await screen.findByRole('button', { name: /^Liberar o lote/ })).toBeTruthy();
+  });
+
+  it('o caixa do PDV da PJ não recebe gerar, layout nem liberar (PDV não administra)', async () => {
+    pool = [plaquinha(1, { printed_at: '2026-08-25T11:00:00.000Z' })];
+    entrarComo('operador_caixa_loja');
+    montar();
+    await screen.findByText('Lotes');
+
+    expect(screen.queryByText('Gerar lote')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Editar o layout' })).toBeNull();
+    expect(screen.queryByRole('button', { name: /^Liberar o lote/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /como danificada/ })).toBeNull();
+  });
 });
 
 describe('a busca do balcão', () => {

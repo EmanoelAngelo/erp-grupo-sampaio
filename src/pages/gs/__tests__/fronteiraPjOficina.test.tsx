@@ -8,8 +8,9 @@
  *     diria por quê);
  *   - tire o cartão "Venda registrada à mão" e a plaquinha vendida sem venda
  *     volta a só ter conserto no banco;
- *   - tire o aviso "Operação sem bancada" e a PJ volta a ver o botão de gerar
- *     um lote que o servidor recusa.
+ *   - volte a esconder "Gerar lote" quando o pool diz `temBancada: false` e a
+ *     PJ Motors — sem bancada, e que agora gera as dela por decisão do dono —
+ *     perde o botão de novo.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
@@ -226,8 +227,16 @@ describe('GAP-PRD-189 — a venda à mão tem volta pela ficha', () => {
 
 // ---------------------------------------------------------------- GAP-PRD-110
 
-describe('GAP-PRD-110 — a operação sem bancada adota, e não gera', () => {
-  it('a tela explica o caminho e não oferece "Gerar lote"', async () => {
+/*
+  A DECISÃO DO DONO VIROU ESTE CASO. Ele cobrava o aviso "Operação sem bancada"
+  no lugar de "Gerar lote": a PJ Motors, sem bancada, só adotava plaquinha da
+  Oficina. O dono decidiu que a PJ gera as plaquinhas dela sem bancada, e o
+  servidor parou de recusar e de mandar `temBancada`. O pool dublado aqui
+  ainda manda `temBancada: false`, como o servidor antigo — e a tela não pode
+  mais obedecê-lo.
+*/
+describe('GAP-PRD-110 — a PJ Motors sem bancada gera lote (decisão do dono)', () => {
+  it('a tela oferece "Gerar lote" ao gestor da PJ, sem aviso de bancada', async () => {
     // A PJ Motors (P0 das plaquinhas): fora dela a rota nem abre o pool — a
     // sessão de loja genérica ('co') cairia no estado "não disponível".
     entrarComo('gerente_loja', 'retail', 'pj-motors');
@@ -251,8 +260,12 @@ describe('GAP-PRD-110 — a operação sem bancada adota, e não gera', () => {
         <PlaquinhasPage />
       </MemoryRouter>,
     );
-    const aviso = await screen.findByRole('region', { name: 'Operação sem bancada' });
-    expect(aviso.textContent).toMatch(/Estoque › Unidades/);
-    expect(screen.queryByText('Gerar lote')).toBeNull();
+    // Espera a leitura do pool TERMINAR: antes dela a tela antiga também
+    // mostrava o cartão, e só o escondia quando chegava `temBancada: false`.
+    await screen.findByText('Nenhuma plaquinha');
+    expect(screen.getByText('Gerar lote')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Gerar' })).toBeTruthy();
+    expect(screen.queryByRole('region', { name: 'Operação sem bancada' })).toBeNull();
+    expect(screen.queryByText(/não tem bancada/)).toBeNull();
   });
 });

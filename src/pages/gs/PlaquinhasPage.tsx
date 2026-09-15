@@ -168,12 +168,6 @@ function PoolDePlaquinhas() {
   const [usaPlaquinha, setUsaPlaquinha] = useState(true);
   /** A frase do servidor quando ele recusa a empresa (403 da regra de ouro). */
   const [motivoSemPlaquinha, setMotivoSemPlaquinha] = useState<string | undefined>(undefined);
-  /*
-    A operação SEM BANCADA não gera plaquinha (GAP-PRD-110): a PJ Motors adota a
-    plaquinha da Oficina pela unidade. `true` até o servidor dizer o contrário —
-    servidor antigo não manda o campo, e aí nada muda.
-  */
-  const [temBancada, setTemBancada] = useState(true);
   const [layout, setLayout] = useState<Layout | null>(null);
   const [formatos, setFormatos] = useState<FormatoPlaquinha[]>([]);
   const [formatoId, setFormatoId] = useState('plaq_a4_63x33_3col');
@@ -217,7 +211,6 @@ function PoolDePlaquinhas() {
           total: number;
           resumo: Record<string, number>;
           usaPlaquinha: boolean;
-          temBancada?: boolean;
         }>(
           `/core/equipment-tags${params.toString() ? `?${params}` : ''}`,
         ),
@@ -231,7 +224,6 @@ function PoolDePlaquinhas() {
       setTotalFiltrado(Number(pool.total ?? (pool.items ?? []).length));
       setResumo(pool.resumo ?? {});
       setUsaPlaquinha(pool.usaPlaquinha);
-      setTemBancada(pool.temBancada !== false);
       setLotes(batches.items ?? []);
       if (cfg) setLayout(cfg.layout);
       /*
@@ -355,27 +347,15 @@ function PoolDePlaquinhas() {
       </div>
 
       {/*
-        A OPERAÇÃO QUE ADOTA, E NÃO GERA (GAP-PRD-110).
+        "GERAR LOTE" NÃO DEPENDE MAIS DE BANCADA (decisão do dono, depois do P0).
 
-        A PJ Motors usa plaquinha — a moto dela recebe a da Oficina pela unidade —
-        mas não tem bancada: nenhum perfil dela cadastra máquina, e a Oficina
-        recusa plaquinha de outra operação. O lote gerado aqui queimava números
-        do grupo em adesivos que nunca entrariam numa máquina, e o QR respondia
-        404. Sem bancada, a tela explica o caminho certo em vez do botão.
+        O cartão só aparecia com `temBancada` do servidor, e a PJ Motors — a
+        única empresa com plaquinha — não tem bancada: o gerente dela via, no
+        lugar do botão, um aviso de "sem bancada, a plaquinha vem da oficina".
+        A Oficina não tem mais plaquinha, e a PJ gera as dela. Quem pode gerar é
+        decidido pelo perfil; a empresa já foi decidida na porta da rota.
       */}
-      {!temBancada && (
-        <section
-          aria-label="Operação sem bancada"
-          className="mb-5 px-4 py-3 rounded-[var(--gs-radius)] bg-[var(--gs-warning-bg)] text-[length:var(--gs-text-sm)]"
-        >
-          <strong>Esta operação não tem bancada: a plaquinha vem da oficina.</strong> Quem gera,
-          imprime e cola o adesivo é a oficina que monta a moto; aqui a moto recebe a plaquinha em{' '}
-          <strong>Estoque › Unidades</strong> (Vincular plaquinha). Plaquinha gerada aqui antes desta
-          regra não entra em máquina nenhuma — marque-a como danificada para o número não circular.
-        </section>
-      )}
-
-      {podeGerar && temBancada && (
+      {podeGerar && (
         <Card
           title="Gerar lote"
           subtitle="Os números saem da sequência do grupo — nunca se repetem, nem entre operações."

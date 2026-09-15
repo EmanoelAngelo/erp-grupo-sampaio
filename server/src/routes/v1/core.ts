@@ -709,9 +709,7 @@ import {
 import {
   criarLoteDePlaquinhas,
   ehEmpresaDasPlaquinhas,
-  empresaTemBancada,
   empresaUsaPlaquinha,
-  exigirBancadaQueColaPlaquinha,
   exigirEmpresaComPlaquinha,
   formatTagId,
   listarLotes as listarLotesDePlaquinha,
@@ -13455,9 +13453,12 @@ coreRouter.get('/labels/equipment/formats', (req: AuthedRequest, res, next) => {
 // identificada por etiqueta comercial — código de barras e preço.
 //
 // Os perfis são os da BANCADA (mecânico, gerente de oficina, atendente,
-// caixa da oficina) mais o gerente de loja, que é quem adota a plaquinha na
-// PJ Motors. O `gerente_loja` de uma loja de roupa passa no perfil e para na
-// regra de ouro, com a frase que explica por quê.
+// caixa da oficina) mais o gerente de loja — o gestor da PJ Motors
+// (`ADMIN-PJ MOTORS`), que gera, imprime, libera e vincula. A PJ não tem
+// bancada, e nenhuma destas rotas pede bancada desde a decisão do dono: a
+// regra de ouro é o portão inteiro. O `gerente_loja` de uma loja de roupa
+// passa no perfil e para na regra de ouro, com a frase que explica por quê;
+// o caixa do PDV (`operador_caixa_loja`) não está em lista nenhuma daqui.
 
 coreRouter.post('/equipment-tags/batches', (req: AuthedRequest, res, next) => {
   try {
@@ -13528,9 +13529,9 @@ coreRouter.get('/equipment-tags', (req: AuthedRequest, res, next) => {
       })(),
       resumo: resumoDoPool(companyId),
       usaPlaquinha: empresaUsaPlaquinha(companyId),
-      // Gerar, imprimir e liberar exigem bancada para colar o adesivo
-      // (GAP-PRD-110): a tela explica em vez de oferecer o que leva 409.
-      temBancada: empresaTemBancada(companyId),
+      // `temBancada` saiu: ele existia para a tela esconder "Gerar lote" da PJ
+      // Motors, que não tem bancada. Gerar deixou de depender de bancada
+      // (decisão do dono) — o portão é só a empresa, conferido acima.
     });
   } catch (err) {
     next(err);
@@ -13618,9 +13619,13 @@ coreRouter.post('/equipment-tags/sheet', (req: AuthedRequest, res, next) => {
       return;
     }
 
-    // Imprimir o lote é o passo antes de colar: sem bancada, o adesivo não teria
-    // onde entrar (GAP-PRD-110). A pré-visualização do layout continua livre.
-    exigirBancadaQueColaPlaquinha(companyId);
+    /*
+      A FOLHA NÃO PEDE MAIS BANCADA. Aqui morava a recusa do GAP-PRD-110 ("sem
+      bancada, o adesivo não teria onde entrar"), e ela barrava a PJ Motors — a
+      única empresa com plaquinha, e sem bancada: o lote gerado nunca ia ao
+      papel, e sem papel não há liberação. A regra da empresa, conferida no
+      topo desta rota, é o portão inteiro (decisão do dono).
+    */
 
     /*
       O LOTE INTEIRO, ou os ids escolhidos — e nunca por lista janelada.
