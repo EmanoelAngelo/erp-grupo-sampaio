@@ -582,10 +582,14 @@ describe('o erro diz de quem é o problema', () => {
       existe cadastro de unidades: pedir outra é recusado, com o motivo, antes
       de abrir cofre ou chamar a SEFAZ.
     */
+    // A Gringa com o PRÓPRIO A1 (auditoria P0): o arquivo padrão é do CNPJ que
+    // a Preço Justo tem como emitente, e gravá-lo na Gringa é o gesto que o
+    // envio passou a recusar (A1 na operação errada). O caso prova a recusa da
+    // UNIDADE, não o CNPJ — um CNPJ fictício de outra raiz serve.
     await upsertCertificateA1({
       companyId: gringa,
       operationalUnitId: 'unit-default',
-      pfxBase64: fazerPfx(),
+      pfxBase64: fazerPfx('11444777000161'),
       password: SENHA_CERT,
     });
     const { SefazRealAdapter } = await import('../src/services/core/SefazRealAdapter.js');
