@@ -26,6 +26,7 @@ import { exigirCodigoDeBarrasValido } from './Gtin.js';
 import { isValidCnpj } from './FiscalConfigService.js';
 import { limitarDeslocamento, limitarPagina } from './paginacao.js';
 import { modeloAtivo } from './produtoVendavel.js';
+import { pendenciasFiscaisDoBalcao } from './PendenciaFiscalNoBalcao.js';
 
 // ------------------------------------------------------------------ produtos
 
@@ -1847,6 +1848,8 @@ function resumoDoEvento(
       return 'Foto acrescentada.';
     case 'product.image.remove':
       return 'Foto removida.';
+    case 'product.image.thumbnail':
+      return 'Miniatura do balcão gerada para uma foto.';
     case 'product.kind.to_part':
       return 'Convertido em peça de oficina.';
     case 'product.kind.to_retail':
@@ -1877,6 +1880,59 @@ export function getProduct(companyId: string, productId: string): Record<string,
     .prepare('SELECT * FROM core_products WHERE id = ? AND company_id = ?')
     .get(productId, companyId) as Record<string, unknown> | undefined;
   return row ?? null;
+}
+
+/**
+ * A MINIATURA E A MARCA DE FOTO DA LINHA DO BALCÃO (P0 da Preço Justo).
+ *
+ * O DEFEITO: a busca devolvia `p.*` — com `image_url`, o ORIGINAL (até 1600
+ * px) — e nenhuma miniatura. O PDV não mostrava foto; mostrar com o que vinha
+ * seria baixar trinta originais por busca. Agora a linha traz `thumb_url`, a
+ * miniatura da foto que o balcão deve mostrar, e `tem_foto`, para a tela
+ * distinguir "sem foto" de "foto sem miniatura" (a antiga, na fila do
+ * preenchimento).
+ *
+ * A FOTO QUE VALE: a do próprio produto primeiro; sem ela, a do MODELO — a
+ * variante "Camiseta Polo · M · Azul" nasce sem galeria e é ela que o balcão
+ * vende. Dentro de cada produto, a principal e depois a ordem da galeria — a
+ * mesma ordem de `listProductImages`. `company_id` nas duas subconsultas: a
+ * foto de outra loja não entra nem por um `parent_id` torto.
+ *
+ * `IN (p.id, p.parent_id)` com `parent_id` nulo casa só `p.id` — é o caso do
+ * produto sem grade.
+ */
+const MINIATURA_DO_BALCAO = `
+  (SELECT i.thumb_url FROM core_product_images i
+    WHERE i.company_id = p.company_id AND i.product_id IN (p.id, p.parent_id)
+    ORDER BY CASE WHEN i.product_id = p.id THEN 0 ELSE 1 END,
+             i.is_primary DESC, i.position, i.created_at
+    LIMIT 1) AS thumb_url,
+  CASE WHEN p.image_url IS NOT NULL
+         OR EXISTS (SELECT 1 FROM core_product_images i2
+                     WHERE i2.company_id = p.company_id
+                       AND i2.product_id IN (p.id, p.parent_id))
+       THEN 1 ELSE 0 END AS tem_foto`;
+
+/**
+ * A linha da busca como o BALCÃO a recebe.
+ *
+ * `image_url` SAI da resposta de propósito: é o caminho do original, e o PDV
+ * não tem motivo para conhecê-lo. Com ele ausente, nenhuma tela da venda
+ * consegue — nem por descuido de quem escrever a próxima — desenhar a lista
+ * baixando o arquivo grande. A ficha (`GET /products/:id`) e a galeria
+ * continuam com o original, que é onde ele é usado.
+ *
+ * `fiscal_pendencias` é o "fiscal incompleto" do operador: os NOMES dos campos
+ * que a NFC-e recusaria (ver `PendenciaFiscalNoBalcao.ts`), nunca os valores.
+ */
+function paraOBalcao(companyId: string, linhas: Record<string, unknown>[]): Record<string, unknown>[] {
+  const pendencias = pendenciasFiscaisDoBalcao(companyId, linhas);
+  return linhas.map((linha) => {
+    const copia: Record<string, unknown> = { ...linha };
+    delete copia.image_url;
+    copia.fiscal_pendencias = pendencias.get(String(linha.id)) ?? [];
+    return copia;
+  });
 }
 
 /**
@@ -1979,6 +2035,7 @@ export function searchProducts(
        */
       `SELECT p.*, COALESCE(s.quantity, 0) AS stock_quantity,
               w.name AS workshop_name,
+              ${MINIATURA_DO_BALCAO},
               CASE WHEN p.barcode = ? OR upper(p.internal_code) = upper(?)
                      OR EXISTS (SELECT 1 FROM core_product_barcodes b3
                                  WHERE b3.product_id = p.id AND b3.barcode = ?)
@@ -2045,11 +2102,14 @@ export function searchProducts(
     manda o achado para a lista, onde a pessoa digita o peso — em vez de pôr
     "1 kg" no carrinho, que é o que o casamento exato faria.
   */
-  if (achados.some((l) => Number(l.matched_exact) === 1)) return achados;
+  if (achados.some((l) => Number(l.matched_exact) === 1)) return paraOBalcao(companyId, achados);
   const daBalanca = itensDaEtiquetaDaBalanca(companyId, term, semKits);
-  if (daBalanca.length === 0) return achados;
+  if (daBalanca.length === 0) return paraOBalcao(companyId, achados);
   const jaVieram = new Set(daBalanca.map((l) => String(l.id)));
-  return [...daBalanca, ...achados.filter((l) => !jaVieram.has(String(l.id)))].slice(0, limit);
+  return paraOBalcao(
+    companyId,
+    [...daBalanca, ...achados.filter((l) => !jaVieram.has(String(l.id)))].slice(0, limit),
+  );
 }
 
 /**
@@ -2113,7 +2173,8 @@ function itensDaEtiquetaDaBalanca(
   const linhas = getConnection()
     .prepare(
       `SELECT p.*, COALESCE(s.quantity, 0) AS stock_quantity,
-              w.name AS workshop_name, 0 AS matched_exact
+              w.name AS workshop_name, 0 AS matched_exact,
+              ${MINIATURA_DO_BALCAO}
          FROM core_products p
          LEFT JOIN core_stock s ON s.product_id = p.id AND s.company_id = p.company_id
          LEFT JOIN core_workshops w ON w.id = p.workshop_id AND w.company_id = p.company_id
