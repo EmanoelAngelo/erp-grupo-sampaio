@@ -519,6 +519,40 @@ export function createSaleReturn(input: {
     throw new ApiError('CORE_RETURN_EMPTY', 'Selecione ao menos um item para devolver.', 400);
   }
 
+  /*
+    QUAL LINHA DA VENDA ESTÁ VOLTANDO — conferido AQUI, e não no SELECT.
+
+    O DEFEITO (auditoria do PDV, P0 da Preço Justo): `saleItemId` era usado cru
+    como parâmetro do `SELECT ... WHERE id = ?` lá embaixo. A linha que chegava
+    sem ele — PDV antigo que ainda manda `productId`, tela recarregada com o
+    item meio montado, integração escrevendo o corpo à mão — não dava recusa
+    nenhuma: o node:sqlite estourava "Provided value cannot be bound to SQLite
+    parameter 1" e o balcão recebia 500 "Erro interno.". Com um objeto no campo
+    a pilha era outra ("Unknown named parameter"), e o desfecho o mesmo. Pior
+    que a mensagem: o operador não tem como saber se a devolução entrou ou não,
+    e a mercadoria já está no balcão com o cliente esperando o dinheiro.
+
+    A QUANTIDADE já tinha recusa nomeada desde sempre (CORE_RETURN_QUANTITY_INVALID,
+    no laço); o identificador da linha, que é o outro campo obrigatório do
+    mesmo objeto, não tinha nenhuma. Agora tem — antes da transação, como as
+    demais conferências de forma do pedido, para nada ser escrito e a frase
+    dizer o que fazer.
+  */
+  input.items.forEach((pedido, n) => {
+    // `unknown`, e não `string`: o tipo promete o campo, mas quem chega aqui é
+    // um corpo HTTP — é exatamente a promessa não cumprida que virava 500.
+    const { saleItemId } = (pedido ?? {}) as { saleItemId?: unknown };
+    if (typeof saleItemId !== 'string' || saleItemId.trim() === '') {
+      throw new ApiError(
+        'CORE_RETURN_ITEM_REQUIRED',
+        `A linha ${n + 1} da devolução não diz QUAL item da venda está voltando. `
+          + 'Escolha o item na lista da venda e registre de novo.',
+        400,
+        { index: n },
+      );
+    }
+  });
+
   return withTransaction(() => {
     const db = getConnection();
 

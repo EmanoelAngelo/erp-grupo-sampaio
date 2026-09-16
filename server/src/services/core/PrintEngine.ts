@@ -460,7 +460,28 @@ export function createPrintJob(input: {
   }
   // A plaquinha só nasce na empresa que tem plaquinha — por qualquer caminho.
   exigirEmpresaDoPapel(input.companyId, input.documentType);
-  const copies = Math.max(1, Math.min(10, Math.floor(input.copies ?? 1)));
+  /*
+    QUANTAS VIAS — e por que o que não é número vira UMA.
+
+    O DEFEITO (auditoria do PDV): a conta era `Math.max(1, Math.min(10,
+    Math.floor(input.copies ?? 1)))`, e `Math.floor` de algo que não é número é
+    NaN. NaN atravessa `min` e `max` intactos, chega ao INSERT e o node:sqlite
+    o grava como NULL: "NOT NULL constraint failed: core_print_jobs.copies" —
+    500 "Erro interno." ao mandar o CUPOM DA VENDA para a fila, com o cliente
+    esperando o papel. A rota já convertia com `Number(req.body.copies)`, e
+    `Number({})` é NaN: bastava um cliente de API mandar o campo com a forma
+    errada.
+
+    O desfecho é o mesmo que o campo já dava para qualquer outro número
+    impossível — o pedido de −3 vias já saía com 1, o de 50 com 10 —, e essa é
+    a política declarada deste campo: via de cupom se apara, não se recusa. O
+    que muda é que agora o número ilegível entra na mesma aparadura em vez de
+    derrubar a impressão.
+  */
+  const viasPedidas = Number(input.copies ?? 1);
+  const copies = Number.isFinite(viasPedidas)
+    ? Math.max(1, Math.min(10, Math.floor(viasPedidas)))
+    : 1;
 
   const printer = impressoraDoDocumento(
     input.companyId,
