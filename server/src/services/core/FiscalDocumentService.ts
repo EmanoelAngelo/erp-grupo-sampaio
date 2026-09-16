@@ -574,7 +574,10 @@ export function createNfeForSale(input: {
   ensureCoreSchema();
 
   const existente = getDocumentBySale(input.companyId, input.saleId, MODEL_NFE);
-  if (existente) return { document: existente, created: false };
+  if (existente) {
+    recusarSeODestinatarioMudou(existente, input.recipient);
+    return { document: existente, created: false };
+  }
   recusarSeOutroModeloDocumentaAVenda(input.companyId, input.saleId, MODEL_NFE);
 
   assertCanEmit(input.companyId, MODEL_NFE, 'document');
@@ -720,9 +723,66 @@ export function createNfeForSale(input: {
     });
   } catch (err) {
     const jaExiste = getDocumentBySale(input.companyId, input.saleId, MODEL_NFE);
-    if (jaExiste) return { document: jaExiste, created: false };
+    if (jaExiste) {
+      recusarSeODestinatarioMudou(jaExiste, input.recipient);
+      return { document: jaExiste, created: false };
+    }
     throw err;
   }
+}
+
+/** O CPF/CNPJ como ele é comparado: só dígitos, para "11.444.777/0001-61" bater com o cru. */
+function digitosDoDocumento(valor: string | null | undefined): string {
+  return String(valor ?? '').replace(/\D/g, '');
+}
+
+/** O nome como ele é comparado: sem caixa, sem espaço dobrado, sem sobra nas pontas. */
+function nomeComparavel(valor: string | null | undefined): string {
+  return String(valor ?? '').trim().replace(/\s+/g, ' ').toUpperCase();
+}
+
+/**
+ * A CORREÇÃO DO DESTINATÁRIO NÃO PODE SER ENGOLIDA (P0 fiscal).
+ *
+ * O DEFEITO: `createNfeForSale` é idempotente por (venda, modelo) e devolvia a
+ * nota existente para QUALQUER segundo pedido. Medido: quem digitou o CNPJ
+ * errado na primeira emissão reabria a ficha, "corrigia" o destinatário,
+ * clicava — e recebia 200 com a nota ANTIGA (mesmo número, mesma chave) e a
+ * confirmação de sucesso. A nota errada tinha ido ao fisco e a tela dizia que
+ * a correção deu certo.
+ *
+ * A idempotência que importa continua de pé: o clique duplo manda o MESMO
+ * destinatário e recebe a mesma nota. O que passa a ser recusado é o pedido
+ * que muda quem é o destinatário — porque isso não é repetir, é outra nota. E
+ * outra nota exige cancelar a primeira, dentro do prazo.
+ */
+function recusarSeODestinatarioMudou(doc: FiscalDocument, pedido: NfeRecipient): void {
+  const row = getConnection()
+    .prepare('SELECT recipient_name, recipient_document FROM core_fiscal_documents WHERE id = ?')
+    .get(doc.id) as { recipient_name: string | null; recipient_document: string | null } | undefined;
+  const mesmoDocumento =
+    digitosDoDocumento(row?.recipient_document) === digitosDoDocumento(pedido.document);
+  const mesmoNome = nomeComparavel(row?.recipient_name) === nomeComparavel(pedido.name);
+  if (mesmoDocumento && mesmoNome) return;
+
+  throw new ApiError(
+    'CORE_FISCAL_SALE_NFE_RECIPIENT_DIFFERS',
+    `Esta venda já tem NF-e (modelo 55) nº ${doc.number}, série ${doc.serie} (situação ${doc.status}), `
+      + `emitida para ${row?.recipient_name ?? 'destinatário não registrado'}`
+      + `${row?.recipient_document ? ` (${row.recipient_document})` : ''}. Emitir de novo com outro `
+      + 'destinatário não corrige a nota que já foi ao fisco: cancele a nota — dentro do prazo de '
+      + 'cancelamento — e emita a correta. Se a nota estiver rejeitada, use a reemissão, que remonta do '
+      + 'cadastro corrigido com o mesmo número.',
+    409,
+    {
+      documentId: doc.id,
+      model: doc.model,
+      number: doc.number,
+      serie: doc.serie,
+      status: doc.status,
+      accessKey: doc.accessKey,
+    },
+  );
 }
 
 /**

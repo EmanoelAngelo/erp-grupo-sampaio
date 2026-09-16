@@ -689,7 +689,13 @@ describe('a varredura enxerga o roteador inteiro', () => {
     // nenhum caminho o chamava fora dos testes, então a NF-e do sistema só
     // saía de pedido online. Sob `fiscal.manage` (a mesma régua das NF-e de
     // devolução) — FECHADA ao contador, que não emite nota.
-    expect(rotas).toHaveLength(555);
+    // 556 com GET /fiscal/sales/:saleId/documentos (resíduo do P0 fiscal): os
+    // documentos fiscais de UMA venda, nos DOIS modelos. A ficha lia o estado
+    // por `/status`, que responde só pela NFC-e, e a NF-e de balcão sumia da
+    // ficha — a tela voltava a oferecer a emissão que já aconteceu. Sob a mesma
+    // `fiscal.manage` do gesto de emitir — FECHADA ao contador, que recebe os
+    // documentos no pacote do mês.
+    expect(rotas).toHaveLength(556);
   });
 
   it('as portas do contador existem no roteador com esse nome exato', () => {
@@ -748,7 +754,10 @@ describe('o contador é recusado em TODAS as rotas do núcleo, menos nas abertas
     // /units/:id/tag/livres): o contador não administra plaquinha.
     // 551 com a NF-e da venda de balcão (POST /fiscal/sales/:saleId/nfe): o
     // contador não emite nota — ele a recebe no pacote do mês.
-    expect(fechadas).toHaveLength(551);
+    // 552 com os documentos fiscais de uma venda (GET
+    // /fiscal/sales/:saleId/documentos): a leitura que precede o gesto de
+    // emitir, sob a mesma `fiscal.manage` — fechada a quem não emite.
+    expect(fechadas).toHaveLength(552);
 
     /*
       O relatório é a lista de quem DIVERGIU, com o status medido e a linha do
