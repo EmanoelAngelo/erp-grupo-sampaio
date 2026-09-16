@@ -411,6 +411,9 @@ describe('GAP-PRD-081 — o turno só fecha com as pendências ditas e declarada
                 devolvivelCents: 5000,
                 reembolsadoCents: 2000,
                 pendenteCents: 3000,
+                // A venda devolvida foi paga EM ESPÉCIE, nesta gaveta: o
+                // dinheiro do cliente está mesmo aqui (P00-caixa-gaveta).
+                naGavetaCents: 3000,
                 createdAt: '2026-09-11T12:00:00.000Z',
               },
             ],
@@ -451,6 +454,97 @@ describe('GAP-PRD-081 — o turno só fecha com as pendências ditas e declarada
       pendenciasCiente: true,
       pendenciasMotivo: 'o gerente faz o PIX amanhã cedo',
     });
+  });
+
+  /*
+    A MESMA DÍVIDA, COM O DINHEIRO EM OUTRO LUGAR (P00-caixa-gaveta).
+
+    O DEFEITO MEDIDO pela verificação adversarial: o rodapé somava TODA
+    devolução pendente e afirmava que o valor estava na contagem desta gaveta.
+    Para a venda paga no cartão ou no PIX isso é falso — o dinheiro caiu na
+    conta e o estorno volta por lá. Para a dívida herdada de um turno anterior
+    também: aquela gaveta já foi entregue. Nos dois casos o servidor manda
+    `naGavetaCents: 0`, e o rodapé tem de parar de mandar o operador procurar
+    dinheiro que não está ali.
+  */
+  it('devolução de venda no cartão: o rodapé NÃO manda procurar o dinheiro nesta gaveta', async () => {
+    caixa({
+      resumoComPendencias: false,
+      fechar: () =>
+        recusa(409, 'CORE_CASH_CLOSE_ELECTRONIC_PENDING', 'Este turno tem 1 pendência(s).', {
+          pendencias: {
+            cobrancas: [],
+            pagamentosPendentes: [],
+            vendasOffline: [],
+            devolucoesAguardandoReembolso: [
+              {
+                id: 'dev-2',
+                number: 8,
+                saleId: 'v-10',
+                saleNumber: 10,
+                devolvivelCents: 5000,
+                reembolsadoCents: 0,
+                pendenteCents: 5000,
+                // Venda no crédito: nenhum centavo dela passou pela gaveta.
+                naGavetaCents: 0,
+                createdAt: '2026-09-11T12:00:00.000Z',
+              },
+            ],
+            quantidade: 1,
+            totalCents: 5000,
+          },
+        }),
+    });
+    const confirmar = await pedirFechamento();
+    fireEvent.click(confirmar);
+    const bloco = await screen.findByTestId('pendencias-do-fechamento');
+    // A dívida continua escrita, com a venda e o valor: ela existe.
+    expect(bloco.textContent).toMatch(/Devolução #8 da venda #10/);
+    expect(bloco.textContent).toMatch(/50,00 ainda\s*não devolvidos ao cliente/);
+    // Mas o rodapé não afirma o que não é verdade.
+    expect(bloco.textContent).not.toMatch(/ESTÁ na contagem desta gaveta/);
+    expect(bloco.textContent).toMatch(/Nada desta lista está na contagem desta gaveta/);
+    expect(bloco.textContent).toMatch(/volta pelo meio da venda/);
+  });
+
+  /*
+    SERVIDOR ANTERIOR AO CÁLCULO: NÃO SE SABE, ENTÃO NÃO SE AFIRMA. O corpo
+    sem `naGavetaCents` é o de uma API que ainda não subiu; a tela não pode
+    inventar o lugar do dinheiro nem para um lado nem para o outro.
+  */
+  it('sem naGavetaCents no corpo, o rodapé manda conferir em vez de chutar o lugar', async () => {
+    caixa({
+      resumoComPendencias: false,
+      fechar: () =>
+        recusa(409, 'CORE_CASH_CLOSE_ELECTRONIC_PENDING', 'Este turno tem 1 pendência(s).', {
+          pendencias: {
+            cobrancas: [],
+            pagamentosPendentes: [],
+            vendasOffline: [],
+            devolucoesAguardandoReembolso: [
+              {
+                id: 'dev-3',
+                number: 9,
+                saleId: 'v-11',
+                saleNumber: 11,
+                devolvivelCents: 4000,
+                reembolsadoCents: 0,
+                pendenteCents: 4000,
+                createdAt: '2026-09-11T12:00:00.000Z',
+              },
+            ],
+            quantidade: 1,
+            totalCents: 4000,
+          },
+        }),
+    });
+    const confirmar = await pedirFechamento();
+    fireEvent.click(confirmar);
+    const bloco = await screen.findByTestId('pendencias-do-fechamento');
+    expect(bloco.textContent).toMatch(/Devolução #9 da venda #11/);
+    expect(bloco.textContent).not.toMatch(/ESTÁ na contagem desta gaveta/);
+    expect(bloco.textContent).not.toMatch(/Nada desta lista está na contagem desta gaveta/);
+    expect(bloco.textContent).toMatch(/Confira de onde sai cada reembolso/);
   });
 
   it('sem pendência no resumo, a recusa do servidor traz a lista e pede a ciência', async () => {

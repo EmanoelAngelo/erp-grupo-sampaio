@@ -92,6 +92,17 @@ export interface DevolucaoAguardandoReembolso {
   reembolsadoCents: number;
   /** O que a loja ainda deve a esta pessoa. */
   pendenteCents: number;
+  /**
+   * Quanto desta dívida ESTÁ, em espécie, na contagem DESTA gaveta.
+   *
+   * Zero não quer dizer "não deve": quer dizer que o dinheiro não está aqui.
+   * Só é maior que zero quando a venda devolvida recebeu DINHEIRO e recebeu
+   * NESTA gaveta — a venda no cartão ou no PIX nunca pôs espécie aqui, e a
+   * dívida herdada de um turno anterior entrou numa gaveta que já foi
+   * entregue. Quem escreve a frase do papel e a da tela lê este número, e não
+   * a existência da pendência (P00-caixa-gaveta).
+   */
+  naGavetaCents: number;
   createdAt: string;
 }
 
@@ -294,6 +305,16 @@ export function devolucoesAguardandoReembolsoDoTurno(
     .prepare(
       `SELECT r.id AS id, r.number AS number, r.sale_id AS saleId, s.number AS saleNumber,
               r.total_cents AS devolvivelCents, r.created_at AS createdAt,
+              s.cash_session_id AS gavetaDaVenda, s.change_cents AS trocoDaVendaCents,
+              /*
+                O DINHEIRO QUE A VENDA PÔS NA GAVETA. Só a linha em espécie e
+                já liquidada: cartão e PIX caem na conta e nunca estiveram aqui.
+                O troco sai depois, no mapa, porque ele voltou ao cliente na
+                hora — a gaveta ficou com o líquido.
+              */
+              (SELECT COALESCE(SUM(p.amount_cents), 0) FROM core_sale_payments p
+                WHERE p.sale_id = r.sale_id AND p.method = 'dinheiro' AND p.status = 'settled')
+                AS dinheiroDaVendaCents,
               (SELECT COALESCE(SUM(f.amount_cents), 0) FROM core_sale_return_refunds f
                 WHERE f.return_id = r.id) AS reembolsadoCents
          FROM core_sale_returns r
@@ -321,12 +342,39 @@ export function devolucoesAguardandoReembolsoDoTurno(
     saleNumber: number | null;
     devolvivelCents: number;
     createdAt: string;
+    gavetaDaVenda: string | null;
+    trocoDaVendaCents: number;
+    dinheiroDaVendaCents: number;
     reembolsadoCents: number;
   }[];
   return linhas
     .map((l) => {
       const devolvivelCents = Number(l.devolvivelCents ?? 0);
       const reembolsadoCents = Number(l.reembolsadoCents ?? 0);
+      const pendenteCents = Math.max(0, devolvivelCents - reembolsadoCents);
+      /*
+        ONDE ESTÁ O DINHEIRO DESTA DÍVIDA (P00-caixa-gaveta).
+
+        O DEFEITO MEDIDO pela verificação adversarial: o papel do fechamento e
+        o rodapé da tela somavam TODA devolução pendente e afirmavam que o
+        valor estava na contagem desta gaveta. Venda de R$ 100,00 paga no
+        CRÉDITO, devolução de R$ 50,00: gaveta com esperado 10.000, contado
+        10.000, diferença 0 — e o papel mandava separar R$ 50,00 que nunca
+        estiveram ali. O mesmo saía no turno seguinte para a dívida herdada,
+        cuja gaveta nunca viu o dinheiro.
+
+        A espécie só está AQUI quando a venda devolvida recebeu dinheiro e
+        recebeu NESTA gaveta. O troco já voltou ao cliente na hora, então sai
+        da conta — a gaveta ficou com o líquido, como o resumo do turno
+        (`changeCents`) também trata. E o que está aqui nunca passa do que
+        ainda se deve.
+      */
+      const dinheiroLiquidoDaVenda = Math.max(
+        0,
+        Number(l.dinheiroDaVendaCents ?? 0) - Number(l.trocoDaVendaCents ?? 0),
+      );
+      const naGavetaCents =
+        String(l.gavetaDaVenda ?? '') === turno.id ? Math.min(pendenteCents, dinheiroLiquidoDaVenda) : 0;
       return {
         id: String(l.id),
         number: Number(l.number),
@@ -334,7 +382,8 @@ export function devolucoesAguardandoReembolsoDoTurno(
         saleNumber: l.saleNumber ?? null,
         devolvivelCents,
         reembolsadoCents,
-        pendenteCents: Math.max(0, devolvivelCents - reembolsadoCents),
+        pendenteCents,
+        naGavetaCents,
         createdAt: String(l.createdAt),
       };
     })

@@ -2479,10 +2479,11 @@ export interface PendenciasEletronicas {
     errorMessage: string | null;
   }[];
   /**
-   * Devolução em duas etapas registrada neste turno cujo reembolso ainda não
-   * foi registrado (auditoria do PDV): dinheiro que a loja DEVE ao cliente e
-   * que continua na gaveta enquanto o reembolso for em espécie. Opcional:
-   * servidor anterior a esta versão não manda.
+   * Devolução em duas etapas cujo reembolso ainda não foi registrado
+   * (auditoria do PDV): dinheiro que a loja DEVE ao cliente, e que continua
+   * nesta gaveta apenas quando a venda devolvida recebeu espécie AQUI —
+   * `naGavetaCents` é quem responde isso. Opcional: servidor anterior a esta
+   * versão não manda.
    */
   devolucoesAguardandoReembolso?: {
     id: string;
@@ -2492,6 +2493,14 @@ export interface PendenciasEletronicas {
     devolvivelCents: number;
     reembolsadoCents: number;
     pendenteCents: number;
+    /**
+     * Quanto desta dívida está, em espécie, na contagem DESTA gaveta. Zero
+     * não quer dizer "não deve": quer dizer que o dinheiro não está aqui (a
+     * venda foi no cartão ou no PIX, ou a dívida veio de outro turno).
+     * Opcional: servidor anterior a P00-caixa-gaveta não manda, e aí a tela
+     * não afirma lugar nenhum.
+     */
+    naGavetaCents?: number;
     createdAt: string;
   }[];
   quantidade: number;

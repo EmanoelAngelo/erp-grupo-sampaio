@@ -119,6 +119,32 @@ async function vender(b: Balcao): Promise<{ saleId: string; saleItemId: string }
   };
 }
 
+/**
+ * A MESMA VENDA, PAGA NA MAQUININHA. O dinheiro dela cai na conta e NUNCA
+ * passa pela gaveta — é por isso que a devolução dela não pode ser anunciada
+ * no papel como valor que está na contagem (P00-caixa-gaveta).
+ */
+async function venderNoCredito(b: Balcao): Promise<{ saleId: string; saleItemId: string }> {
+  const venda = await request(app)
+    .post('/api/v1/core/sales')
+    .set(b.caixa)
+    .set('Idempotency-Key', randomUUID())
+    .send({
+      items: [{ productId: b.productId, quantity: 2 }],
+      payments: [{ method: 'credito', amountCents: 10_000 }],
+      cashSessionId: b.gaveta,
+    });
+  expect(venda.status, JSON.stringify(venda.body)).toBe(201);
+  const devolvivel = await request(app)
+    .get(`/api/v1/core/sales/${venda.body.id}/returnable`)
+    .set(b.caixa);
+  expect(devolvivel.status).toBe(200);
+  return {
+    saleId: venda.body.id as string,
+    saleItemId: devolvivel.body.items[0].sale_item_id as string,
+  };
+}
+
 /** Registra a devolução da MERCADORIA (uma peça), sem reembolso nenhum. */
 async function devolverMercadoria(b: Balcao, venda: { saleId: string; saleItemId: string }) {
   const r = await request(app)
@@ -369,6 +395,93 @@ describe('a devolução em duas etapas sem reembolso não deixa o turno fechar c
     expect(bloco).not.toContain('Não está na gaveta');
     expect(bloco).toContain('ESTÁ na contagem desta gaveta');
     expect(bloco).toContain('o gerente paga o cliente amanhã');
+  });
+
+  /*
+    O PAPEL NÃO PODE MENTIR DO OUTRO LADO TAMBÉM (P00-caixa-gaveta).
+
+    O DEFEITO MEDIDO pela verificação adversarial do conserto anterior: a
+    frase passou a ser escolhida pela EXISTÊNCIA da devolução pendente, não
+    por onde o dinheiro está. Venda paga no CRÉDITO, devolução em duas etapas
+    de R$ 50,00: a gaveta tem só o troco de abertura, esperado e contado
+    batem, diferença zero — e o papel mandava separar R$ 50,00 que nunca
+    estiveram ali. Para o cartão isso era REGRESSÃO: a versão anterior
+    imprimia «Não está na gaveta», que era verdade.
+
+    O certo é o que o turno agora calcula: a espécie só está aqui quando a
+    venda devolvida recebeu dinheiro NESTA gaveta.
+  */
+  it('devolução de venda no CARTÃO: o papel não diz que o dinheiro está nesta gaveta', async () => {
+    const b = await balcao(precoJusto, 'pj');
+    const venda = await venderNoCredito(b);
+    const devolucao = await devolverMercadoria(b, venda);
+
+    // A gaveta não viu um centavo desta venda: o esperado é só a abertura.
+    const resumo = await request(app).get(`/api/v1/core/cash/${b.gaveta}/summary`).set(b.caixa);
+    expect(resumo.status).toBe(200);
+    expect(resumo.body.expectedCents).toBe(10_000);
+    expect(resumo.body.pendenciasEletronicas.devolucoesAguardandoReembolso[0].naGavetaCents).toBe(0);
+
+    const fechado = await request(app)
+      .post(`/api/v1/core/cash/${b.gaveta}/close`)
+      .set(b.caixa)
+      .send({
+        countedCents: 10_000,
+        pendenciasCiente: true,
+        pendenciasMotivo: 'o estorno sai pela operadora',
+      });
+    expect(fechado.status, JSON.stringify(fechado.body)).toBe(200);
+    expect(fechado.body.difference_cents).toBe(0);
+
+    const { renderDocument } = await import('../src/services/core/PrintRenderer.js');
+    const papel = renderDocument(precoJusto, 'CASH_CLOSING', b.gaveta);
+    const bloco = papel.slice(papel.indexOf('FECHADO COM PENDÊNCIA'));
+    // A dívida continua escrita — ela existe, e é do gestor.
+    expect(bloco).toContain(`Devolução #${(devolucao as { number: number }).number}`);
+    expect(bloco).toMatch(/50,00/);
+    // Mas o papel não manda procurar na gaveta o que não está nela.
+    expect(bloco).not.toContain('ESTÁ na contagem desta gaveta');
+    expect(bloco).toContain('Nada deste total está na contagem desta gaveta');
+  });
+
+  /*
+    A DÍVIDA HERDADA DE OUTRO TURNO: a gaveta de hoje nunca viu esse dinheiro,
+    mesmo que a venda tenha sido em espécie (P00-caixa-gaveta).
+  */
+  it('dívida herdada: o turno seguinte cobra a pendência sem dizer que o dinheiro está nele', async () => {
+    const b = await balcao(precoJusto, 'pj');
+    const venda = await vender(b);
+    await devolverMercadoria(b, venda);
+    const primeiro = await request(app)
+      .post(`/api/v1/core/cash/${b.gaveta}/close`)
+      .set(b.caixa)
+      .send({ countedCents: 20_000, pendenciasCiente: true, pendenciasMotivo: 'pago amanhã' });
+    expect(primeiro.status, JSON.stringify(primeiro.body)).toBe(200);
+
+    const abertura = await request(app)
+      .post('/api/v1/core/cash/open')
+      .set(b.caixa)
+      .send({ openingCents: 10_000 });
+    expect(abertura.status, JSON.stringify(abertura.body)).toBe(201);
+    const gaveta2 = abertura.body.id as string;
+
+    const resumo = await request(app).get(`/api/v1/core/cash/${gaveta2}/summary`).set(b.caixa);
+    expect(resumo.status).toBe(200);
+    // A dívida acompanha o cliente — mas o dinheiro dela ficou na gaveta de ontem.
+    expect(resumo.body.pendenciasEletronicas.quantidade).toBe(1);
+    expect(resumo.body.pendenciasEletronicas.devolucoesAguardandoReembolso[0].naGavetaCents).toBe(0);
+
+    const fechado = await request(app)
+      .post(`/api/v1/core/cash/${gaveta2}/close`)
+      .set(b.caixa)
+      .send({ countedCents: 10_000, pendenciasCiente: true, pendenciasMotivo: 'segue com o gestor' });
+    expect(fechado.status, JSON.stringify(fechado.body)).toBe(200);
+
+    const { renderDocument } = await import('../src/services/core/PrintRenderer.js');
+    const papel = renderDocument(precoJusto, 'CASH_CLOSING', gaveta2);
+    const bloco = papel.slice(papel.indexOf('FECHADO COM PENDÊNCIA'));
+    expect(bloco).not.toContain('ESTÁ na contagem desta gaveta');
+    expect(bloco).toContain('Nada deste total está na contagem desta gaveta');
   });
 
   it('reembolso registrado no mesmo turno: o turno fecha limpo, sem declarar nada', async () => {

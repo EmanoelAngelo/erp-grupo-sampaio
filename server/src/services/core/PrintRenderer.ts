@@ -780,6 +780,12 @@ interface PendenciaDeclarada {
     number?: number;
     saleNumber?: number | null;
     pendenteCents?: number;
+    /**
+     * Quanto desta dívida estava, em espécie, NESTA gaveta. Ausente nos
+     * registros gravados antes de P00-caixa-gaveta: aí não se sabe, e a frase
+     * escolhida lá embaixo não afirma lugar nenhum.
+     */
+    naGavetaCents?: number;
   }[];
 }
 
@@ -846,22 +852,56 @@ function blocoDasPendencias(registro: unknown, uf: string | null): string {
         + `<td class="r">${brl(d.pendenteCents)}</td></tr>`,
     ),
   ].join('');
-  // O dinheiro que ESTÁ na gaveta e não é da loja — o oposto do que a frase
-  // antiga afirmava para todo mundo.
+  /*
+    ONDE O DINHEIRO ESTÁ — PERGUNTADO, NÃO SUPOSTO (P00-caixa-gaveta).
+
+    O DEFEITO DA PRIMEIRA VERSÃO deste bloco: `naGaveta` somava TODA devolução
+    pendente, então a frase passou a afirmar o lugar do dinheiro pela simples
+    EXISTÊNCIA da dívida. Medido: venda de R$ 100,00 paga no CRÉDITO,
+    devolução de R$ 50,00 em duas etapas, gaveta com esperado 10.000, contado
+    10.000, diferença 0 — e o papel imprimia «ATENÇÃO: R$ 50,00 deste total
+    ESTÁ na contagem desta gaveta». Era regressão: antes o mesmo papel dizia
+    «Não está na gaveta», que para o cartão era verdade. O mesmo texto saía no
+    turno seguinte para a dívida herdada, cuja gaveta nunca viu o dinheiro.
+
+    Agora quem responde é `naGavetaCents`, que o turno calcula olhando o meio
+    de pagamento da venda devolvida e a gaveta em que ela foi paga. A venda
+    guardada e recusada continua inteira aqui: o dinheiro dela entrou NESTA
+    gaveta, é o que a define.
+
+    Registro legado (gravado antes deste conserto) não traz o campo. Aí a
+    resposta honesta é não afirmar lugar nenhum — e é o que a terceira frase
+    faz.
+  */
   const naGaveta =
     offline.reduce((s, v) => s + Number(v.receivedCents ?? 0), 0)
-    + devolucoes.reduce((s, d) => s + Number(d.pendenteCents ?? 0), 0);
+    + devolucoes.reduce((s, d) => s + Number(d.naGavetaCents ?? 0), 0);
+  const seSabeOndeEsta = devolucoes.every((d) => d.naGavetaCents !== undefined);
   const soEletronico = offline.length === 0 && devolucoes.length === 0;
-  const ondeEstaODinheiro = soEletronico
-    ? 'Não está na gaveta: continua na fila do gestor.'
-    : (cobrancas.length + pagamentos.length > 0
-        ? 'Cartão e PIX não estão na gaveta: caem na conta. '
-        : '')
+  const cartaoOuPix = cobrancas.length + pagamentos.length > 0 ? 'Cartão e PIX não estão na gaveta: caem na conta. ' : '';
+  const naFila = ' a pendência continua na fila do gestor.';
+  let ondeEstaODinheiro: string;
+  if (soEletronico) {
+    ondeEstaODinheiro = 'Não está na gaveta: continua na fila do gestor.';
+  } else if (!seSabeOndeEsta) {
+    ondeEstaODinheiro =
+      cartaoOuPix
+      + 'Confira de onde sai cada reembolso antes de entregar o turno (este registro é anterior ao'
+      + ' cálculo do que fica na gaveta);' + naFila;
+  } else if (naGaveta > 0) {
+    ondeEstaODinheiro =
+      cartaoOuPix
       + `ATENÇÃO: ${brl(naGaveta)} deste total ESTÁ na contagem desta gaveta e NÃO é da loja`
-      + (devolucoes.length > 0
-        ? ' (o reembolso ainda não pago, quando for em espécie, sai deste dinheiro)'
+      + (devolucoes.some((d) => Number(d.naGavetaCents ?? 0) > 0)
+        ? ' (o cliente pagou em espécie nesta gaveta e ainda não recebeu de volta)'
         : '')
-      + '. Confira antes de entregar o turno; a pendência continua na fila do gestor.';
+      + '. Confira antes de entregar o turno;' + naFila;
+  } else {
+    ondeEstaODinheiro =
+      cartaoOuPix
+      + 'Nada deste total está na contagem desta gaveta: o reembolso volta pelo meio da venda, ou'
+      + ' entrou em gaveta de outro turno.' + naFila;
+  }
   const quem = nomeDoUsuario(p.cientePor);
   const declarado =
     quem || p.cienteEm
