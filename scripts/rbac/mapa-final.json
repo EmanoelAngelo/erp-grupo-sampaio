@@ -56705,7 +56705,7 @@
    "tipo": "tela-rota",
    "categoria": "tela-rota",
    "guarda_hoje": "protectedRoute('/sistema/fiscal/operacoes', …, ROTA_GESTAO, QUEM_GERENCIA_A_OPERACAO) → <Protected environments=['gestao'] profiles=QUEM_GERENCIA_A_OPERACAO>",
-   "nota": "Tela nova do P0 fiscal da Preço Justo. As rotas já existiam sem tela nenhuma: GET /core/fiscal/operacoes e GET /core/fiscal/pendencias-contabeis (fiscal.view) e PUT /core/fiscal/operacoes/:operacao (fiscal.policy.manage). A tela é fiscal.view porque a gerência precisa LER o que falta do contador (é ela que lê o checklist); o gravar fica escondido de quem não é dono do grupo (useHasProfile()), que é o alcance de fiscal.policy.manage. Dia 1: igual (mesmo conjunto de perfis das vizinhas do Fiscal)."
+   "nota": "Tela nova do P0 fiscal da Preço Justo. As rotas já existiam sem tela nenhuma: GET /core/fiscal/operacoes e GET /core/fiscal/pendencias-contabeis (fiscal.view) e PUT /core/fiscal/operacoes/:operacao (fiscal.policy.manage). A tela é fiscal.view porque a gerência precisa LER o que falta do contador (é ela que lê o checklist); o gravar fica escondido de quem não tem fiscal.policy.manage, pela CAPABILITY (useCan('fiscal.policy.manage') em FiscalOperacoesPage) e não pelo código do perfil — a nota dizia useHasProfile(), que era a primeira versão da tela, reprovada pela catraca das guardas legadas e trocada antes do topo da frente. Dia 1: igual (mesmo conjunto de perfis das vizinhas do Fiscal)."
   },
   {
    "id": "p0fiscal#tela-operacoes-menu",
