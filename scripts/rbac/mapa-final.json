@@ -15,7 +15,7 @@
   "K": "contador"
  },
  "totais": {
-  "pontos": 1268,
+  "pontos": 1270,
   "por_fatia": {
    "core-1": 58,
    "core-2": 90,
@@ -26,7 +26,7 @@
    "core-7": 156,
    "outros-roteadores": 190,
    "servicos": 124,
-   "tela-rotas-menu": 235,
+   "tela-rotas-menu": 237,
    "tela-botoes": 73
   },
   "por_tipo": {
@@ -34,8 +34,8 @@
    "atalho-admin": 98,
    "rota": 622,
    "publica": 100,
-   "tela-rota": 108,
-   "tela-menu": 104,
+   "tela-rota": 109,
+   "tela-menu": 105,
    "tela-botao": 66
   },
   "por_categoria": {
@@ -53,8 +53,8 @@
    "alvo": 10,
    "alvo-formulario": 6,
    "trava-sem-bypass": 4,
-   "tela-rota": 98,
-   "tela-menu": 89,
+   "tela-rota": 99,
+   "tela-menu": 90,
    "grupo-do-menu": 15,
    "constante-de-ambiente": 10,
    "tela-botao": 62
@@ -69,7 +69,7 @@
    "soAutenticado": 4
   },
   "veredito": {
-   "igual": 1186,
+   "igual": 1188,
    "muda": 58,
    "n/a": 10,
    "igual pelo passo 86": 1,
@@ -56664,6 +56664,90 @@
    "divergencia_tsv": false,
    "rotas_servidor": null,
    "nota": "P0 DAS PLAQUINHAS (resíduo): a lista esconde o job EQUIPMENT_QR_TAG de quem não tem labels.equipment.print na empresa com plaquinha (fechado por padrão), e nunca devolve o payload dele."
+  },
+  {
+   "id": "p0fiscal#tela-operacoes-rota",
+   "fatia": "tela-rotas-menu",
+   "linha": null,
+   "linha_rota": null,
+   "metodo": null,
+   "caminho": null,
+   "tela": "/sistema/fiscal/operacoes",
+   "perfis_hoje": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina"
+   ],
+   "capability_fatia": "fiscal.view",
+   "capability_tsv": null,
+   "capability_final": "fiscal.view",
+   "guarda_nova": null,
+   "regra_final": null,
+   "escopo": "empresa",
+   "alcance_dia1": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina"
+   ],
+   "comparado_entre": "os 11 modelos",
+   "veredito": "igual",
+   "ganha": [],
+   "perde": [],
+   "mudanca": null,
+   "mudanca_associada": null,
+   "conflito": null,
+   "duplicado_de": null,
+   "divergencia_tsv": false,
+   "rotas_servidor": null,
+   "arquivo": "src/router/gsRoutes.tsx",
+   "tipo": "tela-rota",
+   "categoria": "tela-rota",
+   "guarda_hoje": "protectedRoute('/sistema/fiscal/operacoes', …, ROTA_GESTAO, QUEM_GERENCIA_A_OPERACAO) → <Protected environments=['gestao'] profiles=QUEM_GERENCIA_A_OPERACAO>",
+   "nota": "Tela nova do P0 fiscal da Preço Justo. As rotas já existiam sem tela nenhuma: GET /core/fiscal/operacoes e GET /core/fiscal/pendencias-contabeis (fiscal.view) e PUT /core/fiscal/operacoes/:operacao (fiscal.policy.manage). A tela é fiscal.view porque a gerência precisa LER o que falta do contador (é ela que lê o checklist); o gravar fica escondido de quem não é dono do grupo (useHasProfile()), que é o alcance de fiscal.policy.manage. Dia 1: igual (mesmo conjunto de perfis das vizinhas do Fiscal)."
+  },
+  {
+   "id": "p0fiscal#tela-operacoes-menu",
+   "fatia": "tela-rotas-menu",
+   "linha": null,
+   "linha_rota": null,
+   "metodo": null,
+   "caminho": null,
+   "tela": "/sistema/fiscal/operacoes",
+   "perfis_hoje": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina"
+   ],
+   "capability_fatia": "fiscal.view",
+   "capability_tsv": null,
+   "capability_final": "fiscal.view",
+   "guarda_nova": null,
+   "regra_final": null,
+   "escopo": "empresa",
+   "alcance_dia1": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina"
+   ],
+   "comparado_entre": "os 11 modelos",
+   "veredito": "igual",
+   "ganha": [],
+   "perde": [],
+   "mudanca": null,
+   "mudanca_associada": null,
+   "conflito": null,
+   "duplicado_de": null,
+   "divergencia_tsv": false,
+   "rotas_servidor": null,
+   "arquivo": "src/components/gs/navItems.ts",
+   "tipo": "tela-menu",
+   "categoria": "tela-menu",
+   "guarda_hoje": "menu \"Fiscal > Operações fiscais\" → /sistema/fiscal/operacoes: environments ['gestao'], profiles QUEM_GERENCIA_A_OPERACAO (filtrado em AppShell.tsx)",
+   "nota": "Mesma lista da rota (gsRoutes.tsx). Dia 1: igual (mesmo conjunto de perfis que as vizinhas do Fiscal)."
   }
  ]
 }

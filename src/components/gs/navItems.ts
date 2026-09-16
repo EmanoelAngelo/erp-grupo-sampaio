@@ -822,6 +822,26 @@ export const NAV_ITEMS: NavItem[] = [
         profiles: QUEM_GERENCIA_A_OPERACAO,
       },
       {
+        /*
+          OPERAÇÕES FISCAIS — o item que faltava para três rotas que já existiam.
+
+          `GET /core/fiscal/operacoes` e `GET /core/fiscal/pendencias-contabeis`
+          são `fiscal.view`, como a configuração e a inutilização aqui do lado;
+          o `PUT` é `fiscal.policy.manage`, e a TELA esconde o gravar de quem
+          não o tem (`useHasProfile()`), em vez de fechar a leitura para a
+          gerência — que é quem lê o checklist e leva a lista ao contador.
+
+          Fica depois da Configuração fiscal porque é o que se faz DEPOIS dela:
+          a configuração é o emitente e a numeração; esta é a decisão do
+          contador sobre cada operação.
+        */
+        label: 'Operações fiscais',
+        hint: 'Natureza, CFOP da devolução, prazo de cancelamento e o que falta do contador',
+        to: '/sistema/fiscal/operacoes',
+        environments: ROTA_GESTAO,
+        profiles: QUEM_GERENCIA_A_OPERACAO,
+      },
+      {
         // `requireProfile(req)` sem perfil extra nas três rotas do A1: só os
         // donos do grupo. O certificado assina nota em nome da empresa — até
         // os gerentes ficam de fora, e o menu tem de dizer o mesmo.
