@@ -418,6 +418,76 @@ describe('relançar como venda nova', () => {
   });
 });
 
+/*
+  ============================================================================
+  A FILA NÃO ENTREGA "ERRO INTERNO." (P00-pdv-cab)
+  ============================================================================
+
+  O corpo guardado é o que o navegador montou meses atrás, e a entrega dele
+  confere apenas que `items` é uma LISTA (`registrarVendaOfflineRecusada`). Uma
+  linha sem `productId` ali dentro seguia para `createSale` como a linha de
+  qualquer venda — e era 500 API_UNAVAILABLE com pilha no log, na tela onde o
+  gestor tenta salvar uma venda que já aconteceu, sem nenhuma pista do que
+  fazer. As duas portas de relançamento passam pelo mesmo guarda de forma;
+  este caso prova que as duas recusam com 4xx e com o motivo, e que a recusa
+  fica GRAVADA na pendência (é lá que a próxima pessoa vai ler).
+*/
+describe('a venda guardada malformada é recusada com motivo, e não com "Erro interno."', () => {
+  /** A pendência cuja chave já registrou outra venda, com a linha sem produto. */
+  async function pendenciaSemProduto() {
+    const p = await produto(10);
+    const gaveta = await abrirCaixa(caixa);
+    const chave = `pdv-${randomUUID()}`;
+    const original = await vender(caixa, chave, {
+      cashSessionId: gaveta,
+      items: [{ productId: p, quantity: 2 }],
+      payments: [{ method: 'dinheiro', amountCents: 10_000 }],
+    });
+    expect(original.status, JSON.stringify(original.body)).toBe(201);
+    const corpoDaFila = {
+      cashSessionId: gaveta,
+      // A linha que o PDV montou sem dizer QUAL produto.
+      items: [{ quantity: 3, unitPriceCents: 5000 }],
+      payments: [{ method: 'dinheiro', amountCents: 15_000 }],
+    };
+    const entregue = await entregar(caixa, chave, corpoDaFila, {
+      code: 'CORE_IDEMPOTENCY_KEY_REUSED',
+      message: 'A chave já registrou outra venda.',
+    });
+    expect(entregue.status, JSON.stringify(entregue.body)).toBe(201);
+    return { gaveta, pendenciaId: entregue.body.pendencia.id as string };
+  }
+
+  it('relançar como venda nova: 400 nomeado dizendo QUAL linha, e nada é vendido', async () => {
+    const c = await pendenciaSemProduto();
+    const antes = vendas();
+    const r = await relancarComoNova(caixa, c.pendenciaId, c.gaveta);
+    expect(r.status, JSON.stringify(r.body)).toBe(400);
+    expect(r.body.error.code).toBe('CORE_SALE_ITEM_PRODUCT_REQUIRED');
+    expect(r.body.error.message).toContain('linha 1');
+    expect(vendas()).toBe(antes);
+    // A recusa fica na pendência: a próxima pessoa lê o motivo verdadeiro.
+    const lista = await request(app).get('/api/v1/core/offline-sales').set(gerente);
+    const item = (lista.body.items as { id: string; errorCode: string; status: string }[]).find(
+      (i) => i.id === c.pendenciaId,
+    );
+    expect(item?.status).toBe('pendente');
+    expect(item?.errorCode).toBe('CORE_SALE_ITEM_PRODUCT_REQUIRED');
+  });
+
+  it('o relançamento comum recusa igual: mesma classe, mesma porta', async () => {
+    const c = await pendenciaSemProduto();
+    const antes = vendas();
+    const r = await request(app)
+      .post(`/api/v1/core/offline-sales/${c.pendenciaId}/relaunch`)
+      .set(caixa)
+      .send({ cashSessionId: c.gaveta, terminalId: null });
+    expect(r.status, JSON.stringify(r.body)).toBe(400);
+    expect(r.body.error.code).toBe('CORE_SALE_ITEM_PRODUCT_REQUIRED');
+    expect(vendas()).toBe(antes);
+  });
+});
+
 describe('quem pode', () => {
   it('outra empresa não enxerga a pendência (404), e nada é vendido', async () => {
     const c = await pendenciaDeChaveReusada();
