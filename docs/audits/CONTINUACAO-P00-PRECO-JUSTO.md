@@ -4,7 +4,10 @@ Checkpoint técnico feito a pedido do dono, com 93% do limite de uso consumido.
 Nada foi enviado ao GitHub, nada foi implantado, e nem o servidor nem o banco de
 produção foram tocados. Este arquivo é o que basta para retomar sem reler nada.
 
-**Data do checkpoint:** 16/09/2026, 07:40 (hora local).
+**Data do checkpoint:** 16/09/2026, 07:40 (hora local). A rodada de agentes
+fechou por completo às 07:55, já com o checkpoint escrito: os veredictos das
+duas frentes que faltavam foram lidos e registrados aqui (§3, §8 e §11), e
+**nada foi juntado** — a decisão de merge é da retomada.
 
 ---
 
@@ -70,8 +73,8 @@ primeira rodada.
 
 | Branch | Tip | Worktree | Estado |
 | --- | --- | --- | --- |
-| `p5/produtos-codigos-saldo` | `5e424cd` | `.claude/worktrees/wf_c026f94c-4c3-1` (**locked**) | 9 commits, árvore **limpa**. O agente dela ainda estava rodando no instante do checkpoint. **Sem verificação adversarial lida.** |
-| `p5/etiqueta-no-papel` | `6ef9d16` | `.claude/worktrees/wf_c026f94c-4c3-4` (**locked**) | 7 commits, árvore **limpa** — o agente fechou e commitou durante o checkpoint. **Sem verificação adversarial lida.** |
+| `p5/produtos-codigos-saldo` | `5e424cd` | `.claude/worktrees/wf_c026f94c-4c3-1` (**locked**) | 9 commits, árvore limpa. Verificação **SUSTENTA** (`holds: true`), com 6 ressalvas — a mais séria está no §8. |
+| `p5/etiqueta-no-papel` | `b27ef43` | `.claude/worktrees/wf_c026f94c-4c3-4` (**locked**) | 8 commits, árvore limpa. Verificação **NÃO sustenta** (`holds: false`): 3 defeitos de gravidade média, listados no §8. |
 
 As duas ficaram de fora do merge de propósito: a regra deste checkpoint é não
 juntar o que não foi verificado.
@@ -191,7 +194,11 @@ medidas por sonda HTTP, com o caminho do conserto escrito.
 | **Alta** | `server/src/services/core/CatalogAuxService.ts:110` | As quinze unidades padrão ainda podem nunca nascer. `jaNasceu` pergunta "existe ALGUMA das quinze siglas?" — então numa loja implantada por script, se a PRIMEIRA unidade cadastrada usar uma delas (`KG`, `CX`, `PC`…), as outras catorze não nascem e `POST /core/products` responde 400 `CORE_UNIT_NOT_FOUND` **para sempre** (listar não conserta). Medido. Caso irmão: sigla minúscula (`un`) deixa a operação com uma unidade só. O teste novo (`unidades-padrao-da-loja-nova.test.ts`) só cobre a sigla fora do vocabulário, então a suíte fica verde com o furo aberto. |
 | **Média** | `server/src/services/core/SalesService.ts:824` | `origin: ""` continua entrando e é gravado como `""`, derrotando em silêncio o padrão `'pdv'`. `note` e `origin` são tratados pela mesma régua, e não são a mesma coisa: observação em branco é normal, origem em branco não. Uma linha fecha. |
 | **Baixa** | `server/src/services/core/PendenciasDoTurno.ts:302` | O limite superior que sobrou (`r.created_at <= turno.closed_at`) é inalcançável: a função só roda com a gaveta aberta. Ou a leitura do turno fechado passa a existir, ou o parâmetro e o parágrafo que o explicam saem. |
-| — | `p5/produtos-codigos-saldo`, `p5/etiqueta-no-papel` | Não verificadas. O que a verificação apontar entra nesta lista. |
+| **Média** | `server/src/services/core/LabelPrintService.ts:457` | O envio do lote de etiquetas **não confere a finalidade da impressora**: com `printerId` explícito, `impressoraDoDocumento` cai em `loadPrinter` e aceita qualquer impressora — inclusive a de cupom. Branch `p5/etiqueta-no-papel`. |
+| **Média** | `server/src/routes/v1/core.ts:12203` | A recusa do envio acontece **fora da transação do lote**, quebrando a invariante que o próprio comentário de `/labels/sheet` declara ("a recusa do desenho desfaz o histórico"). Branch `p5/etiqueta-no-papel`. |
+| **Média** | `server/src/services/core/LabelPrintService.ts:459` | A impressora **presa a um caixa** não é achada (passa `pdvTerminalId: null` e o filtro exige igualdade), e a recusa que sai mente sobre o motivo. Branch `p5/etiqueta-no-papel`. |
+| **Média** | `server/src/services/core/CatalogAuxService.ts:113` | Mudança de comportamento **não declarada** pela frente de produtos: cadastrar unidade própria com sigla padrão numa empresa nova passou a ser 409. Branch `p5/produtos-codigos-saldo`. Decidir se é o desejado antes de juntar. |
+| **Média** | `server/src/services/core/PendenciasContabeis.ts:162` | O grupo **ICMSUFDest (DIFAL) não é montado em lugar nenhum**: venda de balcão com NF-e para consumidor final não contribuinte de **outra UF** sai sem DIFAL/FCP e será recusada pela SEFAZ. Dentro do RS não morde. Já está no HEAD (frente fiscal). |
 
 Nenhuma das três impede a loja de vender: a primeira morde a **implantação por
 script** de uma loja nova (a da Preço Justo já está semeada), a segunda suja um
@@ -255,9 +262,13 @@ cd "C:/Users/User/Desktop/devora-p0" && node scripts/rbac/gerar-artefatos.mjs &&
 
 ## 11. Ordem recomendada dos próximos passos
 
-1. Conferir se os dois lanes terminaram (worktrees `-1` e `-4`) e ler a
-   verificação adversarial de cada um.
-2. Juntar `p5/produtos-codigos-saldo` e, depois, `p5/etiqueta-no-papel`.
+1. **Decidir sobre as duas frentes não juntadas, com o veredicto na mão**:
+   `p5/produtos-codigos-saldo` sustenta (juntar, resolvendo antes a colisão do
+   §8 com o conserto de unidades que já está no HEAD — são dois consertos
+   diferentes para o mesmo defeito, e o verificador de produtos mediu isso);
+   `p5/etiqueta-no-papel` **não** sustenta — fechar os três defeitos de
+   gravidade média na própria branch antes de juntar.
+2. Só então juntar as duas.
 3. Fechar as três falhas do §8, na ordem: unidades padrão (alta), `origin`
    vazio (média), parâmetro morto (baixa) — cada uma com teste e mordida.
 4. Rodar os portões completos: type-check, lint, build, suíte do servidor,
