@@ -230,13 +230,25 @@ describe('com maquininha integrada, o PIX passa pelo aparelho', () => {
 
     // Consultar não decide nada: enquanto o provedor não confirmar, continua
     // pendente por mais que se clique.
-    fireEvent.click(screen.getByRole('button', { name: /Já pagou\? Consultar/ }));
+    const consultar = () => screen.getByRole('button', { name: /Já pagou\? Consultar/ }) as HTMLButtonElement;
+    fireEvent.click(consultar());
     await waitFor(() => expect(consultas).toBeGreaterThan(0));
+    /*
+      O PEDIDO TER SAÍDO NÃO É A RESPOSTA TER SIDO DESENHADA.
+
+      Esperar só `consultas > 0` soltava o teste com a consulta ainda em curso:
+      `consultando` fica verdadeiro até o `finally` da resposta, e enquanto isso
+      o botão é `loading` — `disabled` no DOM. O segundo clique, logo abaixo,
+      caía num botão desabilitado e era engolido; sem consulta nova, o QR não
+      saía e a espera do fim estourava. A consulta só acabou quando o botão
+      volta a aceitar clique: é essa a condição, e não o contador do servidor.
+    */
+    await waitFor(() => expect(consultar().disabled).toBe(false));
     expect(screen.getByTestId('pdv-pix-na-maquininha')).toBeTruthy();
 
     // Agora o cliente pagou de verdade.
     pixLiquidado = true;
-    fireEvent.click(screen.getByRole('button', { name: /Já pagou\? Consultar/ }));
+    fireEvent.click(consultar());
     await waitFor(() => expect(screen.queryByTestId('pdv-pix-na-maquininha')).toBeNull());
   });
 

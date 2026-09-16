@@ -159,7 +159,20 @@ describe('a busca da lista (A-produto-23)', () => {
     for (const parcial of ['p', 'pe', 'per', 'perf', 'perfume']) {
       fireEvent.change(campo, { target: { value: parcial } });
     }
-    await esperar(400);
+    /*
+      A ESPERA É PELO PEDIDO, E NÃO POR UM RELÓGIO.
+
+      A busca sai 250 ms depois da ÚLTIMA tecla, num timer que o efeito arma; o
+      pedido só nasce no render seguinte, com o `useLoader`. A pausa fixa de
+      400 ms apostava que timer + render + pedido cabiam nela: com a máquina
+      saturada não cabiam, e o teste caía sem defeito nenhum. Espera-se o pedido
+      do termo final. Se a tela perguntasse a cada letra, os pedidos de "p" a
+      "perf" teriam saído ANTES dele — cada troca acima é síncrona —, e a
+      contagem de baixo continua caindo.
+    */
+    await waitFor(() =>
+      expect(buscas().slice(antes).some((b) => b.url.includes('search=perfume'))).toBe(true),
+    );
 
     const novas = buscas().slice(antes);
     expect(novas).toHaveLength(1);

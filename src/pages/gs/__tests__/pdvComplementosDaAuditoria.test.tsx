@@ -778,12 +778,36 @@ describe('PED-pdv-03 — a busca sem conexão diz o que está acontecendo', () =
 // ============================================================================
 
 describe('PED-pdv-06 — tecla segurada não é bipe', () => {
+  /*
+    O RELÓGIO DAS TECLAS É DO TESTE, E NÃO DA MÁQUINA.
+
+    A tela reconhece o leitor pelo ritmo: menos de 50 ms entre uma tecla e a
+    outra, medidos pelo `e.timeStamp` do evento. O `fireEvent.keyDown` deixa o
+    jsdom carimbar cada evento com o relógio de parede — e aí o ritmo era o da
+    CPU. Com a máquina saturada, o processo perdia a vez por mais de 50 ms no
+    meio das treze teclas, a rajada zerava e a busca recebia só o pedaço final
+    ("98215151784" no lugar de "7898215151784"): 6 de 25 rodadas vermelhas, sem
+    defeito nenhum. E o caso da tecla segurada, pelo mesmo motivo, podia passar
+    com o guarda do `repeat` fora — a pausa da CPU zerava a rajada no lugar dele.
+
+    Cada tecla sai aqui com o carimbo escolhido (5 ms entre elas, o ritmo de um
+    leitor): o limite de 50 ms é exercitado de propósito, não pela sorte do
+    agendador.
+  */
+  const RITMO_DO_LEITOR_MS = 5;
+  function tecla(alvo: Element, key: string, quando: number, extra: KeyboardEventInit = {}) {
+    const ev = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true, ...extra });
+    Object.defineProperty(ev, 'timeStamp', { value: quando });
+    fireEvent(alvo, ev);
+  }
+
   it('seis repetições de uma tecla segurada e Enter no campo Quantidade não viram leitura', async () => {
     abrirPdv();
     const quantidade = screen.getByText('Quantidade').closest('label')!.querySelector('input')!;
     quantidade.focus();
-    for (let i = 0; i < 6; i += 1) fireEvent.keyDown(quantidade, { key: '1', repeat: true });
-    fireEvent.keyDown(quantidade, { key: 'Enter' });
+    let quando = 1_000_000;
+    for (let i = 0; i < 6; i += 1) tecla(quantidade, '1', (quando += RITMO_DO_LEITOR_MS), { repeat: true });
+    tecla(quantidade, 'Enter', (quando += RITMO_DO_LEITOR_MS));
     await new Promise((r) => setTimeout(r, 30));
     expect(buscas).not.toContain('111111');
   });
@@ -792,8 +816,9 @@ describe('PED-pdv-06 — tecla segurada não é bipe', () => {
     abrirPdv();
     const quantidade = screen.getByText('Quantidade').closest('label')!.querySelector('input')!;
     quantidade.focus();
-    for (const c of ARROZ.barcode) fireEvent.keyDown(quantidade, { key: c });
-    fireEvent.keyDown(quantidade, { key: 'Enter' });
+    let quando = 1_000_000;
+    for (const c of ARROZ.barcode) tecla(quantidade, c, (quando += RITMO_DO_LEITOR_MS));
+    tecla(quantidade, 'Enter', (quando += RITMO_DO_LEITOR_MS));
     await waitFor(() => expect(buscas).toContain(ARROZ.barcode));
   });
 });

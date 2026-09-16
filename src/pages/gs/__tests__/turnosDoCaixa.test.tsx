@@ -212,5 +212,18 @@ describe('a seção Turnos anteriores', () => {
 
     await screen.findByText('Turnos anteriores');
     await screen.findByText('Nenhum turno registrado');
+    /*
+      O CASO SÓ ACABA DEPOIS DA ÚLTIMA RESPOSTA DESENHADA.
+
+      A tela faz quatro perguntas de uma vez (turnos, caixa aberto, gavetas e a
+      fila da barra), e a lista vazia é só uma delas. O caso terminava com as
+      outras ainda a caminho do render — que o React agenda fora do act, numa
+      tarefa própria. Sendo o último caso do arquivo, a tarefa rodava depois de
+      o jsdom ir embora e estourava "window is not defined" como erro solto da
+      suíte. Espera-se o que as outras respostas desenham: a gaveta vazia e o
+      fim do "Carregando…" do caixa.
+    */
+    await screen.findByText('Nenhuma gaveta aberta.');
+    await waitFor(() => expect(screen.queryAllByText('Carregando…')).toHaveLength(0));
   });
 });
