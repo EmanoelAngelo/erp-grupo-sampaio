@@ -125,4 +125,35 @@ export const devolucoesFornecedorApi = {
       method: 'POST',
       body: input,
     }),
+
+  /**
+   * EMITIR a NF-e de devolução pelo sistema (P0 fiscal).
+   *
+   * A rota existia e nenhuma tela a chamava: a ficha só sabia REGISTRAR a
+   * chave de uma nota emitida em outro lugar. O corpo vai vazio de propósito —
+   * o destinatário é o fornecedor da nota de entrada, e o servidor o lê do
+   * cadastro (endereço redigitado divergiria do que a própria NF-e de entrada
+   * preencheu).
+   */
+  emitirNfe: (id: string) =>
+    apiRequest<EmissaoDaDevolucao>(
+      `/core/fiscal/devolucoes/compra/${encodeURIComponent(id)}/nfe`,
+      { method: 'POST', body: {} },
+    ).then((r) => exigirCampos(r, 'document')),
 };
+
+/** O resultado do pipeline fiscal, no recorte que esta ficha mostra. */
+export interface EmissaoDaDevolucao {
+  document: {
+    id: string;
+    model: string;
+    serie: number;
+    number: number;
+    accessKey: string | null;
+    status: string;
+    protocol: string | null;
+  };
+  statusLabel?: string;
+  /** O que o contador ainda não confirmou nesta operação — declarado, nunca escondido. */
+  pendencias: string[];
+}

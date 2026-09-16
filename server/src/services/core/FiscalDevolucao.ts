@@ -437,6 +437,100 @@ export function createNfeDeDevolucao(input: {
   }
 }
 
+/**
+ * ============================================================================
+ * O DESTINATÁRIO DA DEVOLUÇÃO DE COMPRA — lido do cadastro do fornecedor
+ * ============================================================================
+ *
+ * ## O defeito (auditoria P0 fiscal da Preço Justo)
+ *
+ * A rota `POST /core/fiscal/devolucoes/compra/:returnId/nfe` EXIGIA o
+ * destinatário no corpo — nome, CNPJ, indicador de IE e o endereço inteiro com
+ * código IBGE. Nenhuma tela chamava a rota, e não é coincidência: pedir que a
+ * gerência redigite o endereço do fornecedor a cada devolução é pedir que ela
+ * erre. Pior, o endereço digitado divergiria do cadastro que a própria NF-e de
+ * entrada preencheu, e a divergência só apareceria na fiscalização.
+ *
+ * O dado já está no banco: a devolução aponta a nota de entrada, a nota aponta
+ * o fornecedor, e o fornecedor tem razão social, CNPJ, inscrição estadual e
+ * endereço com `city_ibge` — tudo lido do XML do próprio fornecedor.
+ *
+ * ## O que esta função faz
+ *
+ * Monta o destinatário a partir DESSE cadastro e, quando falta campo, RECUSA
+ * nomeando cada um: o dono completa o cadastro do fornecedor e repete o gesto.
+ * Não inventa nada — endereço aproximado numa NF-e é endereço errado.
+ *
+ * O indicador de IE sai da inscrição estadual gravada: com IE, contribuinte
+ * (1); sem IE, isento (2) — fornecedor é pessoa jurídica que vendeu mercadoria,
+ * então "não contribuinte" (9) não cabe aqui. `consumidorFinal` fica FALSO: a
+ * mercadoria volta para o estoque de quem a vende.
+ */
+export function destinatarioDaDevolucaoDeCompra(companyId: string, returnId: string): NfeRecipient {
+  ensureCoreSchema();
+  const row = getConnection()
+    .prepare(
+      `SELECT f.name, f.document, f.state_registration, f.street, f.number, f.complement,
+              f.district, f.city, f.city_ibge, f.state, f.zip, f.phone, f.email
+         FROM core_supplier_returns r
+         JOIN core_inbound_notes n ON n.id = r.note_id AND n.company_id = r.company_id
+         LEFT JOIN core_suppliers f ON f.id = n.supplier_id AND f.company_id = r.company_id
+        WHERE r.id = ? AND r.company_id = ?`,
+    )
+    .get(returnId, companyId) as Record<string, unknown> | undefined;
+  if (!row) throw new ApiError('CORE_SUPPLIER_RETURN_NOT_FOUND', 'Devolução não encontrada.', 404);
+
+  const texto = (v: unknown): string => String(v ?? '').trim();
+  if (!texto(row.name)) {
+    throw new ApiError(
+      'CORE_FISCAL_RETURN_SUPPLIER_MISSING',
+      'A nota de entrada desta devolução não tem fornecedor cadastrado: a NF-e de devolução precisa '
+        + 'do destinatário. Vincule o fornecedor à nota em Estoque › Entrada de notas.',
+      409,
+    );
+  }
+
+  const documento = texto(row.document).replace(/\D/g, '');
+  const faltando: string[] = [];
+  if (documento.length !== 11 && documento.length !== 14) faltando.push('CNPJ (ou CPF)');
+  if (!texto(row.street)) faltando.push('logradouro');
+  if (!texto(row.number)) faltando.push('número');
+  if (!texto(row.district)) faltando.push('bairro');
+  if (!texto(row.city)) faltando.push('município');
+  if (!/^\d{7}$/.test(texto(row.city_ibge))) faltando.push('código IBGE do município');
+  if (!/^[A-Za-z]{2}$/.test(texto(row.state))) faltando.push('UF');
+  if (faltando.length > 0) {
+    throw new ApiError(
+      'CORE_FISCAL_RETURN_SUPPLIER_INCOMPLETE',
+      `O cadastro do fornecedor "${texto(row.name)}" não tem ${faltando.join(', ')} — e a NF-e de `
+        + 'devolução leva o endereço do destinatário. Complete o cadastro em Compras › Fornecedores '
+        + 'e emita de novo; o sistema não inventa endereço.',
+      422,
+      { faltando },
+    );
+  }
+
+  const ie = texto(row.state_registration).replace(/\D/g, '');
+  return {
+    document: documento,
+    name: texto(row.name),
+    ieIndicator: ie ? '1' : '2',
+    ie: ie || null,
+    // A mercadoria volta para quem a revende: não é consumo do destinatário.
+    consumidorFinal: false,
+    street: texto(row.street),
+    number: texto(row.number),
+    complement: texto(row.complement) || null,
+    district: texto(row.district),
+    cityName: texto(row.city),
+    cityIbge: texto(row.city_ibge),
+    uf: texto(row.state).toUpperCase(),
+    zip: texto(row.zip).replace(/\D/g, '') || null,
+    phone: texto(row.phone) || null,
+    email: texto(row.email) || null,
+  };
+}
+
 /** Monta, valida, assina e enfileira a NF-e de devolução — o mesmo pipeline das outras notas. */
 export async function emitirNfeDeDevolucao(input: {
   companyId: string;

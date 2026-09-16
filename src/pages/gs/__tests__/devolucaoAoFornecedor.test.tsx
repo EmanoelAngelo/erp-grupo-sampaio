@@ -72,6 +72,23 @@ const DETALHE = {
 
 let pedidos: { url: string; method: string; body: unknown }[] = [];
 let fiscalResolvido = false;
+/** O que a rota de emissão responde neste caso: a nota, ou a recusa do cadastro. */
+let emissaoResponde: { status: number; body: unknown } = {
+  status: 200,
+  body: {
+    document: {
+      id: 'doc-1',
+      model: '55',
+      serie: 1,
+      number: 7,
+      accessKey: '9'.repeat(44),
+      status: 'AUTHORIZED',
+      protocol: 'TEST-1',
+    },
+    statusLabel: 'Autorizada',
+    pendencias: ['Devolução de compra: natureza e CFOP ainda não confirmados pelo contador.'],
+  },
+};
 
 function servidor() {
   return vi.fn(async (url: unknown, init?: { method?: string; body?: string }) => {
@@ -81,6 +98,10 @@ function servidor() {
     const json = (body: unknown, status = 200) =>
       new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
 
+    if (alvo.includes('/core/fiscal/devolucoes/compra/d-1/nfe') && method === 'POST') {
+      if (emissaoResponde.status === 200) fiscalResolvido = true;
+      return json(emissaoResponde.body, emissaoResponde.status);
+    }
     if (alvo.includes('/core/purchases/notes/n-1/devolviveis')) return json(DEVOLVIVEIS);
     if (alvo.endsWith('/core/purchases/supplier-returns') && method === 'POST') return json(DETALHE, 201);
     if (alvo.includes('/core/purchases/supplier-returns/d-1/fiscal') && method === 'POST') {
@@ -114,6 +135,22 @@ beforeEach(() => {
   localStorage.clear();
   pedidos = [];
   fiscalResolvido = false;
+  emissaoResponde = {
+    status: 200,
+    body: {
+      document: {
+        id: 'doc-1',
+        model: '55',
+        serie: 1,
+        number: 7,
+        accessKey: '9'.repeat(44),
+        status: 'AUTHORIZED',
+        protocol: 'TEST-1',
+      },
+      statusLabel: 'Autorizada',
+      pendencias: ['Devolução de compra: natureza e CFOP ainda não confirmados pelo contador.'],
+    },
+  };
   vi.stubGlobal('fetch', servidor());
 });
 
@@ -179,6 +216,61 @@ describe('GAP-PRD-089 — a devolução nova, a partir da nota', () => {
     const post = pedidos.find((p) => p.url.includes('/d-1/fiscal'))!;
     expect(post.body).toEqual({ status: 'emitida', accessKey: '4'.repeat(44) });
     await waitFor(() => expect(screen.queryByText(/finalidade 4/)).toBeNull());
+  });
+
+  /*
+    EMITIR A NF-e DE DEVOLUÇÃO PELA PRÓPRIA FICHA (P0 fiscal).
+
+    A rota POST /core/fiscal/devolucoes/compra/:id/nfe existia e NENHUMA tela a
+    chamava: a ficha só sabia registrar a chave de uma nota emitida em outro
+    lugar, e a devolução ao fornecedor terminava sempre no emissor do contador.
+    O corpo vai vazio de propósito — o destinatário é o fornecedor da nota de
+    entrada, e o servidor o lê do cadastro.
+  */
+  it('a gerência emite a NF-e de devolução pela ficha, com corpo vazio', async () => {
+    entrarComo('gerente_loja');
+    renderizar('/sistema/compras/devolucoes?devolucao-compra=d-1');
+    fireEvent.click(await screen.findByRole('button', { name: 'Emitir NF-e de devolução' }));
+
+    await waitFor(() =>
+      expect(pedidos.some((p) => p.method === 'POST' && p.url.includes('/devolucoes/compra/d-1/nfe'))).toBe(true),
+    );
+    // Endereço redigitado divergiria do cadastro: a tela não manda destinatário.
+    expect(pedidos.find((p) => p.url.includes('/devolucoes/compra/d-1/nfe'))!.body).toEqual({});
+
+    expect(await screen.findByText(/NF-e 7, série 1: Autorizada/)).toBeTruthy();
+    expect(screen.getByText(/ainda não confirmados pelo contador/)).toBeTruthy();
+    // A ficha é relida: a situação fiscal deixou de ser pendente.
+    await waitFor(() => expect(screen.queryByText(/finalidade 4/)).toBeNull());
+  });
+
+  it('cadastro do fornecedor incompleto: a recusa do servidor aparece com o campo que falta', async () => {
+    emissaoResponde = {
+      status: 422,
+      body: {
+        error: {
+          code: 'CORE_FISCAL_RETURN_SUPPLIER_INCOMPLETE',
+          message:
+            'O cadastro do fornecedor "Distribuidora Freio Bom" não tem código IBGE do município — e a '
+            + 'NF-e de devolução leva o endereço do destinatário.',
+        },
+      },
+    };
+    entrarComo('gerente_loja');
+    renderizar('/sistema/compras/devolucoes?devolucao-compra=d-1');
+    fireEvent.click(await screen.findByRole('button', { name: 'Emitir NF-e de devolução' }));
+
+    expect(await screen.findByText(/código IBGE do município/)).toBeTruthy();
+    // Recusa não inventa nota: a pendência fiscal continua onde estava.
+    expect(screen.getByText(/finalidade 4/)).toBeTruthy();
+  });
+
+  it('o estoquista não emite nem registra: a ficha não oferece os gestos', async () => {
+    entrarComo('estoquista');
+    renderizar('/sistema/compras/devolucoes?devolucao-compra=d-1');
+    expect(await screen.findByText(/finalidade 4/)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Emitir NF-e de devolução' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Registrar situação fiscal' })).toBeNull();
   });
 
   it('o estoquista não registra: a tela diz que é decisão da gerência', async () => {

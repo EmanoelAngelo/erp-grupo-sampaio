@@ -30,7 +30,11 @@ import {
   gravarOperacao,
   lerOperacao,
 } from '../src/services/core/FiscalOperacoes.js';
-import { createNfeDeDevolucao, emitirNfeDeDevolucao } from '../src/services/core/FiscalDevolucao.js';
+import {
+  createNfeDeDevolucao,
+  destinatarioDaDevolucaoDeCompra,
+  emitirNfeDeDevolucao,
+} from '../src/services/core/FiscalDevolucao.js';
 import { reemitirRejeitada } from '../src/services/core/FiscalReemissao.js';
 import { getSaleReturn } from '../src/services/core/SaleReturnService.js';
 import { getDevolucao } from '../src/services/core/SupplierReturnService.js';
@@ -170,8 +174,18 @@ function devolucaoDeVenda(v: { saleId: string; productId: string; saleItemId: st
   return id;
 }
 
-/** A compra (NF-e do fornecedor de SC) e a devolução de 3 unidades a R$ 20,00. */
-function devolucaoDeCompra(docType: 'nfe' | 'manual' = 'nfe'): { returnId: string; chaveDaCompra: string } {
+/**
+ * A compra (NF-e do fornecedor de SC) e a devolução de 3 unidades a R$ 20,00.
+ *
+ * `cadastroDoFornecedor` grava o fornecedor e o vincula à nota: é dele que o
+ * destinatário da NF-e de devolução é lido, em vez de redigitado. `null` é a
+ * nota sem fornecedor vinculado; um objeto parcial serve para provar a recusa
+ * que nomeia o campo que falta.
+ */
+function devolucaoDeCompra(
+  docType: 'nfe' | 'manual' = 'nfe',
+  cadastroDoFornecedor: Record<string, unknown> | null = null,
+): { returnId: string; chaveDaCompra: string } {
   ensureCoreSchema();
   n += 1;
   const now = new Date().toISOString();
@@ -193,6 +207,11 @@ function devolucaoDeCompra(docType: 'nfe' | 'manual' = 'nfe'): { returnId: strin
     emissionType: '1',
     numericCode: '12345678',
   });
+  let fornecedor: string | null = null;
+  if (cadastroDoFornecedor) {
+    fornecedor = `forn-${n}`;
+    inserir('core_suppliers', { id: fornecedor, company_id: empresa, ...cadastroDoFornecedor });
+  }
   const nota = `nota-${n}`;
   inserir('core_inbound_notes', {
     id: nota,
@@ -203,6 +222,7 @@ function devolucaoDeCompra(docType: 'nfe' | 'manual' = 'nfe'): { returnId: strin
     total_cents: 10000,
     status: 'received',
     doc_type: docType,
+    supplier_id: fornecedor,
   });
   const returnId = `devc-${n}`;
   inserir('core_supplier_returns', {
@@ -519,5 +539,94 @@ describe('NF-e de devolução de COMPRA — saída, finNFe 4, NFref da nota do f
       createNfeDeDevolucao({ companyId: empresa, operacao: 'devolucao_compra', returnId, recipient: FORNECEDOR_SC }),
     ).toThrow(/entrada manual/);
     expect(proximoNumero('55')).toBe(1);
+  });
+});
+
+/**
+ * O DESTINATÁRIO LIDO DO CADASTRO (P0 fiscal).
+ *
+ * O defeito: a rota exigia o destinatário INTEIRO no corpo — nome, CNPJ,
+ * indicador de IE e endereço com código IBGE — e nenhuma tela a chamava. Pedir
+ * que a gerência redigite o endereço do fornecedor a cada devolução é pedir que
+ * ela erre, e o digitado divergiria do cadastro que a própria NF-e de entrada
+ * preencheu. O dado está no banco: devolução → nota de entrada → fornecedor.
+ */
+describe('o destinatário da devolução de compra sai do cadastro do fornecedor', () => {
+  const CADASTRO_COMPLETO = {
+    name: 'Fornecedor Catarinense Ltda',
+    document: '14.200.166/0001-87',
+    state_registration: '253008882',
+    street: 'Rua da Indústria',
+    number: '900',
+    district: 'Distrito Industrial',
+    city: 'Florianópolis',
+    city_ibge: '4205407',
+    state: 'SC',
+    zip: '88010-000',
+  };
+
+  it('monta o destinatário do cadastro, e a nota sai com ele', async () => {
+    const { returnId, chaveDaCompra } = devolucaoDeCompra('nfe', CADASTRO_COMPLETO);
+
+    const destinatario = destinatarioDaDevolucaoDeCompra(empresa, returnId);
+    expect(destinatario).toMatchObject({
+      document: '14200166000187',
+      name: 'Fornecedor Catarinense Ltda',
+      // Com inscrição estadual gravada, é contribuinte; a mercadoria volta para
+      // quem a revende, então não é consumo do destinatário.
+      ieIndicator: '1',
+      ie: '253008882',
+      consumidorFinal: false,
+      cityIbge: '4205407',
+      uf: 'SC',
+      zip: '88010000',
+    });
+
+    const r = await emitirNfeDeDevolucao({
+      companyId: empresa,
+      operacao: 'devolucao_compra',
+      returnId,
+      recipient: destinatario,
+      developmentMode: true,
+    });
+    expect(r.document.status).toBe('AUTHORIZED');
+    const xml = xmlDe(r.document.id);
+    expect(xml).toContain('<CNPJ>14200166000187</CNPJ>');
+    expect(xml).toContain('<IE>253008882</IE>');
+    expect(xml).toContain('<cMun>4205407</cMun>');
+    expect(xml).toContain(`<refNFe>${chaveDaCompra}</refNFe>`);
+  });
+
+  it('sem inscrição estadual, o fornecedor é ISENTO (indIEDest 2) — e não "não contribuinte"', () => {
+    const { returnId } = devolucaoDeCompra('nfe', { ...CADASTRO_COMPLETO, state_registration: null });
+    const destinatario = destinatarioDaDevolucaoDeCompra(empresa, returnId);
+    expect(destinatario.ieIndicator).toBe('2');
+    expect(destinatario.ie).toBeNull();
+  });
+
+  it('cadastro incompleto RECUSA nomeando cada campo que falta — nada é inventado', () => {
+    const { returnId } = devolucaoDeCompra('nfe', {
+      ...CADASTRO_COMPLETO,
+      city_ibge: null,
+      number: null,
+    });
+    let erro: unknown;
+    try {
+      destinatarioDaDevolucaoDeCompra(empresa, returnId);
+    } catch (err) {
+      erro = err;
+    }
+    expect((erro as { code?: string }).code).toBe('CORE_FISCAL_RETURN_SUPPLIER_INCOMPLETE');
+    expect((erro as Error).message).toMatch(/número/);
+    expect((erro as Error).message).toMatch(/código IBGE do município/);
+    // Recusa de cadastro não gasta número fiscal.
+    expect(proximoNumero('55')).toBe(1);
+  });
+
+  it('nota de entrada sem fornecedor vinculado recusa com o caminho de quem vincula', () => {
+    const { returnId } = devolucaoDeCompra('nfe', null);
+    expect(() => destinatarioDaDevolucaoDeCompra(empresa, returnId)).toThrow(
+      /não tem fornecedor cadastrado/,
+    );
   });
 });

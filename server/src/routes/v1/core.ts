@@ -337,7 +337,10 @@ import {
 import { reemitirRejeitada } from '../../services/core/FiscalReemissao.js';
 import { gravarOperacao, listarOperacoes } from '../../services/core/FiscalOperacoes.js';
 import { pendenciasContabeis } from '../../services/core/PendenciasContabeis.js';
-import { emitirNfeDeDevolucao } from '../../services/core/FiscalDevolucao.js';
+import {
+  destinatarioDaDevolucaoDeCompra,
+  emitirNfeDeDevolucao,
+} from '../../services/core/FiscalDevolucao.js';
 import { renderDanfce } from '../../services/core/DanfceRenderer.js';
 import { renderDanfe } from '../../services/core/DanfeRenderer.js';
 import {
@@ -9323,7 +9326,30 @@ coreRouter.get('/fiscal/pendencias-contabeis', (req: AuthedRequest, res, next) =
 /** A NF-e de devolução de um registro de devolução — de venda (entrada) ou de compra (saída). */
 async function notaDeDevolucaoPelaRota(req: AuthedRequest, operacao: 'devolucao_venda' | 'devolucao_compra') {
   const { companyId, userId } = scope(req);
-  const recipient = destinatarioDoCorpo(req.body?.recipient);
+  /*
+    O DESTINATÁRIO DA DEVOLUÇÃO DE COMPRA VEM DO CADASTRO (P0 fiscal).
+
+    O defeito: a rota exigia o destinatário no corpo — nome, CNPJ, indicador de
+    IE e o endereço inteiro com código IBGE — nas DUAS devoluções. Nenhuma tela
+    a chamava, e não é coincidência: pedir que a gerência redigite o endereço
+    do fornecedor a cada devolução é pedir que ela erre, e o endereço digitado
+    divergiria do cadastro que a própria NF-e de entrada preencheu.
+
+    Na devolução de COMPRA o dado já está no banco (devolução → nota de entrada
+    → fornecedor), então o corpo sem `recipient` passa a significar "use o
+    cadastro". Corpo COM `recipient` continua valendo: é o caminho de quem
+    precisa corrigir um endereço pontualmente sem mexer no cadastro.
+
+    Na devolução de VENDA nada muda: `core_customers` guarda endereço como
+    texto livre, sem município nem IBGE, e a NF-e de entrada exige os dois —
+    ali o destinatário continua sendo informado, e inventá-lo seria pôr
+    endereço errado numa nota.
+  */
+  const recipient =
+    destinatarioDoCorpo(req.body?.recipient)
+    ?? (operacao === 'devolucao_compra'
+      ? destinatarioDaDevolucaoDeCompra(companyId, String(req.params.returnId))
+      : null);
   if (!recipient) {
     throw new ApiError('CORE_FISCAL_RETURN_RECIPIENT_REQUIRED', 'Informe o destinatário da NF-e de devolução.', 400);
   }

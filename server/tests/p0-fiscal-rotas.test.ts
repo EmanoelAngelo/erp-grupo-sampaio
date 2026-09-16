@@ -16,7 +16,7 @@ import { getConnection } from '../src/db/sqlite.js';
 import { ensureCoreSchema } from '../src/db/schema.js';
 import { linkUserToCompany, upsertCompany, upsertUser } from '../src/services/auth/IdentityService.js';
 import { updateFiscalConfig } from '../src/services/core/FiscalConfigService.js';
-import { setSeriesNextNumber } from '../src/services/core/FiscalKeyService.js';
+import { buildAccessKey, setSeriesNextNumber } from '../src/services/core/FiscalKeyService.js';
 import { emitNfceForSale } from '../src/services/core/FiscalPipelineService.js';
 import { parseSefazResponse, type AuthorizeRequest, type SefazResponse } from '../src/services/core/SefazAdapter.js';
 import { SefazTestAdapter } from '../src/services/core/SefazTestAdapter.js';
@@ -258,5 +258,124 @@ describe('a NF-e de devolução de venda pela rota', () => {
     );
     expect(xml).toContain('<finNFe>4</finNFe>');
     expect(xml).toContain('<tpNF>0</tpNF>');
+  });
+});
+
+/**
+ * A NF-e DE DEVOLUÇÃO DE COMPRA SEM DESTINATÁRIO NO CORPO (P0 fiscal).
+ *
+ * O defeito: a rota exigia o destinatário inteiro — nome, CNPJ, indicador de
+ * IE e o endereço com código IBGE — e por isso NENHUMA tela a chamava; a
+ * devolução ao fornecedor terminava sempre no emissor do contador. Na compra o
+ * dado está no banco (devolução → nota de entrada → fornecedor), e corpo sem
+ * `recipient` passa a significar "use o cadastro".
+ */
+describe('a NF-e de devolução de COMPRA pela rota, com o destinatário do cadastro', () => {
+  function devolucaoDeCompra(cadastro: Record<string, unknown> | null): string {
+    n += 1;
+    const now = new Date().toISOString();
+    getConnection()
+      .prepare(
+        `INSERT INTO core_products (id, company_id, internal_code, name, unit, cost_cents, price_cents,
+                                    ncm, cfop, origin, active, created_at, updated_at)
+         VALUES (?, ?, ?, 'Camisa atacado', 'UN', 2000, 5000, '62052000', '5102', '0', 1, ?, ?)`,
+      )
+      .run(`pc-${n}`, empresa, `PJC-${n}`, now, now);
+    let fornecedor: string | null = null;
+    if (cadastro) {
+      fornecedor = `forn-${n}`;
+      inserir('core_suppliers', { id: fornecedor, company_id: empresa, ...cadastro });
+    }
+    inserir('core_inbound_notes', {
+      id: `nota-${n}`,
+      company_id: empresa,
+      access_key: buildAccessKey({
+        ufCode: '42',
+        aamm: '2609',
+        cnpj: '14200166000187',
+        model: '55',
+        serie: 1,
+        number: 900 + n,
+        emissionType: '1',
+        numericCode: '12345678',
+      }),
+      number: String(900 + n),
+      series: '1',
+      total_cents: 10000,
+      status: 'received',
+      doc_type: 'nfe',
+      supplier_id: fornecedor,
+    });
+    const returnId = `devc-${n}`;
+    inserir('core_supplier_returns', {
+      id: returnId,
+      company_id: empresa,
+      number: n,
+      note_id: `nota-${n}`,
+      reason: 'Lote com defeito',
+      goods_cents: 6000,
+      credit_cents: 6000,
+      finance_mode: 'sem_financeiro',
+      fiscal_status: 'pendente',
+    });
+    inserir('core_supplier_return_items', {
+      id: `${returnId}-1`,
+      return_id: returnId,
+      company_id: empresa,
+      product_id: `pc-${n}`,
+      quantity: 3,
+      unit_cost_cents: 2000,
+      total_cents: 6000,
+    });
+    return returnId;
+  }
+
+  const FORNECEDOR = {
+    name: 'Fornecedor Catarinense Ltda',
+    document: '14.200.166/0001-87',
+    state_registration: '253008882',
+    street: 'Rua da Indústria',
+    number: '900',
+    district: 'Distrito Industrial',
+    city: 'Florianópolis',
+    city_ibge: '4205407',
+    state: 'SC',
+    zip: '88010-000',
+  };
+
+  it('corpo vazio emite com o destinatário do cadastro do fornecedor', async () => {
+    const returnId = devolucaoDeCompra(FORNECEDOR);
+    const gerente = await login('GERPJ5', 'gerente_loja');
+
+    const r = await request(app)
+      .post(`/api/v1/core/fiscal/devolucoes/compra/${returnId}/nfe`)
+      .set(gerente)
+      .send({ developmentMode: true });
+
+    expect(r.status).toBe(200);
+    expect(r.body.document.status).toBe('AUTHORIZED');
+    const xml = String(
+      (getConnection().prepare('SELECT xml_original FROM core_fiscal_documents WHERE id = ?').get(r.body.document.id) as {
+        xml_original: string;
+      }).xml_original,
+    );
+    expect(xml).toContain('<CNPJ>14200166000187</CNPJ>');
+    expect(xml).toContain('<cMun>4205407</cMun>');
+    expect(xml).toContain('<tpNF>1</tpNF>');
+    expect(xml).toContain('<finNFe>4</finNFe>');
+  });
+
+  it('cadastro incompleto vira 422 nomeando o campo — e não uma nota com endereço inventado', async () => {
+    const returnId = devolucaoDeCompra({ ...FORNECEDOR, city_ibge: null });
+    const gerente = await login('GERPJ6', 'gerente_loja');
+
+    const r = await request(app)
+      .post(`/api/v1/core/fiscal/devolucoes/compra/${returnId}/nfe`)
+      .set(gerente)
+      .send({ developmentMode: true });
+
+    expect(r.status).toBe(422);
+    expect(r.body.error.code).toBe('CORE_FISCAL_RETURN_SUPPLIER_INCOMPLETE');
+    expect(r.body.error.message).toMatch(/código IBGE do município/);
   });
 });
