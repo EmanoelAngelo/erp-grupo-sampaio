@@ -146,7 +146,6 @@ describe('GAP-PRD-193 — o carrinho mora na conta', () => {
     fireEvent.click(screen.getByText('Jaqueta').closest('li')!.querySelector('button')!);
     await waitFor(
       () => expect(chamadas.some((c) => c.method === 'PUT' && c.url.endsWith('/loja/portal/carrinho'))).toBe(true),
-      { timeout: 3000 },
     );
     const envio = chamadas.find((c) => c.method === 'PUT' && c.url.endsWith('/loja/portal/carrinho'))!;
     expect(envio.body).toEqual({ items: [{ productId: 'p-jaq', quantity: 1 }] });

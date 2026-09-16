@@ -537,7 +537,7 @@ describe('F-cupom-fiscal-M03 — o painel é da venda que acabou de sair', () =>
     fireEvent.click(await screen.findByRole('button', { name: /Pré-venda #12/ }));
     await waitFor(() => expect(screen.getByLabelText(`Quantidade de ${VESTIDO.name}`)).toBeTruthy());
     fireEvent.keyDown(campo, { key: 'F10' });
-    const valor = (await screen.findByPlaceholderText(/Vazio =/, {}, { timeout: 4000 })) as HTMLInputElement;
+    const valor = (await screen.findByPlaceholderText(/Vazio =/)) as HTMLInputElement;
     fireEvent.change(valor, { target: { value: '100,00' } });
     fireEvent.submit(valor.closest('form')!);
     await waitFor(() => expect(screen.getAllByText(/Dinheiro/).length).toBeGreaterThan(0));
@@ -745,7 +745,7 @@ describe('PED-pdv-02 — o preço mudou entre o bipe e o Finalizar', () => {
     await waitFor(() => expect(screen.getByLabelText(`Quantidade de ${ARROZ.name}`)).toBeTruthy());
     fireEvent.keyDown(campo, { key: 'F10' });
     await screen.findByRole('dialog', { name: 'Pagamento' });
-    await screen.findByPlaceholderText(/Vazio =/, {}, { timeout: 4000 });
+    await screen.findByPlaceholderText(/Vazio =/);
     fireEvent.keyDown(document.activeElement ?? document.body, { key: 'F10' });
 
     expect(await screen.findByText(/mudou de R\$\s*21,90 para R\$\s*19,90 — confira com o cliente/)).toBeTruthy();

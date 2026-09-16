@@ -291,7 +291,7 @@ describe('GAP-PRD-190 — a PJ reimprime a plaquinha pela unidade', () => {
       </MemoryRouter>,
     );
     fireEvent.change(screen.getByPlaceholderText('Nome ou código do produto'), { target: { value: 'Shin' } });
-    fireEvent.click(await screen.findByRole('button', { name: 'Shineray Jet 50' }, { timeout: 2000 }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Shineray Jet 50' }));
     fireEvent.click(await screen.findByRole('button', { name: 'Reimprimir plaquinha' }));
 
     await waitFor(() => expect(escrito).toContain('#0009'));
@@ -315,7 +315,7 @@ describe('GAP-PRD-190 — a PJ reimprime a plaquinha pela unidade', () => {
       </MemoryRouter>,
     );
     fireEvent.change(screen.getByPlaceholderText('Nome ou código do produto'), { target: { value: 'Shin' } });
-    fireEvent.click(await screen.findByRole('button', { name: 'Shineray Jet 50' }, { timeout: 2000 }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Shineray Jet 50' }));
     await screen.findByText('#0009');
     expect(screen.queryByRole('button', { name: 'Reimprimir plaquinha' })).toBeNull();
   });
@@ -344,7 +344,7 @@ describe('GAP-PRD-190 — a PJ reimprime a plaquinha pela unidade', () => {
       </MemoryRouter>,
     );
     fireEvent.change(screen.getByPlaceholderText('Nome ou código do produto'), { target: { value: 'Shin' } });
-    fireEvent.click(await screen.findByRole('button', { name: 'Shineray Jet 50' }, { timeout: 2000 }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Shineray Jet 50' }));
     await screen.findAllByRole('button', { name: 'Identificar' });
     expect(screen.queryByText('#0009')).toBeNull();
     expect(screen.queryByRole('columnheader', { name: 'Plaquinha' })).toBeNull();

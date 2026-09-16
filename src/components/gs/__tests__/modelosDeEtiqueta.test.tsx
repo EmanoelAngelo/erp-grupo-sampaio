@@ -99,7 +99,7 @@ describe('modelo de 2 colunas', () => {
   it('a prévia do rascunho é pedida ao servidor e mostrada antes de salvar', async () => {
     render(<ModelosDeEtiqueta podeEditar formatosProntos={[]} />);
     fireEvent.click(await screen.findByRole('button', { name: 'Novo modelo' }));
-    await waitFor(() => expect(screen.getByText(/4 etiqueta\(s\) de exemplo em 2 página\(s\)/)).toBeTruthy(), { timeout: 3000 });
+    await waitFor(() => expect(screen.getByText(/4 etiqueta\(s\) de exemplo em 2 página\(s\)/)).toBeTruthy());
     expect((screen.getByTitle('Prévia da etiqueta') as HTMLIFrameElement).getAttribute('srcdoc')).toContain('prévia');
   });
 });
