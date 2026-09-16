@@ -778,10 +778,14 @@ function normalizarPagamentos(pagamentos: SalePaymentInput[] | undefined | null)
  *
  * ## O que é aceito
  *
- * Identificador é TEXTO, mas número também passa — convertido, e sem mudar o
- * desfecho: `WHERE id = 7` não acha produto nenhum e continua saindo
- * `CORE_PRODUCT_NOT_FOUND`, como antes. O que passa a ser recusado com nome é
- * o que nunca foi identificador: objeto, lista, booleano, vazio, ausente.
+ * Identificador é TEXTO, e NÚMERO também passa pela conferência — de
+ * propósito, e sem nada ser reescrito: o valor segue cru para a consulta, onde
+ * `WHERE id = 7` não acha produto nenhum e continua saindo
+ * `CORE_PRODUCT_NOT_FOUND`, exatamente como antes deste guarda. Trocar esse
+ * 404 por um 400 novo seria mexer numa resposta que já estava certa. O que
+ * passa a ser recusado com nome é só o que nunca foi identificador — objeto,
+ * lista, booleano, texto vazio, ausente —, que é o que o node:sqlite não sabe
+ * ligar a um parâmetro.
  */
 function textoDoPedido(valor: unknown): string | null {
   if (typeof valor === 'string') return valor.trim() || null;
