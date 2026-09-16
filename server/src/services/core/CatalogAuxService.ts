@@ -73,14 +73,46 @@ const UNIDADES_PADRAO: { code: string; name: string; decimals: number }[] = [
   { code: 'AR', name: 'Arroba', decimals: 3 },
 ];
 
-/** Cria as unidades padrão só onde ainda não há nenhuma. */
+/**
+ * Cria as unidades padrão da operação que ainda não as recebeu.
+ *
+ * ## O DEFEITO (P00-catalogo-unidade, medido pela verificação adversarial)
+ *
+ * A saída antecipada era `SELECT COUNT(*) ... if (total.n > 0) return;` — a
+ * função concluía "JÁ SEMEEI" a partir de "EXISTE ALGUMA UNIDADE". As duas
+ * coisas são diferentes, e `upsertUnit` (POST /core/catalog/units) não chama
+ * esta função: numa empresa NOVA, quem cadastrasse uma unidade própria antes
+ * de qualquer listagem deixava as padrão de fora PARA SEMPRE, e todo cadastro
+ * de produto passava a falhar com 400 CORE_UNIT_NOT_FOUND ("A unidade 'UN' não
+ * está cadastrada nesta operação") — inclusive o da tela, que nasce com 'UN'.
+ * Sonda pela rota: POST /catalog/units {SC} 201 → POST /core/products 400 →
+ * listar as unidades → POST /core/products 400 de novo. Listar não conserta,
+ * porque listar também via "existe alguma unidade" e saía cedo. Uma loja
+ * implantada por script, importação ou API nascia sem cadastrar produto nenhum.
+ *
+ * ## O CONSERTO, e por que não é "conferir as quinze"
+ *
+ * A pergunta passa a ser sobre o VOCABULÁRIO PADRÃO, e não sobre o balcão
+ * estar vazio: existe ALGUMA das unidades padrão? Existindo, a operação já
+ * nasceu — e o que falta dela foi TIRADO de propósito (`deleteUnit` apaga a
+ * unidade sem produto, e desativar mantém a linha). Conferir as quinze uma a
+ * uma, como a sugestão original dizia, faria a unidade que o dono excluiu
+ * RESSUSCITAR na próxima abertura da tela, que é outro defeito no lugar deste.
+ *
+ * O INSERT já é `ON CONFLICT DO NOTHING`, então semear de novo nunca duplica;
+ * a conferência é só para não escrever à toa e para não desfazer escolha de
+ * ninguém.
+ */
 export function ensureDefaultUnits(companyId: string): void {
   ensureCoreSchema();
   const db = getConnection();
-  const total = db
-    .prepare('SELECT COUNT(*) AS n FROM core_units WHERE company_id = ?')
-    .get(companyId) as { n: number };
-  if (total.n > 0) return;
+  const marcadores = UNIDADES_PADRAO.map(() => '?').join(', ');
+  const jaNasceu = db
+    .prepare(
+      `SELECT 1 FROM core_units WHERE company_id = ? AND UPPER(code) IN (${marcadores}) LIMIT 1`,
+    )
+    .get(companyId, ...UNIDADES_PADRAO.map((u) => u.code));
+  if (jaNasceu) return;
 
   const ts = agora();
   withTransaction(() => {
