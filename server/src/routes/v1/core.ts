@@ -97,12 +97,9 @@ import {
   findLabelFormat,
   CAMPOS_DA_ETIQUETA,
 } from '../../services/core/LabelFormats.js';
+import { avisosDoFormato } from '../../services/core/LabelSheet.js';
 import {
-  avisosDoFormato,
-  renderLabelSheet,
-  resumoDaFolha,
-} from '../../services/core/LabelSheet.js';
-import {
+  emitirEtiquetas,
   formatoDoPedido,
   imprimirEtiquetas,
   imprimirTeste,
@@ -111,7 +108,7 @@ import {
   posicaoInicial,
   reimprimirEtiquetas,
 } from '../../services/core/LabelPrintService.js';
-import { HOMOLOGACAO_FISICA, PERFIL_PADRAO, PERFIS_DE_IMPRESSAO } from '../../services/core/LabelProfiles.js';
+import { HOMOLOGACAO_FISICA, PERFIL_PADRAO, PERFIS_DE_IMPRESSAO, acharPerfil } from '../../services/core/LabelProfiles.js';
 import {
   atualizarModelo,
   criarModelo,
@@ -12199,10 +12196,41 @@ coreRouter.post('/labels/templates/preview', (req: AuthedRequest, res, next) => 
     // Os campos do modelo decidem o título da variante (nome completo sem a linha da grade).
     const item = itemParaPrevia(companyId, body.productId ? String(body.productId) : null, quantidade, modelo.fields);
     const format = formatoDoModelo(modelo);
+    /*
+      A PRÉVIA É DESENHADA PELA SAÍDA DO MODELO (P00 das etiquetas).
+
+      O DEFEITO: a prévia chamava sempre `renderLabelSheet` — o desenho em
+      HTML/CSS do navegador — mesmo no modelo cuja saída padrão é ZPL, EPL,
+      TSPL, PDF ou o driver. São DOIS desenhistas diferentes: o do navegador
+      deixa o CSS cortar o que não cabe; o dos outros (`LabelLayout`, em pontos
+      da impressora) tira campo por campo até caber, e avisa quais tirou, além
+      de dizer o que a linguagem da térmica não sabe fazer (a EPL não corta só
+      no fim do lote, o ZPL ignora o avanço final). O gestor montava o modelo
+      olhando um adesivo que não era o que a térmica dele ia imprimir, e
+      descobria a diferença com o rolo já gasto.
+
+      Agora a prévia passa pelo MESMO caminho da impressão (`emitirEtiquetas`
+      com o perfil do modelo): o que se vê é o que sai. Modelo sem saída padrão
+      continua no navegador, como antes. Os avisos são a soma dos dois: a
+      geometria do formato (`avisosDoFormato`, que a folha do navegador também
+      devolve) e os do desenho/linguagem.
+    */
+    const perfil = acharPerfil(modelo.outputProfile) ?? acharPerfil(PERFIL_PADRAO)!;
+    const emissao = emitirEtiquetas({
+      perfil,
+      format,
+      items: [item],
+      companyId,
+      comecarEm: 1,
+      nomeDoArquivo: 'previa-da-etiqueta',
+    });
     res.json({
-      html: renderLabelSheet({ format, items: [item], companyId }),
-      ...resumoDaFolha(format, [item]),
-      avisos: avisosDoFormato(format),
+      html: emissao.html,
+      etiquetas: emissao.etiquetas,
+      folhas: emissao.folhas,
+      // Qual saída desenhou esta prévia — a tela diz de qual adesivo se trata.
+      perfil: emissao.perfil,
+      avisos: [...new Set([...avisosDoFormato(format), ...emissao.avisos])],
     });
   } catch (err) {
     next(err);

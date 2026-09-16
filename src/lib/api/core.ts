@@ -5584,7 +5584,17 @@ export const coreApi = {
     }),
   /** Prévia só de leitura: modelo salvo (templateId) ou em edição (template). */
   previewLabelTemplate: (input: { templateId?: string; template?: RascunhoDeModelo; productId?: string; quantity?: number }) =>
-    apiRequest<{ html: string; etiquetas: number; folhas: number; avisos?: string[] }>('/core/labels/templates/preview', { method: 'POST', body: input }),
+    apiRequest<{
+      html: string;
+      etiquetas: number;
+      folhas: number;
+      avisos?: string[];
+      /**
+       * A saída que DESENHOU esta prévia — a do modelo. Ausente num servidor
+       * antigo, que desenhava sempre pelo navegador.
+       */
+      perfil?: PerfilDeImpressao['id'];
+    }>('/core/labels/templates/preview', { method: 'POST', body: input }),
 
   // ------------------------------------------------ códigos do cadastro
 
