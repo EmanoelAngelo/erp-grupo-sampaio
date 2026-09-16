@@ -335,7 +335,7 @@ produtos e fotos (`pdv-produtos-e-miniaturas`, `pdvMiniaturasEFiscal`); desconto
 | **Contador** | pCredSN; CST de PIS/COFINS e alíquotas; ST/CEST/FCP/DIFAL/IPI/benefícios; natureza da operação; modalidade de contingência. |
 | **SEFAZ-RS** | Primeira autorização real em homologação (o simulador não prova chave, data nem cadeia ICP-Brasil). Os endereços reais dos web services estão vazios (`SEFAZ_ENDPOINTS`): configurá-los é pré-condição da primeira transmissão. Homologar de verdade: autorização 55 e 65, cancelamento, inutilização, consulta e devolução (NFref). |
 | **Impressoras de etiqueta** | Homologação física de cada modelo e firmware da loja (lista em §5.5): leitura dos códigos no caixa, calibração X/Y, mídia, escurecimento e velocidade, fontes e acentos em ZPL/EPL/TSPL. Nenhum modelo declarado compatível. |
-| **Dono — decisões de produto** | Tetos de desconto por perfil da Preço Justo (a tela existe; nenhum número foi inventado). Como gerar lote novo de plaquinhas (hoje ninguém gera: a Oficina saiu e a PJ Motors segue barrada pela regra da bancada). Gerar as miniaturas das fotos antigas (Fotos em lote). |
+| **Dono — decisões de produto** | Tetos de desconto por perfil da Preço Justo (a tela existe; nenhum número foi inventado). Quando gerar o próximo lote de plaquinhas (a PJ Motors gera, imprime e administra — §10.1; nenhuma outra empresa alcança). Gerar as miniaturas das fotos antigas (Fotos em lote). |
 
 ---
 
@@ -403,3 +403,183 @@ Os commits de cada frente continuam no histórico, dentro de cada junção: foto
   delas já está nesta branch.
 - **Aviso de build pré-existente:** o aviso de tamanho de pacote do Vite já aparecia na linha de
   base; não é desta entrega.
+
+---
+
+## 10. Pendências fechadas depois do relatório
+
+### 10.1 O teste da tela do CSC (instável sob carga)
+
+- **Causa:** o teste, não a tela. O `abrir()` esperava o título "Numeração das notas", que é
+  desenhado no primeiro render e não depende de resposta nenhuma, e em seguida procurava de forma
+  síncrona o cartão do CSC — que só monta depois que a configuração fiscal chega
+  (`{config && <CscCard/>}`), com a lista do cofre numa segunda leitura. Sem carga, a
+  re-renderização costumava cair antes da consulta; com a CPU disputada, não.
+- **Descartados, com evidência:** concorrência entre arquivos (cada arquivo no seu processo do
+  vitest), estado compartilhado (fetch novo por caso, sessão e `localStorage` limpos a cada caso),
+  banco (jsdom, sem banco), mocks (nenhuma rota sem resposta).
+- **Prova:** o mock passou a responder a configuração e a lista do CSC só depois das séries (+100
+  ms), sempre; com o `abrir()` antigo o caso falha com o mesmo erro em 4 de 4 execuções, com e sem
+  carga.
+- **Conserto:** os casos esperam o estado que conferem (o cartão montado e os selos lidos do cofre);
+  o atraso de ordem ficou permanente nos quatro arquivos que desenham a tela fiscal. Sem repetição
+  e sem tempo maior como remédio. Sob carga (8 laços ocupados): 30/30 execuções verdes.
+- **Produto:** a investigação achou um defeito real — o selo do CSC dizia NÃO CONFIGURADO antes de
+  ler o cofre e, com a leitura recusada, para sempre. Agora diz CONSULTANDO… e SITUAÇÃO
+  DESCONHECIDA.
+- Commits: `56c1885` (selo) e `a89e0e4` (testes).
+
+### 10.2 Plaquinhas: a PJ Motors gera sem bancada
+
+- **Causa:** a regra antiga GAP-PRD-110 exigia bancada ativa para gerar, imprimir a folha do lote e
+  liberar; a PJ Motors, única empresa com plaquinha, não tem bancada — ninguém gerava lote.
+- **Conserto:** a regra da empresa é o portão inteiro (`8b88cc7`). As outras empresas seguem com
+  403.
+- **O que a verificação achou em seguida:** gerar não bastava. A plaquinha gerada pela PJ nunca
+  virava "associada" — isso só acontecia no cadastro de MÁQUINA, que exige bancada — e o QR dela
+  respondia 404. A PJ imprimiria adesivos mortos.
+- **Conserto (`418aad1`), escolhido entre três desenhos:** a plaquinha da PJ passa a ser colada
+  numa moto do estoque dela (`core_equipment_tags.unit_id`, coluna anulável; sem máquina nem
+  bancada de mentira). Estoque › Unidades ganha colar, descolar (só com a moto no pátio) e trocar
+  adesivo (o velho vira danificado, o QR velho morre na hora). O QR da plaquinha colada responde
+  com a moto (marca, modelo, PJ Motors, "Disponível na loja"); a não colada responde 404 dizendo que
+  ainda não foi vinculada, sem número nem empresa. `POST /print/jobs` com plaquinha passou a exigir
+  a permissão de imprimir plaquinha: o PDV não imprime. Três rotas novas; 553 rotas, 549 fechadas
+  ao contador.
+
+### 10.3 A classe de corrida na suíte inteira da tela
+
+- O teste do CSC era um caso de uma classe: o teste espera um elemento do primeiro render e lê de
+  forma síncrona o que só aparece depois de uma resposta. Um detector (o `setImmediate` adiado nos
+  processos do vitest, por onde o React 19 desenha fora do `act`) tornou todos determinísticos:
+  3 022 testes varridos, 29 casos da classe em 17 arquivos, corrigidos para esperar a condição real
+  (`97f8aad`).
+- A varredura achou dois defeitos reais de produto no PDV (`808c1c9`): os ouvintes de tecla com
+  estado religavam depois do commit (a tecla caía no ouvinte velho — o F6 com a pré-venda recém
+  carregada não perguntava nada) e o campo de leitura soltava o código lido só no render seguinte
+  (o bipe B ia para trás do A). Os ouvintes passaram a ligar no commit e o campo, a soltar a leitura
+  no mesmo instante.
+
+---
+
+## 11. Prioridade 00 — a Preço Justo funcionando de ponta a ponta
+
+Seis frentes varreram e **consertaram** as áreas que a entrega depende, cada uma na própria
+branch, juntadas nesta: `p00/seguranca-isolamento`, `p00/produtos-pdv`, `p00/pdv-venda`,
+`p00/fiscal`, `p00/etiquetas`, `p00/asaas-frete`. Cada conserto tem comentário com o defeito
+antes da correção, teste que o prova e mordida (o teste fica vermelho quando o conserto é
+desfeito). Depois de cada frente, verificação adversarial independente — e o que ela ainda
+apontou virou a rodada seguinte.
+
+### 11.1 Cadastro de produtos, códigos e estoque
+
+| Defeito | Conserto |
+| --- | --- |
+| `POST /products/:id/barcodes` não conferia de quem era o produto: outra empresa cadastrava código no produto da Preço Justo (201), o código ficava **queimado** para o dono e o balcão da outra loja passava a atender ao bipe | O dono é conferido (404 como nas rotas irmãs); os leitores que decidem "este código está livre" passaram a exigir que empresa do código e do produto sejam a mesma, o que deixa inerte a linha torta herdada |
+| O SKU não era achado no balcão em outra caixa e não contava como casamento exato (digitar `sh-200` para o SKU `SH-200` devolvia vazio) — caminho direto para o mesmo item ganhar dois cadastros | Uma expressão só decide "casou por código" (barras, interno, SKU, adicional), com a mesma régua do cadastro |
+| Tara e pisos percentuais entravam crus: `abc` ficava gravado em coluna inteira e ia para a balança; tara negativa faz a balança somar peso; piso configurado no POST não valia para nada, em silêncio | Alfândega única na criação e na edição (tara em gramas inteiras ≥ 0; percentual ≥ 0), com recusa nomeada; o clone não herda o que não é número |
+| `PUT /products/:id/custom-fields` conferia a definição do campo, não o dono do produto | Conferência de dono, como nas irmãs |
+| Saldo preso no modelo de grade não tinha como sair (o movimento é recusado no modelo) | Caminho de regularização, alcançável pela tela de Movimentações |
+
+### 11.2 Venda no PDV e caixa
+
+| Defeito | Conserto |
+| --- | --- |
+| `POST /core/sales` — a rota mais usada — respondia **500 "Erro interno."** em caminhos de entrada malformada | Recusa 4xx com motivo, no lugar do 500 |
+| `POST /core/sale-returns` e `POST /core/print/jobs` idem (cópias não numéricas, linha do pedido ausente) | Idem |
+| O turno de caixa fechava **calado devendo dinheiro ao cliente**: devolução em duas etapas sem reembolso não aparecia no fechamento | O fechamento nomeia a pendência e não deixa fechar calado |
+
+### 11.3 Fiscal
+
+| Defeito | Conserto |
+| --- | --- |
+| Três rotas fiscais existiam e **nenhuma tela as chamava** (operações fiscais, pendências contábeis, devolução de compra) | Telas construídas: o dono cadastra a operação fiscal, vê as pendências do contador e emite a devolução |
+| A NF-e de devolução de venda existia no servidor e não tinha gesto na tela | Gesto na tela da devolução |
+| `createNfeForSale` existia inteiro e **nenhuma tela emitia NF-e de venda de balcão** | A venda de balcão emite NF-e (modelo 55) pela tela, com destinatário validado |
+| A contagem de exceções por produto casava o grupo tributário só pelo perfil | Casamento correto |
+
+### 11.4 Etiquetas
+
+| Defeito | Conserto |
+| --- | --- |
+| O painel "saída, calibração e mídia" do modelo era **decorativo**: gravava nove campos que a impressão ignorava | A impressão usa o que o modelo grava |
+| A fila não sabia qual lote ia para o papel; a folha do navegador (a saída padrão) saía muda | Lote escolhido e avisado; a folha do navegador diz o que as outras dizem |
+| A prévia era desenhada por outro desenhista que não o da impressão | Prévia e papel pelo mesmo layout |
+| Dois becos de acesso (Impressoras por perfil; aba Etiqueta do cadastro sem perfil) | Acesso por capability, com a tela dizendo o motivo |
+| Não havia como reimprimir o comprovante de uma venda passada | Reimpressão do comprovante |
+
+### 11.5 Asaas, conciliação e frete
+
+| Defeito | Conserto |
+| --- | --- |
+| A tela de Integrações e a cobrança discordavam sobre a MESMA chave (a do `.env` aparecia como "credencial desta operação") | Uma fonte só de verdade sobre a credencial |
+| `test-quote`/`test-tracking` aceitavam transportadora desconhecida vinda da URL | Recusa com motivo, pelo catálogo |
+| A conciliação aceitava recorte de data impossível e respondia "não houve o que conferir" | Recusa com motivo |
+
+### 11.6 Segurança e isolamento
+
+| Defeito | Conserto |
+| --- | --- |
+| Travessia de empresa na escrita de faixas de comissão; oráculo de existência entre empresas; 500 onde o certo é 404 | Conferência de empresa em cada escrita e leitura; recusa nomeada |
+| Pessoa fora do vínculo virava vendedor comissionado | Vínculo conferido |
+| Uma tela que estourava derrubava o sistema inteiro (uma fronteira de erro só) | Fronteira por tela: o resto do sistema continua de pé |
+| `npm run lint` da tela estava **vermelho na base** | Verde |
+---
+
+## 12. Checkpoint de 16/09/2026 — onde a entrega parou
+
+Feito a pedido do dono, com 93% do limite de uso consumido. O detalhe operacional
+(comandos, worktrees, ordem dos próximos passos) está em
+[CONTINUACAO-P00-PRECO-JUSTO.md](CONTINUACAO-P00-PRECO-JUSTO.md); aqui fica só o
+estado.
+
+**Branch** `audit/preco-justo-p0`, **HEAD** `fba4f7d`, árvore limpa, 107 commits
+sobre a base `8a8affd`. Nada foi enviado ao GitHub; nem o servidor nem o banco de
+produção foram tocados.
+
+### 12.1 O que entrou depois do §11
+
+A rodada final abriu cinco frentes. **Três foram verificadas e juntadas**:
+
+- **venda-caixa-unidade** — cabeçalho da venda recusa texto vazio e número (era
+  500 e vendedor fantasma); a fila de vendas guardadas não devolve "Erro
+  interno." no relançamento; a dívida da devolução acompanha o cliente e não a
+  janela do turno; o que fica gravado no fechamento nomeia a dívida.
+- **frete-conciliacao-comissao** — `/logistics/quotes` recusa transportadora fora
+  do catálogo; o recorte de data recusado para de apagar os números do período
+  anterior; a faixa de comissão da empresa vizinha não paga aqui; a prontidão do
+  Asaas pergunta o modo do processo em vez de acreditar no `.env`.
+- **fiscal-nfe-balcao** — a segunda emissão com destinatário diferente é recusada
+  (409) em vez de devolver a nota antiga como sucesso; o selo fiscal da venda
+  enxerga os dois modelos; o indicador de IE deixou de ser cravado '9'; a
+  devolução da venda documentada por NF-e deixou de ser beco sem saída.
+
+**Duas ficaram de fora do merge**, porque a verificação adversarial delas não
+chegou a tempo: `p5/produtos-codigos-saldo` (9 commits) e `p5/etiqueta-no-papel`
+(6 commits e 6 arquivos ainda não commitados na worktree do lane). Não juntar o
+que não foi verificado é a regra desta auditoria, e ela vale também no fim.
+
+### 12.2 O último conserto: o papel do fechamento
+
+A verificação adversarial da frente de caixa pegou uma **regressão do próprio
+conserto anterior**. Ao ensinar o papel a dizer que o reembolso em espécie está
+na gaveta, a frase passou a ser escolhida pela EXISTÊNCIA da devolução pendente —
+e não por onde o dinheiro está. Medido: venda paga no CRÉDITO, devolução de
+R$ 50,00, gaveta com esperado e contado iguais e diferença zero, e o papel
+assinado mandando separar R$ 50,00 que nunca passaram por ali. O mesmo saía no
+turno seguinte para a dívida herdada.
+
+Agora o turno calcula `naGavetaCents` — a espécie que a venda devolvida pôs
+NESTA gaveta, já sem o troco e limitada ao que ainda se deve — e o papel e a tela
+leem esse número. Registro anterior ao conserto não traz o campo: aí não se sabe,
+e a frase manda conferir em vez de chutar. Dois casos novos no servidor (cartão e
+dívida herdada) e dois na tela; o caso em espécie continua cobrando a frase
+verdadeira.
+
+### 12.3 O que ficou aberto
+
+Três defeitos medidos e ainda não consertados, listados com gravidade, arquivo e
+caminho do conserto no §8 do arquivo de continuação: as quinze unidades padrão
+que podem não nascer numa loja implantada por script (alta); `origin: ""` gravado
+em silêncio (média); e um parâmetro morto com o parágrafo que o explica (baixa).
+Nenhum impede a loja de vender.
