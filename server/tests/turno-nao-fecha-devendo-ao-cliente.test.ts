@@ -197,7 +197,7 @@ describe('a devolução em duas etapas sem reembolso não deixa o turno fechar c
   it('fechar com ciência exige o motivo, e o que ficou pendente fica gravado no turno', async () => {
     const b = await balcao(precoJusto, 'pj');
     const venda = await vender(b);
-    await devolverMercadoria(b, venda);
+    const devolucao = await devolverMercadoria(b, venda);
 
     const semMotivo = await request(app)
       .post(`/api/v1/core/cash/${b.gaveta}/close`)
@@ -223,9 +223,152 @@ describe('a devolução em duas etapas sem reembolso não deixa o turno fechar c
     const registro = JSON.parse(gravado.closed_with_pending!) as {
       motivo: string;
       totalCents: number;
+      devolucoesAguardandoReembolso?: {
+        number: number;
+        saleNumber: number | null;
+        pendenteCents: number;
+      }[];
     };
     expect(registro.motivo).toBe('o gerente faz o PIX da devolução amanhã cedo');
     expect(registro.totalCents).toBe(5_000);
+    /*
+      O DETALHE, E NÃO SÓ O VALOR (P00-caixa-divida). Este caso passava com a
+      devolução AUSENTE do registro: o turno guardava
+      {"totalCents":5000,"cobrancas":[],"pagamentosPendentes":[]} — "fechei
+      devendo R$ 50,00" sem dizer a quem nem de que devolução. Como este campo
+      é o único traço durável do que foi declarado (dele vivem o papel e a
+      auditoria), a asserção precisa cobrar a DÍVIDA pelo nome.
+    */
+    expect(registro.devolucoesAguardandoReembolso).toHaveLength(1);
+    expect(registro.devolucoesAguardandoReembolso![0]).toMatchObject({
+      number: (devolucao as { number: number }).number,
+      pendenteCents: 5_000,
+    });
+
+    // A auditoria do fechamento conta o tipo certo e nomeia a devolução —
+    // antes ela dizia {"cobrancas":0,"pagamentosPendentes":0,"totalCents":5000},
+    // uma trilha que se contradiz sozinha.
+    const trilha = getConnection()
+      .prepare(
+        `SELECT detail FROM core_audit_log
+          WHERE company_id = ? AND action = 'cash.close' AND entity_id = ?`,
+      )
+      .get(precoJusto, b.gaveta) as { detail: string };
+    const detalhe = JSON.parse(trilha.detail) as {
+      pendencias: {
+        cobrancas: number;
+        devolucoesAguardandoReembolso: number;
+        devolucoes: { number: number; saleNumber: number | null; pendenteCents: number }[];
+        totalCents: number;
+      };
+    };
+    expect(detalhe.pendencias.devolucoesAguardandoReembolso).toBe(1);
+    expect(detalhe.pendencias.totalCents).toBe(5_000);
+    expect(detalhe.pendencias.devolucoes[0]).toMatchObject({ pendenteCents: 5_000 });
+  });
+
+  /*
+    ==========================================================================
+    O TURNO SEGUINTE TAMBÉM NÃO FECHA CALADO (P00-caixa-divida)
+    ==========================================================================
+
+    O DEFEITO MEDIDO pela verificação adversarial: a pendência era procurada
+    só DENTRO da janela do turno em que a devolução foi REGISTRADA. O operador
+    de caixa não tem `sales.returns.operate`, então a única saída dele é
+    declarar ciência — e, feito isso, a dívida sumia do fechamento para
+    sempre: o turno 2, com os mesmos R$ 50,00 do cliente ainda na gaveta,
+    fechava 200, diferença 0, pendências 0. O conserto adiava o dano um turno
+    em vez de impedi-lo.
+  */
+  it('a dívida acompanha o cliente, e não a janela do turno: o turno seguinte também é barrado', async () => {
+    const b = await balcao(precoJusto, 'pj');
+    const venda = await vender(b);
+    const devolucao = await devolverMercadoria(b, venda);
+
+    // Turno 1 fecha declarando ciência — o caixa não pode reembolsar.
+    const primeiro = await request(app)
+      .post(`/api/v1/core/cash/${b.gaveta}/close`)
+      .set(b.caixa)
+      .send({
+        countedCents: 20_000,
+        pendenciasCiente: true,
+        pendenciasMotivo: 'o gerente paga o cliente amanhã',
+      });
+    expect(primeiro.status, JSON.stringify(primeiro.body)).toBe(200);
+
+    // Turno 2, no dia seguinte, com o dinheiro do cliente ainda na gaveta.
+    const segundaAbertura = await request(app)
+      .post('/api/v1/core/cash/open')
+      .set(b.caixa)
+      .send({ openingCents: 20_000 });
+    expect(segundaAbertura.status, JSON.stringify(segundaAbertura.body)).toBe(201);
+    const gaveta2 = segundaAbertura.body.id as string;
+
+    const resumo = await request(app).get(`/api/v1/core/cash/${gaveta2}/summary`).set(b.caixa);
+    expect(resumo.status).toBe(200);
+    expect(resumo.body.pendenciasEletronicas.quantidade).toBe(1);
+    expect(resumo.body.pendenciasEletronicas.devolucoesAguardandoReembolso[0]).toMatchObject({
+      id: devolucao.id,
+      pendenteCents: 5_000,
+    });
+
+    const recusa = await request(app)
+      .post(`/api/v1/core/cash/${gaveta2}/close`)
+      .set(b.caixa)
+      .send({ countedCents: 20_000 });
+    expect(recusa.status, JSON.stringify(recusa.body)).toBe(409);
+    expect(recusa.body.error.code).toBe('CORE_CASH_CLOSE_ELECTRONIC_PENDING');
+    expect(recusa.body.error.message).toContain('R$ 50,00 ainda não devolvidos ao cliente');
+
+    // Pago o cliente, o turno 2 fecha limpo: a trava acaba com a dívida, e
+    // não com a declaração.
+    const reembolso = await request(app)
+      .post(`/api/v1/core/sale-returns/${devolucao.id}/refunds`)
+      .set(b.gestor)
+      .set('Idempotency-Key', randomUUID())
+      .send({ method: 'dinheiro', amountCents: 5_000, cashSessionId: gaveta2 });
+    expect(reembolso.status, JSON.stringify(reembolso.body)).toBe(201);
+
+    const fechado = await request(app)
+      .post(`/api/v1/core/cash/${gaveta2}/close`)
+      .set(b.caixa)
+      .send({ countedCents: 15_000 });
+    expect(fechado.status, JSON.stringify(fechado.body)).toBe(200);
+    expect(fechado.body.difference_cents).toBe(0);
+    expect(fechamentoGravado(gaveta2).closed_with_pending).toBeNull();
+  });
+
+  /*
+    A VIA ASSINADA NÃO PODE MENTIR (P00-caixa-divida). O papel do fechamento
+    saía «FECHADO COM PENDÊNCIA ELETRÔNICA DE R$ 50,00 … Não está na gaveta:
+    continua na fila do gestor.» com a tabela de itens VAZIA — não dizia que
+    era devolução ao cliente, e afirmava o contrário da descoberta inteira
+    deste conserto: o reembolso em espécie ainda não pago ESTÁ na gaveta.
+  */
+  it('o papel do fechamento nomeia a devolução e não diz que o dinheiro está fora da gaveta', async () => {
+    const b = await balcao(precoJusto, 'pj');
+    const venda = await vender(b);
+    const devolucao = await devolverMercadoria(b, venda);
+    const fechado = await request(app)
+      .post(`/api/v1/core/cash/${b.gaveta}/close`)
+      .set(b.caixa)
+      .send({
+        countedCents: 20_000,
+        pendenciasCiente: true,
+        pendenciasMotivo: 'o gerente paga o cliente amanhã',
+      });
+    expect(fechado.status, JSON.stringify(fechado.body)).toBe(200);
+
+    const { renderDocument } = await import('../src/services/core/PrintRenderer.js');
+    const papel = renderDocument(precoJusto, 'CASH_CLOSING', b.gaveta);
+    const bloco = papel.slice(papel.indexOf('FECHADO COM PENDÊNCIA'));
+    expect(bloco).toContain(`Devolução #${(devolucao as { number: number }).number}`);
+    expect(bloco).toContain('ainda não devolvido ao cliente');
+    expect(bloco).toMatch(/50,00/);
+    // A frase antiga dizia o contrário do que acontece com este dinheiro.
+    expect(bloco).not.toContain('Não está na gaveta');
+    expect(bloco).toContain('ESTÁ na contagem desta gaveta');
+    expect(bloco).toContain('o gerente paga o cliente amanhã');
   });
 
   it('reembolso registrado no mesmo turno: o turno fecha limpo, sem declarar nada', async () => {

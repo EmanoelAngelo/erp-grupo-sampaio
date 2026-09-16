@@ -773,14 +773,41 @@ interface PendenciaDeclarada {
   totalCents?: number;
   cobrancas?: { tipo?: string; amountInCents?: number }[];
   pagamentosPendentes?: { method?: string; amountCents?: number; saleNumber?: number | null }[];
+  /** GAP-PRD-045: o dinheiro DESTA está na gaveta, e a venda não existe. */
+  vendasOffline?: { receivedCents?: number; label?: string | null; errorMessage?: string | null }[];
+  /** Auditoria do PDV: o que a loja ainda deve ao cliente da devolução. */
+  devolucoesAguardandoReembolso?: {
+    number?: number;
+    saleNumber?: number | null;
+    pendenteCents?: number;
+  }[];
 }
 
 /**
- * O turno que fechou COM dinheiro eletrônico indefinido diz isso no papel.
+ * O turno que fechou COM pendência diz isso no papel.
  *
  * O fechamento exige ciência e motivo, e grava o que estava pendente — mas o
  * papel não dizia nada, e a via assinada parecia a de um turno limpo. O gestor
  * que guarda o papel com o dinheiro precisa ler ali o que ficou para ele.
+ *
+ * ## O QUE ESTE BLOCO ESTAVA AFIRMANDO DE ERRADO (P00-caixa-divida)
+ *
+ * Medido pela verificação adversarial: num turno que fechou devendo R$ 50,00
+ * de uma devolução ainda não paga, o papel saía «FECHADO COM PENDÊNCIA
+ * ELETRÔNICA DE R$ 50,00 … Não está na gaveta: continua na fila do gestor.»
+ * com a TABELA DE ITENS VAZIA. Duas afirmações falsas na mesma via assinada:
+ *
+ *   - não dizia QUE pendência era (a devolução não era enumerada, porque
+ *     `closeSession` não a gravava — consertado junto com este bloco);
+ *   - dizia que o valor NÃO está na gaveta. O reembolso em espécie ainda não
+ *     pago está: ele foi contado no fechamento, entra no esperado e vai para o
+ *     turno seguinte como se fosse dinheiro da loja. O mesmo vale para a venda
+ *     guardada recusada, cujo dinheiro está na gaveta sem venda que o explique.
+ *
+ * Frase errada em documento assinado é pior do que documento nenhum: o gestor
+ * que confere o turno pelo papel concluía o CONTRÁRIO do que a trava quis
+ * dizer. Agora cada linha sai pelo nome, e a frase do rodapé é escolhida pelo
+ * que a lista de fato contém.
  */
 function blocoDasPendencias(registro: unknown, uf: string | null): string {
   if (!registro) return '';
@@ -791,28 +818,58 @@ function blocoDasPendencias(registro: unknown, uf: string | null): string {
     p = null;
   }
   if (!p || typeof p !== 'object') {
-    return `<div class="aviso">FECHADO COM PENDÊNCIA ELETRÔNICA DECLARADA.<br>O registro dela não pôde ser lido: confira no histórico do caixa.</div>`;
+    return `<div class="aviso">FECHADO COM PENDÊNCIA DECLARADA.<br>O registro dela não pôde ser lido: confira no histórico do caixa.</div>`;
   }
   const rotulos = ROTULO_DA_PENDENCIA as Record<string, string>;
+  const cobrancas = p.cobrancas ?? [];
+  const pagamentos = p.pagamentosPendentes ?? [];
+  const offline = p.vendasOffline ?? [];
+  const devolucoes = p.devolucoesAguardandoReembolso ?? [];
   const linhas = [
-    ...(p.cobrancas ?? []).map(
+    ...cobrancas.map(
       (c) =>
         `<tr><td>${esc(rotulos[String(c.tipo)] ?? 'cobrança pendente')}</td><td class="r">${brl(c.amountInCents)}</td></tr>`,
     ),
-    ...(p.pagamentosPendentes ?? []).map(
+    ...pagamentos.map(
       (pg) =>
         `<tr><td>${esc(rotuloDoMeio(String(pg.method ?? '')))} pendente, venda #${esc(pg.saleNumber ?? '?')}</td>`
         + `<td class="r">${brl(pg.amountCents)}</td></tr>`,
     ),
+    ...offline.map(
+      (v) =>
+        '<tr><td>Venda guardada sem servidor e recusada (dinheiro na gaveta, sem venda)</td>'
+        + `<td class="r">${brl(v.receivedCents)}</td></tr>`,
+    ),
+    ...devolucoes.map(
+      (d) =>
+        `<tr><td>Devolução #${esc(d.number ?? '?')} da venda #${esc(d.saleNumber ?? '?')}: ainda não devolvido ao cliente</td>`
+        + `<td class="r">${brl(d.pendenteCents)}</td></tr>`,
+    ),
   ].join('');
+  // O dinheiro que ESTÁ na gaveta e não é da loja — o oposto do que a frase
+  // antiga afirmava para todo mundo.
+  const naGaveta =
+    offline.reduce((s, v) => s + Number(v.receivedCents ?? 0), 0)
+    + devolucoes.reduce((s, d) => s + Number(d.pendenteCents ?? 0), 0);
+  const soEletronico = offline.length === 0 && devolucoes.length === 0;
+  const ondeEstaODinheiro = soEletronico
+    ? 'Não está na gaveta: continua na fila do gestor.'
+    : (cobrancas.length + pagamentos.length > 0
+        ? 'Cartão e PIX não estão na gaveta: caem na conta. '
+        : '')
+      + `ATENÇÃO: ${brl(naGaveta)} deste total ESTÁ na contagem desta gaveta e NÃO é da loja`
+      + (devolucoes.length > 0
+        ? ' (o reembolso ainda não pago, quando for em espécie, sai deste dinheiro)'
+        : '')
+      + '. Confira antes de entregar o turno; a pendência continua na fila do gestor.';
   const quem = nomeDoUsuario(p.cientePor);
   const declarado =
     quem || p.cienteEm
       ? `<br>Declarado${quem ? ` por ${esc(quem)}` : ''}${p.cienteEm ? ` em ${esc(dataHora(p.cienteEm, uf))}` : ''}.`
       : '';
-  return `<div class="aviso">FECHADO COM PENDÊNCIA ELETRÔNICA${p.totalCents ? ` DE ${brl(p.totalCents)}` : ''}
+  return `<div class="aviso">FECHADO COM PENDÊNCIA${soEletronico ? ' ELETRÔNICA' : ''}${p.totalCents ? ` DE ${brl(p.totalCents)}` : ''}
      ${linhas ? `<table>${linhas}</table>` : ''}
-     Não está na gaveta: continua na fila do gestor.${p.motivo ? `<br>Motivo: ${esc(p.motivo)}` : ''}${declarado}
+     ${ondeEstaODinheiro}${p.motivo ? `<br>Motivo: ${esc(p.motivo)}` : ''}${declarado}
    </div>`;
 }
 

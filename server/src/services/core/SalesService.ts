@@ -786,6 +786,16 @@ function normalizarPagamentos(pagamentos: SalePaymentInput[] | undefined | null)
  * passa a ser recusado com nome é só o que nunca foi identificador — objeto,
  * lista, booleano, texto vazio, ausente —, que é o que o node:sqlite não sabe
  * ligar a um parâmetro.
+ *
+ * ## O CABEÇALHO NÃO SEGUE ESSA REGRA, e o porquê (P00-pdv-cab)
+ *
+ * O item só CONSULTA o que recebe; o cabeçalho é ESCRITO. Por isso, ali em
+ * cima, número passa e vira 404 de produto; aqui embaixo, cliente, vendedor,
+ * caixa e gaveta exigem texto COM CONTEÚDO, e observação e origem exigem texto
+ * (em branco, sim; número, não). As duas réguas estão em
+ * `identificadorDoCabecalho` e `textoLivreDoCabecalho`, com o defeito que cada
+ * uma fecha — o texto vazio que atravessava as duas peneiras do serviço e o
+ * número que virava "7.0" numa coluna de texto.
  */
 function textoDoPedido(valor: unknown): string | null {
   if (typeof valor === 'string') return valor.trim() || null;
@@ -794,15 +804,53 @@ function textoDoPedido(valor: unknown): string | null {
 }
 
 /**
- * O campo do cabeçalho tem forma de texto?
+ * O campo do cabeçalho tem forma de TEXTO LIVRE? (observação, origem)
  *
  * Ausente e nulo passam (são "não informado"), e TEXTO VAZIO também: observação
  * em branco é o caso comum do balcão, e recusá-la seria trocar um defeito por
- * outro. O que não passa é o que nunca foi texto — objeto, lista, booleano.
+ * outro. O que não passa é o que nunca foi texto — objeto, lista, booleano...
+ *
+ * ...E NÚMERO TAMBÉM NÃO PASSA, ao contrário do `productId` da linha
+ * (P00-pdv-cab, achado pela verificação adversarial desta frente).
+ *
+ * O DEFEITO MEDIDO: `forma()` aceitava número por simetria com
+ * `textoDoPedido`, e `origin: 7` / `note: 7` iam CRUS para o INSERT numa
+ * coluna TEXT — onde o node:sqlite grava um REAL e a venda fica com a origem
+ * "7.0", que não é nem o que o chamador mandou. A simetria não existe: no item,
+ * o número segue para uma CONSULTA (`WHERE id = 7`) e o desfecho é o 404 de
+ * sempre; aqui não há consulta nenhuma, o valor é ESCRITO, e a única saída
+ * depois é um relatório com uma origem que nenhuma tela sabe ler.
  */
-function forma(valor: unknown): boolean {
-  if (valor === undefined || valor === null || typeof valor === 'string') return true;
-  return typeof valor === 'number' && Number.isFinite(valor);
+function textoLivreDoCabecalho(valor: unknown): boolean {
+  return valor === undefined || valor === null || typeof valor === 'string';
+}
+
+/**
+ * O campo do cabeçalho tem forma de IDENTIFICADOR? (cliente, vendedor, caixa,
+ * gaveta)
+ *
+ * Ausente e nulo passam — são "não informado", e cada um tem o seu padrão
+ * (venda sem cliente, vendedor = quem está logado). TEXTO VAZIO não passa, e é
+ * este o buraco que a verificação adversarial mediu (P00-pdv-cab):
+ *
+ *   customerId: "" ... 500 API_UNAVAILABLE, "FOREIGN KEY constraint failed" —
+ *                      o `if (input.customerId)` que confere a empresa do
+ *                      cliente é FALSO para texto vazio, então nada era
+ *                      conferido; mas `input.customerId ?? null` é VERDADEIRO
+ *                      para ele, e o "" chegava ao INSERT como dono da venda.
+ *   sellerId: "" ..... venda gravada com `seller_id = ""` — `exigirVendedorDaCasa`
+ *                      também sai cedo no vazio, e `input.sellerId ?? input.userId`
+ *                      não troca o "" pelo usuário logado: vendedor FANTASMA na
+ *                      comissão e no relatório por vendedor, sem erro nenhum.
+ *
+ * O texto vazio é o único valor que atravessa as duas peneiras (falso para
+ * `if`, verdadeiro para `??`), e é por isso que ele é recusado AQUI, com nome,
+ * em vez de ser silenciosamente trocado por "não informado": o chamador que
+ * mandou "" acha que informou alguém.
+ */
+function identificadorDoCabecalho(valor: unknown): boolean {
+  if (valor === undefined || valor === null) return true;
+  return typeof valor === 'string' && valor.trim() !== '';
 }
 
 function conferirFormaDoPedido(input: CreateSaleInput): void {
@@ -844,17 +892,19 @@ function conferirFormaDoPedido(input: CreateSaleInput): void {
     }
   });
   // Os identificadores e o texto livre do cabeçalho — cada um é gravado ou
-  // consultado cru mais abaixo, e cada um derrubava a venda com 500.
-  const cabecalho: [string, unknown, string][] = [
-    ['customerId', input.customerId, 'o cliente da venda'],
-    ['sellerId', input.sellerId, 'o vendedor da venda'],
-    ['terminalId', input.terminalId, 'o caixa da venda'],
-    ['cashSessionId', input.cashSessionId, 'a gaveta da venda'],
-    ['note', input.note, 'a observação da venda'],
-    ['origin', input.origin, 'a origem da venda'],
+  // consultado cru mais abaixo, e cada um derrubava a venda com 500. A régua
+  // de cada um está em `identificadorDoCabecalho` e `textoLivreDoCabecalho`:
+  // identificador é texto COM CONTEÚDO, texto livre pode vir em branco.
+  const cabecalho: [string, unknown, string, (v: unknown) => boolean][] = [
+    ['customerId', input.customerId, 'o cliente da venda', identificadorDoCabecalho],
+    ['sellerId', input.sellerId, 'o vendedor da venda', identificadorDoCabecalho],
+    ['terminalId', input.terminalId, 'o caixa da venda', identificadorDoCabecalho],
+    ['cashSessionId', input.cashSessionId, 'a gaveta da venda', identificadorDoCabecalho],
+    ['note', input.note, 'a observação da venda', textoLivreDoCabecalho],
+    ['origin', input.origin, 'a origem da venda', textoLivreDoCabecalho],
   ];
-  for (const [campo, valor, oQue] of cabecalho) {
-    if (!forma(valor)) {
+  for (const [campo, valor, oQue, temForma] of cabecalho) {
+    if (!temForma(valor)) {
       throw new ApiError(
         'CORE_SALE_FIELD_INVALID',
         `O campo "${campo}" (${oQue}) veio num formato que o sistema não entende. `

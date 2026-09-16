@@ -364,6 +364,9 @@ describe('GAP-PRD-081 — o turno só fecha com as pendências ditas e declarada
     const bloco = screen.getByTestId('pendencias-do-fechamento');
     expect(bloco.textContent).toMatch(/Cobrança sem resposta da operadora/);
     expect(bloco.textContent).toMatch(/PIX pendente na venda #41/);
+    // Só maquininha e PIX na lista: aqui a frase antiga é a verdadeira, e
+    // continua sendo a que aparece.
+    expect(bloco.textContent).toMatch(/a contagem continua sendo só do dinheiro/);
     expect(confirmar.disabled).toBe(true);
 
     fireEvent.click(within(bloco).getByLabelText(/Estou ciente/));
@@ -426,6 +429,16 @@ describe('GAP-PRD-081 — o turno só fecha com as pendências ditas e declarada
     // O parcial diz o que já voltou, senão o operador não sabe o que conferir.
     expect(bloco.textContent).toMatch(/já voltaram/);
     expect(bloco.textContent).toMatch(/Vendas › Devoluções/);
+    /*
+      O RODAPÉ NÃO DESMENTE A LINHA ACIMA DELE (P00-caixa-divida).
+
+      Ele afirmava, para toda a lista, "Cartão e PIX não estão na gaveta: a
+      contagem continua sendo só do dinheiro" — e a devolução em espécie ainda
+      não paga ESTÁ na gaveta e vai para o turno seguinte como se fosse da
+      loja. A frase dizia o contrário da linha que ela explicava.
+    */
+    expect(bloco.textContent).not.toMatch(/a contagem continua sendo só do dinheiro/);
+    expect(bloco.textContent).toMatch(/R\$\s?30,00 desta lista ESTÁ na contagem desta gaveta/);
 
     // E ela também só passa com ciência e motivo, como as outras.
     fireEvent.click(within(bloco).getByLabelText(/Estou ciente/));

@@ -695,13 +695,32 @@ export function closeSession(input: {
           { pendencias },
         );
       }
+      /*
+        O QUE FICA GRAVADO PRECISA NOMEAR A DÍVIDA (P00-caixa-divida).
+
+        O DEFEITO MEDIDO: este registro guardava só `cobrancas` e
+        `pagamentosPendentes`. A venda guardada recusada e a devolução sem
+        reembolso entravam apenas no `totalCents`, e o turno ficava com
+        {"totalCents":5000,"cobrancas":[],"pagamentosPendentes":[]} — "fechei
+        devendo R$ 50,00" sem dizer a quem, de que venda nem de que devolução.
+        Como este campo é o ÚNICO traço durável do que foi declarado (é dele
+        que vivem o papel do fechamento e a auditoria), "trava até ser DITA"
+        virava "trava até ser dita a ninguém".
+
+        As quatro listas vão inteiras, com o mesmo nome que têm em
+        `PendenciasEletronicas`: quem ler o turno meses depois lê o mesmo
+        vocabulário da tela que recusou o fechamento.
+      */
       registroDasPendencias = JSON.stringify({
         motivo,
         cientePor: input.userId,
         cienteEm: now,
         totalCents: pendencias.totalCents,
+        quantidade: pendencias.quantidade,
         cobrancas: pendencias.cobrancas,
         pagamentosPendentes: pendencias.pagamentosPendentes,
+        vendasOffline: pendencias.vendasOffline,
+        devolucoesAguardandoReembolso: pendencias.devolucoesAguardandoReembolso,
       });
     }
 
