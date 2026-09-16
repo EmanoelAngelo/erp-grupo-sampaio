@@ -23,7 +23,7 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { cleanup, render, screen, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import ConciliacaoAsaasPage from '../ConciliacaoAsaasPage';
 
@@ -37,6 +37,36 @@ function servidor(relatorio: unknown) {
           headers: { 'Content-Type': 'application/json' },
         }),
     ),
+  );
+}
+
+/**
+ * O servidor que responde uma coisa na primeira conciliação e outra na
+ * segunda — é o que acontece quando o gerente confere um período e depois
+ * pede outro.
+ *
+ * A fila conta SÓ as chamadas da conciliação: a casca da tela (AppShell) faz
+ * pedidos próprios, e uma fila por ordem de `fetch` entregaria a resposta
+ * errada para a tela errada.
+ */
+function servidorEmSequencia(respostas: { status: number; corpo: unknown }[]) {
+  let i = 0;
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (entrada: unknown) => {
+      const url = String(
+        typeof entrada === 'string' ? entrada : (entrada as { url?: string })?.url ?? '',
+      );
+      if (!url.includes('/asaas/conciliacao')) {
+        return new Response('{}', { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+      const r = respostas[Math.min(i, respostas.length - 1)];
+      i += 1;
+      return new Response(JSON.stringify(r.corpo), {
+        status: r.status,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }),
   );
 }
 
@@ -58,8 +88,8 @@ afterEach(() => {
 describe('quando tudo bate', () => {
   it('diz QUANTOS bateram, não só "tudo certo"', async () => {
     servidor({
-      from: '',
-      to: '',
+      from: '2026-08-01T03:00:00.000Z',
+      to: '2026-09-01T02:59:59.999Z',
       providerCents: 15000,
       financeCents: 15000,
       differenceCents: 0,
@@ -74,8 +104,8 @@ describe('quando tudo bate', () => {
 
   it('período SEM movimento não é "tudo certo"', async () => {
     servidor({
-      from: '',
-      to: '',
+      from: '2026-08-01T03:00:00.000Z',
+      to: '2026-09-01T02:59:59.999Z',
       providerCents: 0,
       financeCents: 0,
       differenceCents: 0,
@@ -91,10 +121,83 @@ describe('quando tudo bate', () => {
   });
 });
 
+// ============================================================================
+// ERRO NOVO NÃO CONVIVE COM NÚMERO VELHO
+// ============================================================================
+
+/**
+ * O DEFEITO: o `catch` do `carregar()` escrevia `setErro(...)` e não limpava
+ * `dados`. O gerente conferia 30 dias, invertia as datas, o servidor recusava
+ * o recorte — e a tela mostrava o alerta vermelho COM os cartões e a frase do
+ * período anterior intactos logo abaixo. Números reais de um recorte que não é
+ * o dos campos, ao lado de um erro: pior que o vazio que existia antes, porque
+ * parecem a resposta ao que se acabou de pedir.
+ */
+describe('quando o servidor recusa o recorte', () => {
+  const CONFERIDO = {
+    from: '2026-08-01T03:00:00.000Z',
+    to: '2026-09-01T02:59:59.999Z',
+    providerCents: 15000,
+    financeCents: 15000,
+    differenceCents: 0,
+    matched: 7,
+    rows: [],
+  };
+
+  const RECUSA = {
+    error: {
+      code: 'CORE_RECONCILIATION_RANGE_INVALID',
+      message: 'O fim do período é anterior ao começo: confira as datas do recorte.',
+    },
+  };
+
+  it('apaga os números do período anterior em vez de mostrá-los junto do erro', async () => {
+    servidorEmSequencia([
+      { status: 200, corpo: CONFERIDO },
+      { status: 400, corpo: RECUSA },
+    ]);
+    montar();
+
+    // A primeira conferência pinta os cartões e a frase.
+    await screen.findByText(/7 recebimento\(s\) batendo nos dois lados/);
+    expect(screen.getByText('No provedor')).toBeTruthy();
+
+    // A segunda é recusada pelo servidor.
+    fireEvent.click(screen.getByRole('button', { name: 'Conferir' }));
+
+    const alerta = await screen.findByRole('alert');
+    expect(alerta.textContent).toMatch(/fim do período é anterior ao começo/);
+
+    // E nada do recorte anterior sobrevive à recusa.
+    await waitFor(() => {
+      expect(screen.queryByText(/recebimento\(s\) batendo nos dois lados/)).toBeNull();
+    });
+    expect(screen.queryByText('No provedor')).toBeNull();
+    expect(screen.queryByText('No financeiro')).toBeNull();
+    expect(screen.queryByText('Diferença')).toBeNull();
+    expect(screen.queryByText(/Números do período conferido/)).toBeNull();
+  });
+
+  it('enquanto há números, a tela diz de que período eles são', async () => {
+    servidor(CONFERIDO);
+    montar();
+
+    await screen.findByText(/7 recebimento\(s\) batendo nos dois lados/);
+    /*
+      O período é o que o SERVIDOR usou (`from`/`to` do relatório), lido no
+      fuso da loja: `to` é o último milissegundo do dia 31 em Pelotas, que em
+      UTC já é 1º de setembro — imprimir o pedaço cru da ISO diria "01/09".
+    */
+    const periodo = screen.getByText(/Números do período conferido/);
+    expect(periodo.textContent).toContain('01/08/2026');
+    expect(periodo.textContent).toContain('31/08/2026');
+  });
+});
+
 describe('quando há divergência', () => {
   const RELATORIO = {
-    from: '',
-    to: '',
+    from: '2026-08-01T03:00:00.000Z',
+    to: '2026-09-01T02:59:59.999Z',
     providerCents: 24675,
     financeCents: 0,
     differenceCents: 24675,
@@ -162,8 +265,8 @@ function linhaDaDivergencia(kind = 'Cobrado e não lançado'): HTMLElement {
 
 function relatorioCom(rows: Record<string, unknown>[]) {
   return {
-    from: '',
-    to: '',
+    from: '2026-08-01T03:00:00.000Z',
+    to: '2026-09-01T02:59:59.999Z',
     providerCents: 24675,
     financeCents: 0,
     differenceCents: 24675,

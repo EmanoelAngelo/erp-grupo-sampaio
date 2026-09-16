@@ -21,7 +21,7 @@ import { Link } from 'react-router-dom';
 import { ApiRequestError, apiRequest, exigirCampos } from '@/lib/api/client';
 import { AppShell } from '@/components/gs/AppShell';
 import { formatCents } from '@/components/gs/format';
-import { diasAtras } from '@/lib/datas';
+import { dataBR, diasAtras } from '@/lib/datas';
 import { destinoDaOrigem } from '@/lib/rotasDeOrigem';
 import { SincronizacaoAsaasCard, type ResumoDaSincronizacao } from '@/components/gs/SincronizacaoAsaasCard';
 
@@ -126,6 +126,32 @@ const EXPLICACAO: Record<Linha['kind'], { titulo: string; oQueSignifica: string 
 /** O dia da loja, e não o de Greenwich: depois das 21h eram dias diferentes. */
 const hojeMenos = diasAtras;
 
+/**
+ * ============================================================================
+ * NÚMERO NA TELA É SEMPRE DE UM RECORTE — e do recorte que o produziu
+ * ============================================================================
+ *
+ * ## O DEFEITO
+ *
+ * O `catch` do `carregar()` só escrevia `setErro(...)` e NÃO limpava `dados`.
+ * Quem carregava 30 dias, via os cartões "No provedor / No financeiro /
+ * Diferença" e a frase "Tudo confere: N recebimento(s)", depois invertia as
+ * datas e recebia a recusa do servidor, continuava com AQUELES cartões
+ * desenhados logo abaixo do alerta vermelho — números reais de um período que
+ * não é o dos campos. Trocar o vazio tranquilizador por "os números de outro
+ * período ao lado do erro" é trocar um engano por outro, e este é pior: são
+ * valores de dinheiro que parecem a resposta ao que se acabou de pedir.
+ *
+ * E a tela não imprimia em lugar nenhum o `from`/`to` que o relatório devolveu
+ * — então não havia como perceber a troca olhando.
+ *
+ * ## A REGRA
+ *
+ * Recusa APAGA os números: não se mostra meia resposta. E enquanto houver
+ * números na tela, ela escreve de que período eles são — o período que o
+ * SERVIDOR usou (`from`/`to` do relatório), que é o único que responde pelos
+ * valores, inclusive quando o gerente limpa uma ponta e o servidor completa.
+ */
 export default function ConciliacaoAsaasPage() {
   const [de, setDe] = useState(hojeMenos(30));
   const [ate, setAte] = useState(hojeMenos(0));
@@ -143,6 +169,9 @@ export default function ConciliacaoAsaasPage() {
         ).then((r) => exigirCampos(r, 'from', 'to', 'providerCents', 'financeCents', 'differenceCents', 'matched', 'rows')),
       );
     } catch (err) {
+      // A recusa APAGA os números: alerta vermelho em cima dos cartões do
+      // período anterior é a tela respondendo uma pergunta que ninguém fez.
+      setDados(null);
       setErro(err instanceof ApiRequestError ? err.message : 'Não foi possível conciliar.');
     } finally {
       setOcupado(false);
@@ -208,6 +237,21 @@ export default function ConciliacaoAsaasPage() {
 
         {dados && (
           <>
+            {/*
+              DE QUE PERÍODO SÃO ESTES NÚMEROS — e do período que o SERVIDOR
+              usou, não do que está escrito nos campos. São coisas diferentes
+              quando o gerente limpa uma ponta (o servidor completa com hoje e
+              com 30 dias atrás) e quando ele mexe nas datas sem apertar
+              "Conferir". Sem esta linha, os cartões são valores de dinheiro
+              sem recorte nenhum.
+            */}
+            <p
+              role="status"
+              className="text-[length:var(--gs-text-sm)] text-[var(--gs-muted)] mt-0 mb-3"
+            >
+              Números do período conferido: {dataBR(dados.from)} a {dataBR(dados.to)}.
+            </p>
+
             <div className="grid gap-3 sm:grid-cols-3 mb-6">
               <Cartao titulo="No provedor" valor={formatCents(dados.providerCents)} />
               <Cartao titulo="No financeiro" valor={formatCents(dados.financeCents)} />
