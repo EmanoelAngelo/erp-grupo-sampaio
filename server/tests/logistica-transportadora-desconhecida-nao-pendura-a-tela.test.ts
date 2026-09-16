@@ -110,6 +110,47 @@ describe('o rastreio de teste recusa o mesmo nome', () => {
   });
 });
 
+describe('a cotação que o histórico guarda recusa o mesmo nome', () => {
+  /*
+    A QUARTA PORTA. `POST /logistics/quotes` passava o corpo inteiro adiante e
+    o `carrier` nunca era conferido: com pacote válido e nome inventado, a
+    resposta medida era 500 {"code":"API_UNAVAILABLE"} por causa do
+    `services[carrier].map` de `simulateQuote`.
+  */
+  it('responde 400 com motivo — e não grava cotação nenhuma', async () => {
+    const res = await request(app)
+      .post('/api/v1/logistics/quotes')
+      .set(gestor())
+      .set('Idempotency-Key', 'cotacao-nome-inventado')
+      .send({ ...PACOTE, carrier: NOME_INVENTADO });
+
+    expect(res.status, JSON.stringify(res.body)).toBe(400);
+    expect(res.body.error.code).toBe('LOGISTICS_CARRIER_INVALID');
+    expect(findRows('logistics_quotes', () => true)).toHaveLength(0);
+  });
+
+  it('e a transportadora do catálogo continua cotando e gravando', async () => {
+    const res = await request(app)
+      .post('/api/v1/logistics/quotes')
+      .set(gestor())
+      .set('Idempotency-Key', 'cotacao-correios')
+      .send({ ...PACOTE, carrier: 'correios' });
+
+    expect(res.status, JSON.stringify(res.body)).toBe(201);
+    expect(findRows('logistics_quotes', () => true)).toHaveLength(1);
+  });
+
+  it('sem transportadora escolhida o corpo continua valendo — cota em todas as configuradas', async () => {
+    const res = await request(app)
+      .post('/api/v1/logistics/quotes')
+      .set(gestor())
+      .set('Idempotency-Key', 'cotacao-sem-transportadora')
+      .send(PACOTE);
+
+    expect(res.status, JSON.stringify(res.body)).toBe(201);
+  });
+});
+
 describe('a homologação não guarda rodada de transportadora inventada', () => {
   it('recusa antes de gravar — a última rodada da tela continua sendo a de verdade', async () => {
     const res = await request(app)
