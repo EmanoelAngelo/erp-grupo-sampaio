@@ -35,7 +35,18 @@
  *      cola, não solta, não troca e não imprime plaquinha pela fila;
  *   9. Preço Justo, Oficina (COM bancada) e Gringa levam 403
  *      `CORE_COMPANY_NO_TAGS` nas três rotas novas, sem dado da PJ e sem gravar
- *      nada — com a marca desligada ou ligada no banco.
+ *      nada — com a marca desligada ou ligada no banco;
+ *  10. (resíduo) o modelo "Estoque" — `inventory.units.manage` sem a leitura do
+ *      pool — acha os adesivos livres pela leitura estreita da unidade
+ *      (GET /units/:id/tag/livres), cola e troca, e o pool continua fechado a
+ *      ele; a leitura só mostra o que o colar aceita, e segue a regra da
+ *      empresa e a do PDV como as vizinhas;
+ *  11. (resíduo) a troca confere as duas escritas: adesivo novo vazio é 400, a
+ *      "disponível" presa a outra moto ou a uma máquina não é arrancada, e a
+ *      velha que deixou a moto no meio da escrita desfaz a troca inteira;
+ *  12. (resíduo) a venda, a devolução e o cancelamento pelas ROTAS de verdade,
+ *      com caixa aberto: o QR da moto com o adesivo vai de "Disponível na loja"
+ *      a vendida e volta, e a moto com a plaquinha da máquina segue igual.
  *
  * ## As mordidas (cada uma deixa um caso vermelho)
  *
@@ -51,7 +62,15 @@
  *   - tire a recusa `CORE_UNIT_ALREADY_TAGGED` de `vincularUnidade` ou de
  *     `vincularPlaquinhaDoPool` → as recusas (201);
  *   - volte a reimpressão pela unidade → 409 `CORE_UNIT_WITHOUT_TAG`;
- *   - volte o NOT EXISTS do resumo → a fila não desce.
+ *   - volte o NOT EXISTS do resumo → a fila não desce;
+ *   - tire `requireCapability` da leitura dos livres → o PDV lê (200);
+ *   - tire o filtro `unit_id IS NULL AND equipment_id IS NULL` da leitura → a
+ *     "disponível" presa aparece na lista;
+ *   - volte o id vazio da troca → 404 no lugar do 400;
+ *   - volte a escrita da nova para `WHERE id = ? AND status = 'disponivel'` →
+ *     a "disponível" presa é arrancada da outra moto (200);
+ *   - tire a guarda da velha (`status = 'associada' AND unit_id = ?` com
+ *     `changes === 1`) → a troca passa sobre a velha que já saiu (200).
  */
 import { beforeEach, describe, expect, it } from 'vitest';
 import request from 'supertest';
@@ -542,6 +561,77 @@ describe('reimprimir, soltar e trocar pela unidade', () => {
     ).toEqual({ public_id: maquina.public_id, public_token: maquina.public_token });
     expect(estado(reserva!.id).status).toBe('disponivel');
   });
+
+  /*
+    AS DUAS ESCRITAS DA TROCA SÃO GUARDADAS (resíduo do P0).
+
+    A nova entrava com `WHERE id = ? AND status = 'disponivel'` (sem conferir
+    que estava sem moto e sem máquina) e a velha morria com `WHERE id = ?` (sem
+    conferir que ainda era desta moto). O id vazio caía em "não encontrada".
+  */
+  it('a troca confere o adesivo novo e o velho na própria escrita — nunca meia troca', async () => {
+    const [velha, nova] = await loteLiberado(2);
+    const moto = motoEmEstoque(pj.id);
+    expect((await colar(pj.auth, moto.unitId, velha!.id)).status).toBe(201);
+    const foto = () => ({ velha: estado(velha!.id), nova: estado(nova!.id), moto: unidade(moto.unitId) });
+    const antes = foto();
+
+    // Sem o adesivo novo: pedido incompleto (400), e não "plaquinha não encontrada".
+    const semAdesivo = await trocar(pj.auth, moto.unitId, '', 'descascou');
+    expect(semAdesivo.status, JSON.stringify(semAdesivo.body)).toBe(400);
+    expect(semAdesivo.body.error.code).toBe('CORE_TAG_REQUIRED');
+    expect(foto()).toEqual(antes);
+
+    // A "disponível" que ainda aponta para OUTRA moto (banco antigo): não é arrancada de lá.
+    const outraMoto = motoEmEstoque(pj.id);
+    const presaNaMoto = plaquinhaNoPool(pj.id, 8501, 'disponivel');
+    db().prepare('UPDATE core_equipment_tags SET unit_id = ? WHERE id = ?').run(outraMoto.unitId, presaNaMoto.id);
+    const naOutraMoto = await trocar(pj.auth, moto.unitId, presaNaMoto.id, 'descascou');
+    expect(naOutraMoto.status, JSON.stringify(naOutraMoto.body)).toBe(409);
+    expect(naOutraMoto.body.error.code).toBe('CORE_TAG_NOT_AVAILABLE');
+    expect(estado(presaNaMoto.id)).toMatchObject({ status: 'disponivel', unit_id: outraMoto.unitId });
+    expect(foto()).toEqual(antes);
+
+    // A "disponível" que ainda aponta para uma MÁQUINA: também não.
+    const maquina = maquinaDaOficina('Jet 50');
+    const presaNaMaquina = plaquinhaNoPool(pj.id, 8502, 'disponivel');
+    db().prepare('UPDATE core_equipment_tags SET equipment_id = ? WHERE id = ?').run(maquina.id, presaNaMaquina.id);
+    const naMaquina = await trocar(pj.auth, moto.unitId, presaNaMaquina.id, 'descascou');
+    expect(naMaquina.status, JSON.stringify(naMaquina.body)).toBe(409);
+    expect(naMaquina.body.error.code).toBe('CORE_TAG_NOT_AVAILABLE');
+    expect(estado(presaNaMaquina.id)).toMatchObject({ status: 'disponivel', unit_id: null, equipment_id: maquina.id });
+    expect(foto()).toEqual(antes);
+
+    /*
+      A velha deixa a moto NO MEIO da escrita. Um gatilho temporário faz o que
+      uma escrita concorrente faria: assim que a nova entra, solta a velha. A
+      guarda da velha não acha a linha, e a transação desfaz tudo — a nova, a
+      velha e o próprio gatilho.
+    */
+    db().exec(
+      `CREATE TEMP TRIGGER solta_a_velha_no_meio AFTER UPDATE OF status ON core_equipment_tags
+         WHEN NEW.id = '${nova!.id}' AND NEW.status = 'associada'
+       BEGIN
+         UPDATE core_equipment_tags SET status = 'disponivel', unit_id = NULL, associated_at = NULL
+          WHERE id = '${velha!.id}';
+       END`,
+    );
+    try {
+      const corrida = await trocar(pj.auth, moto.unitId, nova!.id, 'descascou');
+      expect(corrida.status, JSON.stringify(corrida.body)).toBe(409);
+      expect(corrida.body.error.code).toBe('CORE_UNIT_TAG_CHANGED');
+    } finally {
+      db().exec('DROP TRIGGER IF EXISTS temp.solta_a_velha_no_meio');
+    }
+    expect(foto()).toEqual(antes);
+    expect(trilha(pj.id, 'unit.tag.replace')).toHaveLength(0);
+
+    // Sem a corrida, a mesma troca passa.
+    const troca = await trocar(pj.auth, moto.unitId, nova!.id, 'descascou');
+    expect(troca.status, JSON.stringify(troca.body)).toBe(200);
+    expect(estado(velha!.id)).toMatchObject({ status: 'danificada', unit_id: moto.unitId });
+    expect(estado(nova!.id)).toMatchObject({ status: 'associada', unit_id: moto.unitId });
+  });
 });
 
 describe('a venda e a baixa', () => {
@@ -609,6 +699,177 @@ describe('a venda e a baixa', () => {
   });
 });
 
+/*
+  A VENDA E A VOLTA PELAS ROTAS DE VERDADE (resíduo do P0).
+
+  O pino de regressão acima chama os serviços. Este vai pelo balcão: caixa
+  aberto, POST /core/sales, a devolução por POST /core/sale-returns e o
+  cancelamento por POST /core/sales/:id/cancel — com uma moto com o adesivo da
+  PJ e outra com a plaquinha da MÁQUINA na mesma venda.
+*/
+describe('a venda e a volta pelas rotas de verdade', () => {
+  it('o QR da moto com o adesivo vai a vendida e volta — pela devolução e pelo cancelamento — e a moto da máquina segue igual', async () => {
+    const [tag] = await loteLiberado(1);
+    const comAdesivo = motoEmEstoque(pj.id);
+    expect((await colar(pj.auth, comAdesivo.unitId, tag!.id)).status).toBe(201);
+    const maquina = maquinaDaOficina('Jet 50');
+    const comMaquina = motoEmEstoque(pj.id);
+    vincularUnidade({ companyId: pj.id, unitId: comMaquina.unitId, equipmentId: maquina.id, userId: pj.userId });
+    const situacaoDoQr = async (token: string) => {
+      const res = await qr(token);
+      expect(res.status, JSON.stringify(res.body)).toBe(200);
+      return res.body.status as string | null;
+    };
+    const daMaquina = () =>
+      db().prepare('SELECT sale_status, owner_customer_id FROM core_equipment WHERE id = ?').get(maquina.id) as {
+        sale_status: string;
+        owner_customer_id: string | null;
+      };
+    expect(await situacaoDoQr(tag!.public_token)).toBe('Disponível na loja');
+
+    const caixa = await request(app).post('/api/v1/core/cash/open').set(pj.auth).send({ openingCents: 0 });
+    expect(caixa.status, JSON.stringify(caixa.body)).toBe(201);
+    const cliente = await request(app)
+      .post('/api/v1/core/customers')
+      .set(pj.auth)
+      .send({ name: 'Rafaela Compradora', document: '52998224725' });
+    expect(cliente.status, JSON.stringify(cliente.body)).toBe(201);
+
+    // 1. As duas motos na MESMA venda do balcão, com o cliente que a plaquinha da máquina exige.
+    const venda = await request(app)
+      .post('/api/v1/core/sales')
+      .set(pj.auth)
+      .set('Idempotency-Key', randomUUID())
+      .send({
+        customerId: cliente.body.id,
+        items: [{ productId: comAdesivo.productId, quantity: 2, unitIds: [comAdesivo.unitId, comMaquina.unitId] }],
+        payments: [{ method: 'dinheiro', amountCents: 2 * PRECO }],
+        cashSessionId: caixa.body.id,
+      });
+    expect(venda.status, JSON.stringify(venda.body)).toBe(201);
+    expect(unidade(comAdesivo.unitId).status).toBe('sold');
+    expect(unidade(comMaquina.unitId).status).toBe('sold');
+    expect(await situacaoDoQr(tag!.public_token)).toBeNull();
+    expect(estado(tag!.id)).toMatchObject({ status: 'associada', unit_id: comAdesivo.unitId });
+    expect(daMaquina().sale_status).toBe('SOLD');
+    expect(daMaquina().owner_customer_id).not.toBeNull();
+
+    // 2. Volta SÓ a moto do adesivo, pela devolução do balcão.
+    const devolviveis = await request(app).get(`/api/v1/core/sales/${venda.body.id}/returnable`).set(pj.auth);
+    expect(devolviveis.status).toBe(200);
+    const linha = (devolviveis.body.items as { product_id: string; sale_item_id: string }[]).find(
+      (i) => i.product_id === comAdesivo.productId,
+    )!;
+    const devolucao = await request(app)
+      .post('/api/v1/core/sale-returns')
+      .set(pj.auth)
+      .send({
+        saleId: venda.body.id,
+        reason: 'Arrependimento no prazo',
+        items: [{ saleItemId: linha.sale_item_id, quantity: 1, unitIds: [comAdesivo.unitId] }],
+      });
+    expect(devolucao.status, JSON.stringify(devolucao.body)).toBe(201);
+    expect(unidade(comAdesivo.unitId).status).toBe('in_stock');
+    expect(await situacaoDoQr(tag!.public_token)).toBe('Disponível na loja');
+    expect(estado(tag!.id)).toMatchObject({ status: 'associada', unit_id: comAdesivo.unitId });
+    // A moto da máquina ficou com o cliente: vendida, com dono, e o QR dela abre.
+    expect(unidade(comMaquina.unitId).status).toBe('sold');
+    expect(daMaquina().sale_status).toBe('SOLD');
+    expect((await qr(maquina.public_token)).status).toBe(200);
+
+    // 3. A moto do adesivo vende de novo, SEM cliente, e a venda é cancelada pela rota.
+    const segunda = await request(app)
+      .post('/api/v1/core/sales')
+      .set(pj.auth)
+      .set('Idempotency-Key', randomUUID())
+      .send({
+        items: [{ productId: comAdesivo.productId, quantity: 1, unitIds: [comAdesivo.unitId] }],
+        payments: [{ method: 'dinheiro', amountCents: PRECO }],
+        cashSessionId: caixa.body.id,
+      });
+    expect(segunda.status, JSON.stringify(segunda.body)).toBe(201);
+    expect(await situacaoDoQr(tag!.public_token)).toBeNull();
+    const cancelada = await request(app)
+      .post(`/api/v1/core/sales/${segunda.body.id}/cancel`)
+      .set(pj.auth)
+      .send({ reason: 'Desistência do cliente' });
+    expect(cancelada.status, JSON.stringify(cancelada.body)).toBe(200);
+    expect(unidade(comAdesivo.unitId).status).toBe('in_stock');
+    expect(await situacaoDoQr(tag!.public_token)).toBe('Disponível na loja');
+    expect(estado(tag!.id)).toMatchObject({ status: 'associada', unit_id: comAdesivo.unitId });
+
+    // 4. A moto da máquina volta pela devolução: o cliente deixa de ser o dono, como sempre foi.
+    const devolveMaquina = await request(app)
+      .post('/api/v1/core/sale-returns')
+      .set(pj.auth)
+      .send({
+        saleId: venda.body.id,
+        reason: 'Arrependimento no prazo',
+        items: [{ saleItemId: linha.sale_item_id, quantity: 1, unitIds: [comMaquina.unitId] }],
+      });
+    expect(devolveMaquina.status, JSON.stringify(devolveMaquina.body)).toBe(201);
+    expect(unidade(comMaquina.unitId).status).toBe('in_stock');
+    expect(daMaquina()).toEqual({ sale_status: 'NOT_SOLD', owner_customer_id: null });
+  });
+});
+
+/*
+  O MODELO "ESTOQUE" SEM BECO (resíduo do P0).
+
+  Ele tem `inventory.units.manage` — o servidor aceita dele colar e trocar — e
+  não tem `workshop.tags.view`, a leitura do pool, de onde a tela tirava a lista
+  de adesivos livres: 403, e a tela dizia "nenhuma plaquinha livre". A leitura
+  estreita da unidade vive sob a mesma capability de colar.
+*/
+describe('o modelo Estoque cola e troca sem cair num beco', () => {
+  it('a lista estreita mostra só o que o colar aceita, sem token — e o pool continua fechado a ele', async () => {
+    const estoque = await entrar('estoque-pj', 'pj-motors', 'estoque');
+    const [a, b, c] = await loteLiberado(3);
+    const moto = motoEmEstoque(pj.id);
+    const rotulo = (n: number) => `#${String(n).padStart(4, '0')}`;
+    // O que o colar recusa não aparece: gerada, danificada, associada, a "disponível"
+    // presa a outra moto (banco antigo) e a de outra empresa.
+    const gerada = plaquinhaNoPool(pj.id, 8401, 'gerada');
+    const danificada = plaquinhaNoPool(pj.id, 8402, 'danificada');
+    const presa = plaquinhaNoPool(pj.id, 8403, 'disponivel');
+    db().prepare('UPDATE core_equipment_tags SET unit_id = ? WHERE id = ?').run(motoEmEstoque(pj.id).unitId, presa.id);
+    const alheia = plaquinhaNoPool(precoJusto.id, 8404, 'disponivel');
+    const livres = (auth: Auth, busca?: string) =>
+      request(app).get(`/api/v1/core/units/${moto.unitId}/tag/livres${busca === undefined ? '' : `?busca=${encodeURIComponent(busca)}`}`).set(auth);
+
+    const lista = await livres(estoque.auth);
+    expect(lista.status, JSON.stringify(lista.body)).toBe(200);
+    expect(lista.body.items).toEqual(
+      [a!, b!, c!].map((t) => ({ id: t.id, public_id: t.public_id, publicIdLabel: rotulo(t.public_id) })),
+    );
+    for (const t of [a!, b!, c!, gerada, danificada, presa, alheia]) expect(lista.text).not.toContain(t.public_token);
+
+    // A busca pelo número, do jeito que o balcão fala; texto não acha nada.
+    expect(((await livres(estoque.auth, rotulo(b!.public_id))).body.items as { id: string }[]).map((t) => t.id)).toEqual([b!.id]);
+    expect(((await livres(estoque.auth, String(b!.public_id))).body.items as { id: string }[]).map((t) => t.id)).toEqual([b!.id]);
+    expect((await livres(estoque.auth, 'CG 160')).body.items).toEqual([]);
+
+    // Unidade de outra empresa pela sessão da PJ: não encontrada.
+    const daPrecoJusto = motoEmEstoque(precoJusto.id);
+    const alheiaUnidade = await request(app).get(`/api/v1/core/units/${daPrecoJusto.unitId}/tag/livres`).set(estoque.auth);
+    expect(alheiaUnidade.status).toBe(404);
+    expect(alheiaUnidade.body.error.code).toBe('CORE_UNIT_NOT_FOUND');
+
+    // O pool inteiro continua sendo workshop.tags.view: o modelo Estoque não o lê.
+    const pool = await request(app).get('/api/v1/core/equipment-tags?status=disponivel').set(estoque.auth);
+    expect(pool.status).toBe(403);
+    expect(pool.body.error.code).toBe('API_PERMISSION_DENIED');
+
+    // Cola e troca pelas rotas de sempre, com o que a lista mostrou.
+    expect((await colar(estoque.auth, moto.unitId, a!.id)).status).toBe(201);
+    expect(((await livres(estoque.auth)).body.items as { id: string }[]).map((t) => t.id)).toEqual([b!.id, c!.id]);
+    const troca = await trocar(estoque.auth, moto.unitId, b!.id, 'descascou no sol');
+    expect(troca.status, JSON.stringify(troca.body)).toBe(200);
+    expect(estado(a!.id)).toMatchObject({ status: 'danificada', unit_id: moto.unitId });
+    expect(estado(b!.id)).toMatchObject({ status: 'associada', unit_id: moto.unitId });
+  });
+});
+
 describe('só a PJ Motors', () => {
   it('plaquinha forçada fora da PJ não abre página', async () => {
     // O pior banco antigo: uma plaquinha da Gringa colada numa unidade da
@@ -635,6 +896,10 @@ describe('só a PJ Motors', () => {
       { nome: 'POST /units/:id/tag', chamar: () => colar(pdvPj.auth, livre.unitId, nova!.id) },
       { nome: 'DELETE /units/:id/tag', chamar: () => soltar(pdvPj.auth, colada.unitId) },
       { nome: 'POST /units/:id/tag/replace', chamar: () => trocar(pdvPj.auth, colada.unitId, nova!.id, 'x') },
+      {
+        nome: 'GET /units/:id/tag/livres',
+        chamar: () => request(app).get(`/api/v1/core/units/${livre.unitId}/tag/livres`).set(pdvPj.auth),
+      },
       {
         nome: 'POST /print/jobs EQUIPMENT_QR_TAG',
         chamar: () =>
@@ -685,6 +950,15 @@ describe('fora da PJ Motors, 403 CORE_COMPANY_NO_TAGS — com a marca desligada 
           { nome: 'POST /units/:id/tag (unidade da PJ)', chamar: () => colar(quem.auth, daPj.unitId, livrePj.id) },
           // Corpo vazio: a regra da empresa vem antes da conferência do corpo.
           { nome: 'POST /units/:id/tag (sem corpo)', chamar: () => colar(quem.auth, dela.unitId) },
+          // A lista dos livres: nem o número de um adesivo da PJ escapa.
+          {
+            nome: 'GET /units/:id/tag/livres',
+            chamar: () => request(app).get(`/api/v1/core/units/${dela.unitId}/tag/livres`).set(quem.auth),
+          },
+          {
+            nome: 'GET /units/:id/tag/livres (unidade da PJ)',
+            chamar: () => request(app).get(`/api/v1/core/units/${daPj.unitId}/tag/livres`).set(quem.auth),
+          },
         ];
         for (const gesto of gestos) {
           const res = await gesto.chamar();

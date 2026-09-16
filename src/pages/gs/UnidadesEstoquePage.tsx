@@ -186,6 +186,8 @@ export default function UnidadesEstoquePage() {
   const [adesivo, setAdesivo] = useState<{ unidade: ProductUnit; modo: 'colar' | 'trocar' } | null>(null);
   const [buscaAdesivo, setBuscaAdesivo] = useState('');
   const [livres, setLivres] = useState<PlaquinhaLivre[] | null>(null);
+  /** A leitura dos adesivos livres falhou: "não consegui ler" não é "não há". */
+  const [erroDosLivres, setErroDosLivres] = useState<string | null>(null);
   const [adesivoNovo, setAdesivoNovo] = useState('');
   const [motivoDaTroca, setMotivoDaTroca] = useState('');
   const [gravandoAdesivo, setGravandoAdesivo] = useState(false);
@@ -306,16 +308,37 @@ export default function UnidadesEstoquePage() {
     return () => clearTimeout(t);
   }, [buscaPlaquinha, vinculando]);
 
-  // Os adesivos livres da PJ, pelo número digitado — só com o painel aberto,
-  // e só para quem administra (fora disso a tela nem pergunta ao pool).
+  /*
+    Os adesivos livres da PJ, pelo número digitado — só com o painel aberto, e
+    só para quem administra (fora disso a tela nem pergunta).
+
+    O DEFEITO (P0 das plaquinhas, resíduo): a lista vinha do pool
+    (GET /core/equipment-tags, `workshop.tags.view`), e o modelo "Estoque" —
+    que cola e troca por `inventory.units.manage` — levava 403 nela. O
+    `.catch(() => setLivres([]))` engolia a recusa e a tela afirmava "Nenhuma
+    plaquinha livre" com o pool cheio: um beco com cara de pool vazio. Agora a
+    lista vem da leitura estreita da unidade, sob a mesma capability de colar e
+    trocar, e qualquer falha aparece como falha, com a frase do servidor.
+  */
   useEffect(() => {
     if (!adesivo || !temPlaquinha || !podeGerirPlaquinha) return undefined;
     const termo = buscaAdesivo.trim();
+    const unitId = adesivo.unidade.id;
     const t = setTimeout(() => {
       void plaquinhaDaMaquinaApi
-        .livres(termo || undefined)
-        .then((r) => setLivres(r.items))
-        .catch(() => setLivres([]));
+        .livresParaAUnidade(unitId, termo || undefined)
+        .then((r) => {
+          setErroDosLivres(null);
+          setLivres(r.items);
+        })
+        .catch((e: unknown) => {
+          setLivres(null);
+          setErroDosLivres(
+            e instanceof ApiRequestError
+              ? `Não foi possível ler as plaquinhas livres: ${e.message}`
+              : 'Não foi possível ler as plaquinhas livres. Tente de novo.',
+          );
+        });
     }, 300);
     return () => clearTimeout(t);
   }, [buscaAdesivo, adesivo, temPlaquinha, podeGerirPlaquinha]);
@@ -492,6 +515,7 @@ export default function UnidadesEstoquePage() {
     setAdesivo({ unidade: u, modo });
     setBuscaAdesivo('');
     setLivres(null);
+    setErroDosLivres(null);
     setAdesivoNovo('');
     setMotivoDaTroca('');
     setVinculando(null);
@@ -804,7 +828,14 @@ export default function UnidadesEstoquePage() {
       </p>
       <SearchInput value={buscaAdesivo} onChange={setBuscaAdesivo} placeholder="Nº do adesivo (#0042)" />
 
-      {livres === null ? (
+      {erroDosLivres ? (
+        <p
+          role="alert"
+          className="mt-3 m-0 px-4 py-3 rounded-[var(--gs-radius)] bg-[var(--gs-danger-bg)] text-[var(--gs-danger)] text-[length:var(--gs-text-sm)]"
+        >
+          {erroDosLivres}
+        </p>
+      ) : livres === null ? (
         <p className="mt-3 text-[var(--gs-text-soft)]">Carregando…</p>
       ) : livres.length === 0 ? (
         <p className="mt-3 m-0 text-[length:var(--gs-text-sm)] text-[var(--gs-muted)]">

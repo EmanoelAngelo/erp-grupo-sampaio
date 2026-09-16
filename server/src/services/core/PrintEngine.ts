@@ -39,6 +39,7 @@ import { assertTerminalDaEmpresa } from './TerminalRegistry.js';
 import { lerDestinoDaImpressora } from './destinoDaImpressora.js';
 import { larguraDoCupomCadastrada } from './PapelDaLoja.js';
 import { renderDocument } from './PrintRenderer.js';
+import { exigirEmpresaComPlaquinha } from './EquipmentTagPoolService.js';
 
 /** Tipos de documento que o motor sabe enfileirar. */
 export const DOCUMENT_TYPES = [
@@ -78,8 +79,41 @@ export const TIPOS_RESERVADOS: readonly DocumentType[] = ['PRINTER_TEST', 'DRAWE
   caixa cobrava R$ 49,90 — o papel cobrando menos que o caixa, que é o erro
   caro. Para estes tipos, a segunda via é desenhada de novo, com o cadastro e
   o preço vigente de hoje.
+
+  A PLAQUINHA TAMBÉM SEGUE O CADASTRO (P0 das plaquinhas, resíduo).
+
+  O DEFEITO: a segunda via de EQUIPMENT_QR_TAG copiava o payload do job
+  original. O renderizador da plaquinha é o único lugar que confere a regra da
+  empresa (`exigirEmpresaComPlaquinha`) e o equipamento — e numa cópia ele
+  nunca rodava: o job antigo virava plaquinha nova sem pergunta nenhuma, até
+  para a empresa que perdeu a plaquinha. E a cópia reimprimia o QR de ANTES:
+  depois de uma troca de adesivo, o papel saía com o token que já morreu.
+  Desenhada de novo, a via passa pela regra e sai com o número e o QR de hoje.
 */
-export const TIPOS_QUE_SEGUEM_O_CADASTRO: readonly DocumentType[] = ['PRODUCT_LABEL'];
+export const TIPOS_QUE_SEGUEM_O_CADASTRO: readonly DocumentType[] = ['PRODUCT_LABEL', 'EQUIPMENT_QR_TAG'];
+
+/**
+ * Os papéis que só existem na empresa com plaquinha (a PJ Motors).
+ *
+ * A capability (`labels.equipment.print`) é das rotas; a regra da EMPRESA mora
+ * aqui também, em `exigirEmpresaDoPapel`, porque todo caminho que enfileira —
+ * o POST, a segunda via e o que nascer amanhã — passa por `createPrintJob`.
+ */
+export const TIPOS_SO_DA_PLAQUINHA: readonly DocumentType[] = ['EQUIPMENT_QR_TAG'];
+
+/*
+  A REGRA DA EMPRESA NO MOTOR, E NÃO SÓ NA ROTA (P0 das plaquinhas, resíduo).
+
+  O DEFEITO: a regra "plaquinha é só da PJ Motors" morava no renderizador. A
+  segunda via não renderiza (copiava o payload), então um job de plaquinha
+  enfileirado ANTES da regra — ou numa empresa que depois perdeu a marca — saía
+  de novo em qualquer operação, pela fila do caixa. Aqui a regra vale para todo
+  job de plaquinha que nasce, venha de onde vier: fora da PJ, 403
+  CORE_COMPANY_NO_TAGS antes de qualquer escrita.
+*/
+export function exigirEmpresaDoPapel(companyId: string, documentType: DocumentType): void {
+  if (TIPOS_SO_DA_PLAQUINHA.includes(documentType)) exigirEmpresaComPlaquinha(companyId);
+}
 
 /** O que o agente sabe mandar para a térmica em ESC/POS. */
 export const TIPOS_TERMICOS: readonly DocumentType[] = ['PDV_RECEIPT', 'SALE_RECEIPT', 'PRINTER_TEST', 'DRAWER_PULSE'];
@@ -160,6 +194,17 @@ function loadJob(companyId: string, jobId: string): PrintJob {
     .prepare('SELECT * FROM core_print_jobs WHERE id = ? AND company_id = ?')
     .get(jobId, companyId) as PrintJob | undefined;
   if (!row) throw new ApiError('CORE_PRINT_JOB_NOT_FOUND', 'Job de impressão não encontrado.', 404);
+  /*
+    A REGRA DA EMPRESA VALE PARA TODA LEITURA DO JOB (resíduo da auditoria P0).
+
+    `exigirEmpresaDoPapel` só rodava ao ENFILEIRAR. Quem já tinha um job de
+    plaquinha gravado — a Oficina de antes da regra — seguia lendo o papel
+    inteiro por `/status`, por `/desistir` e por `/escpos`: o payload da
+    plaquinha é o HTML com o endereço do QR, e esse endereço abre a moto sem
+    sessão e sem prazo. Aqui é o ponto por onde TODA leitura passa — avançar o
+    estado, desistir, ler o job, reimprimir.
+  */
+  exigirEmpresaDoPapel(companyId, row.document_type);
   return row;
 }
 
@@ -413,6 +458,8 @@ export function createPrintJob(input: {
       400,
     );
   }
+  // A plaquinha só nasce na empresa que tem plaquinha — por qualquer caminho.
+  exigirEmpresaDoPapel(input.companyId, input.documentType);
   const copies = Math.max(1, Math.min(10, Math.floor(input.copies ?? 1)));
 
   const printer = impressoraDoDocumento(
@@ -547,7 +594,9 @@ export function reprintJob(input: {
   }
   if (original.document_type === 'CASH_CLOSING') exigirFechamentoQueVale(input.companyId, original);
 
-  // A etiqueta sai com o preço de hoje; o resto, com o papel de antes.
+  // A etiqueta sai com o preço de hoje, a plaquinha com o QR de hoje (e pela
+  // regra da empresa, que o renderizador confere antes de ler a máquina); o
+  // resto, com o papel de antes.
   const payload = TIPOS_QUE_SEGUEM_O_CADASTRO.includes(original.document_type)
     ? renderDocument(input.companyId, original.document_type, original.document_id)
     : original.payload;
@@ -606,13 +655,32 @@ export function getPrintJob(companyId: string, jobId: string): PrintJob {
   return loadJob(companyId, jobId);
 }
 
+/*
+  A FILA NÃO ENTREGA A PLAQUINHA A QUEM NÃO A ADMINISTRA (P0 das plaquinhas,
+  resíduo).
+
+  O DEFEITO: a lista é `SELECT *` e devolvia o payload de cada job, e o payload
+  da plaquinha é o HTML com o endereço do QR — o token que abre a página
+  pública da moto, sem sessão e sem prazo. A fila é do balcão (o caixa do PDV a
+  lê), e o PDV não administra plaquinha.
+
+  Agora a plaquinha só entra na lista quando quem chama diz que pode
+  (`incluirPlaquinha`: a rota confere a capability e a empresa) — o padrão é
+  fora, porque esquecer a opção tem de esconder, e não mostrar. E mesmo para
+  quem pode o payload da plaquinha não viaja aqui: a credencial não vai em
+  lista (como no pool); o papel sai por `/print/jobs/:id/document`, guardado.
+*/
 export function listPrintJobs(
   companyId: string,
-  options: { documentId?: string; status?: PrintStatus; limit?: number } = {},
+  options: { documentId?: string; status?: PrintStatus; limit?: number; incluirPlaquinha?: boolean } = {},
 ): PrintJob[] {
   ensureCoreSchema();
   const params: unknown[] = [companyId];
   let sql = 'SELECT * FROM core_print_jobs WHERE company_id = ?';
+  if (!options.incluirPlaquinha) {
+    sql += ` AND document_type NOT IN (${TIPOS_SO_DA_PLAQUINHA.map(() => '?').join(', ')})`;
+    params.push(...TIPOS_SO_DA_PLAQUINHA);
+  }
   if (options.documentId) {
     sql += ' AND document_id = ?';
     params.push(options.documentId);
@@ -623,9 +691,10 @@ export function listPrintJobs(
   }
   sql += ' ORDER BY created_at DESC LIMIT ?';
   params.push(options.limit ?? 100);
-  return getConnection()
+  const jobs = getConnection()
     .prepare(sql)
     .all(...(params as never[])) as unknown as PrintJob[];
+  return jobs.map((j) => (TIPOS_SO_DA_PLAQUINHA.includes(j.document_type) ? { ...j, payload: null } : j));
 }
 
 export function listPrinters(companyId: string): Printer[] {

@@ -5,7 +5,7 @@
  "mudancas_permitidas": {
   "D1": "O legado operador_caixa (0 vínculos) passa a poder POST /core/print/jobs e POST /core/print/jobs/:id/reprint (conflitos.md, C1)."
  },
- "total": 720,
+ "total": 721,
  "rotas": {
   "DELETE /core/acquirers/rates/:id": {
    "arquivo": "core.ts",
@@ -3578,6 +3578,20 @@
     "operador_caixa_oficina"
    ],
    "capability": "qualquer(inventory.units.view, pdv.sell)",
+   "mudanca": null
+  },
+  "GET /core/units/:id/tag/livres": {
+   "arquivo": "core.ts",
+   "linha": null,
+   "guarda_hoje": "requireCapability(req, 'inventory.units.manage')",
+   "perfis": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina",
+    "estoquista"
+   ],
+   "capability": "inventory.units.manage",
    "mudanca": null
   },
   "GET /core/units/:productId": {

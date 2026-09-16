@@ -1441,7 +1441,7 @@
     "mecanico"
    ],
    "rotas_que_cobram": 2,
-   "pontos_de_servico": 0,
+   "pontos_de_servico": 5,
    "pontos_de_tela": 1,
    "origem": "catalogo.json"
   },
@@ -1645,7 +1645,7 @@
     "estoquista",
     "estoque"
    ],
-   "rotas_que_cobram": 6,
+   "rotas_que_cobram": 10,
    "pontos_de_servico": 0,
    "pontos_de_tela": 1,
    "origem": "catalogo.json"

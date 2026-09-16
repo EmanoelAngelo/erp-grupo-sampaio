@@ -193,6 +193,7 @@ import {
 import {
   desvincularPlaquinhaDoPool,
   plaquinhasDoPoolDasUnidades,
+  plaquinhasLivresParaAUnidade,
   substituirPlaquinhaDaUnidade,
   vincularPlaquinhaDoPool,
 } from '../../services/core/PlaquinhaDaPjNaUnidade.js';
@@ -373,6 +374,7 @@ import { generateVariants, variantStock } from '../../services/core/VariantServi
 import {
   type DocumentType,
   TIPOS_RESERVADOS,
+  TIPOS_SO_DA_PLAQUINHA,
   advancePrintJob,
   createPrintJob,
   getPrintJob,
@@ -1616,6 +1618,29 @@ coreRouter.post('/print/printers', (req: AuthedRequest, res, next) => {
   }
 });
 
+/*
+  A PLAQUINHA NA FILA DE IMPRESSÃO (P0 das plaquinhas, resíduo).
+
+  O DEFEITO: só o POST /print/jobs perguntava pela capability da plaquinha. A
+  segunda via (POST /print/jobs/:id/reprint) admite os dois caixas
+  (`operador_caixa_loja`, `operador_caixa_oficina`) e copiava o papel do job
+  original: o PDV da PJ e o caixa da Oficina reimprimiam uma plaquinha com 201.
+  E GET /print/jobs/:id/document (alcance do balcão) devolvia o HTML gravado da
+  plaquinha — com o endereço do QR, o token que abre a página da moto — a
+  qualquer sessão da família do PDV.
+
+  Toda rota da fila que devolve, copia ou descreve um job de plaquinha passa
+  por aqui: a capability da folha de plaquinha (`labels.equipment.print`, a
+  mesma de POST /labels/equipment/sheet) e a regra da empresa (só a PJ
+  Motors). A capability vem antes: o caixa leva o "sem acesso", e a empresa sem
+  plaquinha leva a frase da regra. Os outros papéis não mudam.
+*/
+function exigirAcessoAoPapelDaPlaquinha(req: AuthedRequest, companyId: string, documentType: DocumentType): void {
+  if (!TIPOS_SO_DA_PLAQUINHA.includes(documentType)) return;
+  requireCapability(req, 'labels.equipment.print');
+  exigirEmpresaComPlaquinha(companyId);
+}
+
 coreRouter.get('/print/jobs', (req: AuthedRequest, res, next) => {
   try {
     /*
@@ -1629,6 +1654,9 @@ coreRouter.get('/print/jobs', (req: AuthedRequest, res, next) => {
       items: listPrintJobs(companyId, {
         documentId: req.query.documentId as string | undefined,
         limit: req.query.limit ? Number(req.query.limit) : undefined,
+        // O job de plaquinha só aparece para quem imprime plaquinha, e só na
+        // PJ Motors — o caixa do balcão lê esta fila (ver `listPrintJobs`).
+        incluirPlaquinha: can(req.auth?.acesso, 'labels.equipment.print') && empresaUsaPlaquinha(companyId),
       }),
     });
   } catch (err) {
@@ -1661,9 +1689,10 @@ coreRouter.post('/print/jobs', (req: AuthedRequest, res, next) => {
       Esta fila admite o caixa do PDV (`operador_caixa_loja`), e o
       EQUIPMENT_QR_TAG passava por ela como qualquer cupom: o login do PDV da
       PJ podia mandar imprimir plaquinha. Imprimir plaquinha é gestão (PDV não
-      administra) — a mesma capability de POST /labels/equipment/sheet.
+      administra) — a mesma capability de POST /labels/equipment/sheet —, e só
+      na PJ Motors (a regra da empresa, antes de renderizar).
     */
-    if (documentType === 'EQUIPMENT_QR_TAG') requireCapability(req, 'labels.equipment.print');
+    exigirAcessoAoPapelDaPlaquinha(req, companyId, documentType);
     // A página de teste e o pulso da gaveta têm rota própria (gerência,
     // motivo, trilha). Por aqui, abrir a gaveta sem venda passaria sem nada.
     if (TIPOS_RESERVADOS.includes(documentType)) {
@@ -1722,6 +1751,8 @@ coreRouter.get('/print/jobs/:id', (req: AuthedRequest, res, next) => {
     abertaAo(req, 'balcao', 'escritorio');
     const { companyId } = scope(req);
     const job = getPrintJob(companyId, String(req.params.id));
+    // O job de plaquinha (qual máquina, quando, quem) é de quem imprime plaquinha.
+    exigirAcessoAoPapelDaPlaquinha(req, companyId, job.document_type);
     // O papel renderizado não viaja aqui: quem precisa dele pede /document.
     res.json({ ...job, payload: undefined });
   } catch (err) {
@@ -1741,6 +1772,9 @@ coreRouter.post('/print/jobs/:id/reprint', (req: AuthedRequest, res, next) => {
       'atendente',
     );
     const { companyId, userId } = scope(req);
+    // A segunda via da plaquinha é da gestão da PJ: o caixa não a pede (ver
+    // `exigirAcessoAoPapelDaPlaquinha`). Job de outra empresa é 404 aqui.
+    exigirAcessoAoPapelDaPlaquinha(req, companyId, getPrintJob(companyId, String(req.params.id)).document_type);
     const job = reprintJob({ companyId, userId, jobId: String(req.params.id) });
     recordAudit({
       companyId,
@@ -1777,7 +1811,9 @@ coreRouter.post('/print/jobs/:id/desistir', (req: AuthedRequest, res, next) => {
     const { companyId, userId } = scope(req);
     const jobId = String(req.params.id);
     // 404 para job de outra empresa ou inexistente — antes de qualquer escrita.
-    getPrintJob(companyId, jobId);
+    // E o papel da plaquinha só para quem o alcança (resíduo da auditoria P0):
+    // a resposta devolve o job inteiro, com o desenho e o QR.
+    exigirAcessoAoPapelDaPlaquinha(req, companyId, getPrintJob(companyId, jobId).document_type);
     const motivo =
       String(req.body?.motivo ?? '').trim().slice(0, 300)
       || 'O agente local não pegou o cupom no prazo do balcão: cancelado para não sair depois.';
@@ -1829,6 +1865,13 @@ coreRouter.post('/print/jobs/:id/status', (req: AuthedRequest, res, next) => {
     */
     abertaAo(req, 'balcao', 'escritorio');
     const { companyId } = scope(req);
+    /*
+      O PAPEL DA PLAQUINHA TAMBÉM AQUI (resíduo da auditoria P0): esta rota
+      DEVOLVE o job inteiro, com o desenho e o QR dentro do payload, e o alcance
+      dela é o do balcão. Sem este portão, o caixa do PDV lia o QR da plaquinha
+      pela fila. O tipo é lido antes de escrever; job de outra empresa é 404.
+    */
+    exigirAcessoAoPapelDaPlaquinha(req, companyId, getPrintJob(companyId, String(req.params.id)).document_type);
     res.json(
       advancePrintJob({
         companyId,
@@ -1990,6 +2033,10 @@ coreRouter.get('/print/jobs/:id/escpos', (req: AuthedRequest, res, next) => {
     abertaAo(req, 'balcao', 'escritorio');
     const { companyId } = scope(req);
     const job = getPrintJob(companyId, String(req.params.id));
+    // O tipo do papel só é DITO a quem o alcança: para a plaquinha a recusa é
+    // de acesso, e não "não há cupom térmico para EQUIPMENT_QR_TAG" — que já
+    // confirmaria o job e o tipo a quem não administra plaquinha.
+    exigirAcessoAoPapelDaPlaquinha(req, companyId, job.document_type);
     if (job.document_type !== 'PDV_RECEIPT' && job.document_type !== 'SALE_RECEIPT') {
       // Etiqueta, OS e DANFE têm layout próprio e não cabem em coluna de
       // cupom. Fingir que cabem entregaria papel ilegível.
@@ -2021,6 +2068,9 @@ coreRouter.get('/print/jobs/:id/document', (req: AuthedRequest, res, next) => {
     abertaAo(req, 'balcao', 'escritorio');
     const { companyId } = scope(req);
     const job = getPrintJob(companyId, String(req.params.id));
+    // O HTML da plaquinha carrega o token do QR: só para quem imprime
+    // plaquinha, e só na PJ Motors.
+    exigirAcessoAoPapelDaPlaquinha(req, companyId, job.document_type);
     const html = job.payload ?? renderDocument(companyId, job.document_type, job.document_id);
     res.type('html').send(html);
   } catch (err) {
@@ -13215,6 +13265,41 @@ coreRouter.post('/units/:id/tag/replace', (req: AuthedRequest, res, next) => {
       detail: { ...resultado, motivo },
     });
     res.json(resultado);
+  } catch (err) {
+    next(err);
+  }
+});
+
+/*
+  AS PLAQUINHAS LIVRES PARA COLAR NESTA MOTO (P0 das plaquinhas, resíduo).
+
+  O DEFEITO: o painel de colar e de trocar o adesivo (Estoque › Unidades)
+  listava as plaquinhas livres por GET /core/equipment-tags, que exige
+  `workshop.tags.view`. O modelo "Estoque" tem `inventory.units.manage` — o
+  servidor aceita dele colar e trocar (201) — e não tem a leitura do pool: a
+  lista voltava 403, a tela engolia a recusa e dizia "Nenhuma plaquinha
+  livre". Um beco: o botão existia, a moto aceitava, e o adesivo nunca aparecia.
+
+  A escolha foi uma leitura ESTREITA sob a MESMA capability de colar e trocar,
+  e não exigir `workshop.tags.view` também em colar/trocar: quem cola o adesivo
+  na moto precisa ver quais adesivos pode colar — e só isso. A rota devolve só
+  plaquinha livre (liberada, sem moto e sem máquina), só número e id, sem o
+  token do QR, e só da empresa da sessão; o pool inteiro (lotes, associadas,
+  danificadas, busca por texto) continua sendo `workshop.tags.view`. A regra
+  da empresa vem antes de qualquer leitura, como nas três rotas vizinhas.
+*/
+coreRouter.get('/units/:id/tag/livres', (req: AuthedRequest, res, next) => {
+  try {
+    // Os adesivos que a gestão da PJ pode colar nesta moto: Estoque › Unidades.
+    requireCapability(req, 'inventory.units.manage');
+    const { companyId } = scope(req);
+    res.json({
+      items: plaquinhasLivresParaAUnidade({
+        companyId,
+        unitId: String(req.params.id),
+        busca: req.query.busca ? String(req.query.busca) : undefined,
+      }),
+    });
   } catch (err) {
     next(err);
   }

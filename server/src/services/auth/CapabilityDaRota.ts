@@ -251,6 +251,7 @@ export const CAPABILITY_DA_ROTA: Readonly<Record<string, string>> = {
   "GET /core/team/recuperacao-de-senha": "users.password_recovery.manage",
   "GET /core/terminals": "qualquer(pdv.sell, sales.view, settings.terminals.manage)",
   "GET /core/units": "qualquer(inventory.units.view, pdv.sell)",
+  "GET /core/units/:id/tag/livres": "inventory.units.manage",
   "GET /core/units/:productId": "qualquer(inventory.units.view, pdv.sell)",
   "GET /core/units/equipment-candidates": "inventory.units.manage",
   "GET /core/units/summary": "inventory.units.view",

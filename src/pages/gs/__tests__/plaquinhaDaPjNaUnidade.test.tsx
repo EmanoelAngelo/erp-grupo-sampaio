@@ -11,10 +11,17 @@
  *   - a moto com o adesivo mostra o número e "adesivo da PJ Motors", reimprime,
  *     troca (motivo obrigatório: o botão fica apagado sem ele) e solta;
  *   - a Preço Justo não vê nada disso e não pergunta ao pool;
- *   - o caixa do PDV da PJ vê o número e nenhum botão (PDV não administra).
+ *   - o caixa do PDV da PJ vê o número e nenhum botão (PDV não administra);
+ *   - o modelo "Estoque" (cola e troca por `inventory.units.manage`, sem a
+ *     leitura do pool) acha os adesivos livres pela leitura estreita da
+ *     unidade, e a recusa dessa leitura aparece como recusa — nunca como
+ *     "nenhuma plaquinha livre" (resíduo do P0).
  *
  * Mordidas: tire o `useCan('inventory.units.manage')` e o caso do PDV fica
- * vermelho; tire o `temPlaquinha` e o caso da Preço Justo fica vermelho.
+ * vermelho; tire o `temPlaquinha` e o caso da Preço Justo fica vermelho; volte
+ * o painel para `livres()` (o pool) e os casos do modelo Estoque ficam
+ * vermelhos; volte o `.catch(() => setLivres([]))` e o caso da recusa fica
+ * vermelho.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
@@ -160,8 +167,8 @@ describe('a gestão da PJ Motors cola o adesivo do lote na moto', () => {
     entrarComo('gerente_loja', 'pj-motors', GESTAO);
     let colada = false;
     rotasDaTela([unidade('u1')], (p) => {
-      if (p.url.includes('/core/equipment-tags?status=disponivel')) {
-        return { body: { items: [{ id: 'tag-42', public_id: 42, publicIdLabel: '#0042' }], usaPlaquinha: true } };
+      if (p.url.includes('/core/units/u1/tag/livres')) {
+        return { body: { items: [{ id: 'tag-42', public_id: 42, publicIdLabel: '#0042' }] } };
       }
       if (p.metodo === 'POST' && p.url.endsWith('/core/units/u1/tag')) {
         colada = true;
@@ -175,7 +182,7 @@ describe('a gestão da PJ Motors cola o adesivo do lote na moto', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Colar plaquinha do lote' }));
     fireEvent.change(await screen.findByPlaceholderText('Nº do adesivo (#0042)'), { target: { value: '42' } });
     await waitFor(() =>
-      expect(pedidos.some((p) => p.url.includes('/core/equipment-tags?status=disponivel&busca=42'))).toBe(true),
+      expect(pedidos.some((p) => p.url.includes('/core/units/u1/tag/livres?busca=42'))).toBe(true),
     );
     fireEvent.click(await screen.findByRole('button', { name: 'Colar nesta moto' }));
 
@@ -187,13 +194,15 @@ describe('a gestão da PJ Motors cola o adesivo do lote na moto', () => {
     expect(screen.queryByRole('button', { name: 'Colar plaquinha do lote' })).toBeNull();
     // O painel da MÁQUINA não foi usado: nenhuma candidata da Oficina pedida.
     expect(pedidos.some((p) => p.url.includes('/equipment-candidates'))).toBe(false);
+    // E o pool inteiro não foi lido: a lista é a leitura estreita da unidade.
+    expect(pedidos.some((p) => p.url.includes('/core/equipment-tags'))).toBe(false);
   });
 
   it('adesivo ainda não liberado: a tela diz o caminho, em vez do código do servidor', async () => {
     entrarComo('gerente_loja', 'pj-motors', GESTAO);
     rotasDaTela([unidade('u1')], (p) => {
-      if (p.url.includes('/core/equipment-tags?status=disponivel')) {
-        return { body: { items: [{ id: 'tag-42', public_id: 42, publicIdLabel: '#0042' }], usaPlaquinha: true } };
+      if (p.url.includes('/core/units/u1/tag/livres')) {
+        return { body: { items: [{ id: 'tag-42', public_id: 42, publicIdLabel: '#0042' }] } };
       }
       if (p.metodo === 'POST' && p.url.endsWith('/core/units/u1/tag')) {
         return { status: 409, body: { error: { code: 'CORE_TAG_NOT_RELEASED', message: 'A plaquinha #0042 ainda não foi liberada.' } } };
@@ -209,8 +218,8 @@ describe('a gestão da PJ Motors cola o adesivo do lote na moto', () => {
   it('a moto com o adesivo mostra o número, reimprime, troca com motivo obrigatório e solta', async () => {
     entrarComo('gerente_loja', 'pj-motors', GESTAO);
     rotasDaTela([unidade('u2', { plaquinhaDoPool: COLADA })], (p) => {
-      if (p.url.includes('/core/equipment-tags?status=disponivel')) {
-        return { body: { items: [{ id: 'tag-43', public_id: 43, publicIdLabel: '#0043' }], usaPlaquinha: true } };
+      if (p.url.includes('/core/units/u2/tag/livres')) {
+        return { body: { items: [{ id: 'tag-43', public_id: 43, publicIdLabel: '#0043' }] } };
       }
       if (p.metodo === 'POST' && p.url.endsWith('/core/units/u2/equipment/sheet')) {
         return { body: { html: '<html>#0042</html>', publicIdLabel: '#0042', plaquinhas: 1 } };
@@ -257,6 +266,61 @@ describe('a gestão da PJ Motors cola o adesivo do lote na moto', () => {
     expect(within(pergunta).getByText(/volta a ficar livre no pool da PJ Motors/)).toBeTruthy();
     fireEvent.click(within(pergunta).getByRole('button', { name: 'Soltar plaquinha' }));
     await waitFor(() => expect(pedidos.some((p) => p.metodo === 'DELETE' && p.url.endsWith('/core/units/u2/tag'))).toBe(true));
+  });
+});
+
+/*
+  O MODELO "ESTOQUE" SEM BECO (resíduo do P0 das plaquinhas).
+
+  O modelo Estoque tem `inventory.units.manage` — o servidor aceita dele colar e
+  trocar o adesivo — e não tem `workshop.tags.view`, a leitura do pool. O painel
+  listava os livres pelo pool: 403, a tela engolia a recusa e dizia "Nenhuma
+  plaquinha livre com esse número" com o pool cheio. Agora a lista é a leitura
+  estreita da unidade (mesma capability de colar), e a recusa aparece.
+*/
+const MODELO_ESTOQUE = ['inventory.adjust.approve', 'inventory.manage', 'inventory.units.manage', 'inventory.units.view', 'inventory.view'];
+
+describe('o modelo Estoque cola o adesivo sem cair num beco', () => {
+  it('sem a leitura do pool, acha o adesivo livre pela unidade e cola', async () => {
+    entrarComo('estoque', 'pj-motors', MODELO_ESTOQUE);
+    rotasDaTela([unidade('u1')], (p) => {
+      // O pool recusaria este modelo, como o servidor de verdade recusa.
+      if (p.url.includes('/core/equipment-tags')) {
+        return { status: 403, body: { error: { code: 'API_PERMISSION_DENIED', message: 'Seu acesso nesta empresa não inclui: Plaquinhas (ver).' } } };
+      }
+      if (p.url.includes('/core/units/u1/tag/livres')) {
+        return { body: { items: [{ id: 'tag-42', public_id: 42, publicIdLabel: '#0042' }] } };
+      }
+      if (p.metodo === 'POST' && p.url.endsWith('/core/units/u1/tag')) return { status: 201, body: { plaquinha: COLADA } };
+      return null;
+    });
+    await abrirOProduto();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Colar plaquinha do lote' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Colar nesta moto' }));
+    await waitFor(() => expect(pedidos.some((p) => p.metodo === 'POST' && p.url.endsWith('/core/units/u1/tag'))).toBe(true));
+    expect(await screen.findByText('Plaquinha #0042 colada nesta moto — o QR já abre a página dela.')).toBeTruthy();
+    expect(pedidos.some((p) => p.url.includes('/core/equipment-tags'))).toBe(false);
+  });
+
+  it('a recusa da lista aparece como recusa — e não como "nenhuma plaquinha livre"', async () => {
+    entrarComo('estoque', 'pj-motors', MODELO_ESTOQUE);
+    rotasDaTela([unidade('u1')], (p) => {
+      if (p.url.includes('/core/units/u1/tag/livres')) {
+        return { status: 403, body: { error: { code: 'CORE_COMPANY_NO_TAGS', message: 'Plaquinha com QR e número é exclusiva da PJ Motors.' } } };
+      }
+      return null;
+    });
+    await abrirOProduto();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Colar plaquinha do lote' }));
+    const recusa = await screen.findByRole('alert');
+    expect(recusa.textContent).toContain('Não foi possível ler as plaquinhas livres');
+    expect(recusa.textContent).toContain('exclusiva da PJ Motors');
+    // O que a tela dizia antes, com a recusa engolida: um pool vazio que não existe.
+    expect(screen.queryByText(/Nenhuma plaquinha livre/)).toBeNull();
+    expect(screen.queryByText('Carregando…')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Colar nesta moto' })).toBeNull();
   });
 });
 

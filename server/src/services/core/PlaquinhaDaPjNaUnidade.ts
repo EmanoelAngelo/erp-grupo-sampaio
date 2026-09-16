@@ -23,6 +23,7 @@
  * ## O ciclo de vida inteiro
  *
  *   gerar o lote → imprimir a folha → liberar   (Plaquinhas, já existia)
+ *   ver os adesivos livres para colar           `plaquinhasLivresParaAUnidade`
  *   colar/vincular na unidade                   `vincularPlaquinhaDoPool`
  *   o QR abre a moto                            `publicEquipmentByToken`
  *   reimprimir o MESMO adesivo                  `UnitTagReprint` (pela unidade)
@@ -185,6 +186,58 @@ function lerPlaquinhaDaEmpresa(companyId: string, tagId: string): EquipmentTag {
     .get(tagId, companyId) as EquipmentTag | undefined;
   if (!tag) throw new ApiError('CORE_TAG_NOT_FOUND', 'Plaquinha não encontrada.', 404);
   return tag;
+}
+
+export interface PlaquinhaLivreDaPj {
+  id: string;
+  public_id: number;
+  publicIdLabel: string;
+}
+
+/** O teto da lista: com mais adesivos livres que isto, a pessoa busca pelo número. */
+const TETO_DOS_LIVRES = 50;
+
+/**
+ * OS ADESIVOS LIVRES QUE PODEM IR PARA ESTA MOTO — a leitura estreita do
+ * painel de colar e de trocar (P0 das plaquinhas, resíduo).
+ *
+ * O painel usava a lista do pool (`workshop.tags.view`), e o modelo "Estoque",
+ * que cola e troca por `inventory.units.manage`, levava 403 nela: a tela dizia
+ * "nenhuma plaquinha livre" com o pool cheio. Aqui sai só o que colar exige
+ * saber — número e id da plaquinha LIVRE (liberada, sem moto e sem máquina),
+ * da empresa da sessão, sem o token do QR. É o mesmo filtro que a escrita de
+ * `vincularPlaquinhaDoPool` guarda: o que aparece aqui é o que ela aceita.
+ *
+ * A regra da empresa vem antes de qualquer leitura (fora da PJ, 403 sem dizer
+ * se a unidade existe), e a unidade tem de ser da empresa (404 como nas
+ * vizinhas). A busca é pelo número, do jeito que o balcão fala: "#0042",
+ * "0042" e "42" são a mesma; texto que não é número não acha nada.
+ */
+export function plaquinhasLivresParaAUnidade(input: {
+  companyId: string;
+  unitId: string;
+  busca?: string;
+}): PlaquinhaLivreDaPj[] {
+  ensureCoreSchema();
+  exigirEmpresaComPlaquinha(input.companyId);
+  lerUnidadeDaEmpresa(input.companyId, input.unitId);
+
+  const params: unknown[] = [input.companyId];
+  let sql = `SELECT id, public_id FROM core_equipment_tags
+              WHERE company_id = ? AND status = 'disponivel'
+                AND unit_id IS NULL AND equipment_id IS NULL`;
+  const busca = String(input.busca ?? '').trim();
+  if (busca) {
+    const numero = Number(busca.replace(/^#/, '').trim());
+    if (!Number.isInteger(numero) || numero <= 0) return [];
+    sql += ' AND public_id = ?';
+    params.push(numero);
+  }
+  sql += ` ORDER BY public_id LIMIT ${TETO_DOS_LIVRES}`;
+  const linhas = getConnection()
+    .prepare(sql)
+    .all(...(params as never[])) as unknown as { id: string; public_id: number }[];
+  return linhas.map((l) => ({ id: l.id, public_id: l.public_id, publicIdLabel: formatTagId(l.public_id) }));
 }
 
 /**
@@ -357,6 +410,17 @@ export function substituirPlaquinhaDaUnidade(input: {
 }): { anterior: string; atual: string } {
   ensureCoreSchema();
   exigirEmpresaComPlaquinha(input.companyId);
+  /*
+    O ADESIVO NOVO VAZIO É PEDIDO INCOMPLETO, NÃO PLAQUINHA SUMIDA (P0 das
+    plaquinhas, resíduo). Sem esta conferência o id vazio ia até a leitura da
+    plaquinha e voltava 404 "não encontrada" — a tela mandava a pessoa procurar
+    um adesivo que ela nem escolheu. É o mesmo 400 do colar, depois da regra da
+    empresa (fora da PJ a resposta continua sendo sempre 403).
+  */
+  const novaTagId = String(input.novaTagId ?? '').trim();
+  if (!novaTagId) {
+    throw new ApiError('CORE_TAG_REQUIRED', 'Escolha o adesivo livre que vai entrar nesta moto.', 400);
+  }
   const motivo = String(input.motivo ?? '').trim();
   if (!motivo) {
     throw new ApiError(
@@ -390,36 +454,58 @@ export function substituirPlaquinhaDaUnidade(input: {
       throw new ApiError('CORE_UNIT_WITHOUT_TAG', 'Esta unidade não tem plaquinha da PJ vinculada.', 409);
     }
 
-    const nova = lerPlaquinhaDaEmpresa(input.companyId, String(input.novaTagId ?? '').trim());
-    if (nova.status !== 'disponivel') {
-      throw new ApiError(
+    const nova = lerPlaquinhaDaEmpresa(input.companyId, novaTagId);
+    const naoDisponivel = () =>
+      new ApiError(
         'CORE_TAG_NOT_AVAILABLE',
         `A ${formatTagId(nova.public_id)} não está disponível: só plaquinha liberada e sem dono `
         + 'entra numa máquina.',
         409,
       );
-    }
+    if (nova.status !== 'disponivel') throw naoDisponivel();
 
+    /*
+      AS DUAS ESCRITAS SÃO GUARDADAS, E CADA UMA MUDA EXATAMENTE UMA LINHA (P0
+      das plaquinhas, resíduo).
+
+      O DEFEITO: a plaquinha nova entrava com `WHERE id = ? AND status =
+      'disponivel'` — sem conferir a empresa, nem que ela estava SEM moto e SEM
+      máquina, como o colar confere. Uma linha "disponível" ainda presa a outra
+      unidade ou a uma máquina (banco antigo, gravação à mão) era arrancada de lá
+      em silêncio: a outra moto perdia o QR sem ninguém pedir. E a velha morria
+      com `WHERE id = ?` sem conferir nada: se ela já não estivesse associada a
+      ESTA moto no instante da escrita, a troca marcava danificada uma plaquinha
+      que não era mais desta moto.
+
+      Agora a nova entra primeiro, com o mesmo filtro do colar, e a velha sai
+      depois, só se continua associada a esta unidade. Qualquer uma que não
+      mude exatamente uma linha é 409, e a transação desfaz as duas — nunca meia
+      troca.
+    */
     const agora = new Date().toISOString();
-    // A velha morre com o `unit_id` guardado: a auditoria sabe de qual moto era.
-    db.prepare(
-      `UPDATE core_equipment_tags
-          SET status = 'danificada', damaged_at = ?, damaged_by = ?, damaged_reason = ?, updated_at = ?
-        WHERE id = ?`,
-    ).run(agora, input.userId, motivo, agora, antiga.tagId);
-
     const entra = db
       .prepare(
         `UPDATE core_equipment_tags
             SET status = 'associada', unit_id = ?, associated_at = ?, updated_at = ?
-          WHERE id = ? AND status = 'disponivel'`,
+          WHERE id = ? AND company_id = ? AND status = 'disponivel'
+            AND unit_id IS NULL AND equipment_id IS NULL`,
       )
-      .run(unidade.id, agora, agora, nova.id);
-    if (Number(entra.changes) !== 1) {
+      .run(unidade.id, agora, agora, nova.id, input.companyId);
+    if (Number(entra.changes) !== 1) throw naoDisponivel();
+
+    // A velha morre com o `unit_id` guardado: a auditoria sabe de qual moto era.
+    const sai = db
+      .prepare(
+        `UPDATE core_equipment_tags
+            SET status = 'danificada', damaged_at = ?, damaged_by = ?, damaged_reason = ?, updated_at = ?
+          WHERE id = ? AND company_id = ? AND status = 'associada' AND unit_id = ?`,
+      )
+      .run(agora, input.userId, motivo, agora, antiga.tagId, input.companyId, unidade.id);
+    if (Number(sai.changes) !== 1) {
       throw new ApiError(
-        'CORE_TAG_NOT_AVAILABLE',
-        `A ${formatTagId(nova.public_id)} não está disponível: só plaquinha liberada e sem dono `
-        + 'entra numa máquina.',
+        'CORE_UNIT_TAG_CHANGED',
+        `A plaquinha ${antiga.publicIdLabel} deixou de estar nesta moto enquanto a troca era gravada. `
+        + 'Nada foi trocado: recarregue a tela e confira qual adesivo está na moto.',
         409,
       );
     }

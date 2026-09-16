@@ -20,6 +20,15 @@
  * Desde o P0 das plaquinhas a sessão destes casos é a PJ MOTORS: a plaquinha é
  * exclusiva dela, e a Oficina (a sessão de antes) abre a rota e vê "não
  * disponível nesta empresa" sem chamada nenhuma — o que o último bloco prova.
+ *
+ * ## Cada caso espera o estado que confere
+ *
+ * O título do cartão "Lotes" está na tela ANTES de a leitura voltar. Os casos
+ * esperavam por ele e liam o lote na mesma hora: com o render do React 19 fora
+ * do act (setImmediate) atrasado pelo detector de corridas, o botão do lote
+ * ainda não existia e o caso caía — e a negativa do mecânico passava sem o lote
+ * na tela, sem medir nada. Agora cada um espera o que o prova: o botão do lote,
+ * o botão habilitado depois da releitura, a lista relida pela busca.
  */
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
@@ -196,7 +205,16 @@ function servidor() {
       }
       const params = new URLSearchParams(alvo.split('?')[1] ?? '');
       const status = params.get('status');
-      const items = status ? pool.filter((t) => t.status === status) : pool;
+      const porSituacao = status ? pool.filter((t) => t.status === status) : pool;
+      // A busca como o servidor faz: "#0007", "0007" e "7" são o mesmo número;
+      // texto procura a máquina.
+      const busca = params.get('busca');
+      const numero = busca ? Number(busca.replace(/^#/, '')) : NaN;
+      const items = !busca
+        ? porSituacao
+        : Number.isInteger(numero) && numero > 0
+          ? porSituacao.filter((t) => t.public_id === numero)
+          : porSituacao.filter((t) => (t.equipment_label ?? '').includes(busca));
       return responder({
         items,
         resumo: {
@@ -288,9 +306,9 @@ describe('o ciclo do adesivo, na tela', () => {
   it('sem folha impressa, liberar leva a recusa que ensina o caminho', async () => {
     pool = [plaquinha(1), plaquinha(2)];
     montar();
-    await screen.findByText('Lotes');
-
-    fireEvent.click(screen.getByRole('button', { name: /^Liberar o lote/ }));
+    // O botão do LOTE, e não o título do cartão: ele só existe depois da
+    // leitura — e a lista das plaquinhas chega no mesmo render.
+    fireEvent.click(await screen.findByRole('button', { name: /^Liberar o lote/ }));
 
     const aviso = await screen.findByRole('alert');
     expect(aviso.textContent).toContain('não foram para o papel');
@@ -301,16 +319,19 @@ describe('o ciclo do adesivo, na tela', () => {
   it('imprimir a folha marca o papel, e aí a liberação passa', async () => {
     pool = [plaquinha(1), plaquinha(2)];
     montar();
-    await screen.findByText('Lotes');
 
-    fireEvent.click(screen.getByRole('button', { name: /^Imprimir a folha do lote/ }));
+    fireEvent.click(await screen.findByRole('button', { name: /^Imprimir a folha do lote/ }));
     await waitFor(() => expect(screen.getByText(/1 folha\(s\) com 2 plaquinha\(s\)/)).toBeTruthy());
     // A folha veio do SERVIDOR pronta — a tela não desenha adesivo — e vai
     // pelo LOTE, não por uma lista de ids que a janela da listagem pode cortar.
     const folha = pedidos.find((p) => p.url.includes('/sheet'))!;
     expect(folha.corpo.batchId).toBe('lote-1');
 
-    fireEvent.click(screen.getByRole('button', { name: /^Liberar o lote/ }));
+    // O aviso sai ANTES da releitura, e o botão fica apagado até ela acabar:
+    // clicar nele apagado não faz nada. Espera o botão voltar.
+    const liberar = screen.getByRole('button', { name: /^Liberar o lote/ }) as HTMLButtonElement;
+    await waitFor(() => expect(liberar.disabled).toBe(false));
+    fireEvent.click(liberar);
     await waitFor(() => expect(screen.getByText(/2 plaquinha\(s\) liberadas/)).toBeTruthy());
     expect(await screen.findAllByText('Livre')).toHaveLength(2);
   });
@@ -318,9 +339,8 @@ describe('o ciclo do adesivo, na tela', () => {
   it('o botão de liberar explica o que falta antes de a pessoa clicar', async () => {
     pool = [plaquinha(1)];
     montar();
-    await screen.findByText('Lotes');
 
-    const liberar = screen.getByRole('button', { name: /^Liberar o lote/ });
+    const liberar = await screen.findByRole('button', { name: /^Liberar o lote/ });
     expect(liberar.getAttribute('title')).toContain('Imprima a folha antes');
   });
 
@@ -462,9 +482,8 @@ describe('o que a tela fazia errado', () => {
   it('imprimir manda o LOTE, não uma lista de ids que pode estar cortada', async () => {
     pool = [plaquinha(1), plaquinha(2)];
     montar();
-    await screen.findByText('Lotes');
 
-    fireEvent.click(screen.getByRole('button', { name: /^Imprimir a folha do lote/ }));
+    fireEvent.click(await screen.findByRole('button', { name: /^Imprimir a folha do lote/ }));
     await waitFor(() => expect(pedidos.some((p) => p.url.includes('/sheet'))).toBe(true));
     const folha = pedidos.find((p) => p.url.includes('/sheet'))!;
     expect(folha.corpo.batchId).toBe('lote-1');
@@ -483,9 +502,8 @@ describe('o que a tela fazia errado', () => {
     pool = [plaquinha(1)];
     folhaAvisa = { abaixoDoPiso: true, moduloMm: 0.42, baseUrlConfigurada: false };
     montar();
-    await screen.findByText('Lotes');
 
-    fireEvent.click(screen.getByRole('button', { name: /^Imprimir a folha do lote/ }));
+    fireEvent.click(await screen.findByRole('button', { name: /^Imprimir a folha do lote/ }));
 
     const aviso = await screen.findByRole('status');
     expect(aviso.textContent).toContain('abaixo do');
@@ -498,9 +516,8 @@ describe('o que a tela fazia errado', () => {
     // O navegador recusa a janela: é o caso comum em quem tem bloqueador.
     vi.stubGlobal('open', vi.fn(() => null));
     montar();
-    await screen.findByText('Lotes');
 
-    fireEvent.click(screen.getByRole('button', { name: /^Imprimir a folha do lote/ }));
+    fireEvent.click(await screen.findByRole('button', { name: /^Imprimir a folha do lote/ }));
 
     const aviso = await screen.findByRole('status');
     expect(aviso.textContent).toContain('bloqueou a janela');
@@ -526,18 +543,20 @@ describe('o que a tela fazia errado', () => {
     pool = [plaquinha(1, { printed_at: '2026-08-25T11:00:00.000Z' })];
     entrarComo('mecanico');
     montar();
-    await screen.findByText('Lotes');
 
-    expect(screen.getByRole('button', { name: /^Imprimir a folha do lote/ })).toBeTruthy();
+    // A negativa só mede alguma coisa com a LINHA do lote na tela: "Imprimir" e
+    // "Liberar" nascem no mesmo render dela. Antes o caso esperava o título do
+    // cartão e passava com o lote ainda vazio — verde sem olhar o botão.
+    expect(await screen.findByRole('button', { name: /^Imprimir a folha do lote/ })).toBeTruthy();
     expect(screen.queryByRole('button', { name: /^Liberar o lote/ })).toBeNull();
   });
 
   it('o seletor oferece o tamanho do editor, e ele vai na folha', async () => {
     pool = [plaquinha(1)];
     montar();
-    await screen.findByText('Lotes');
 
-    const seletor = screen.getByLabelText('Formato da folha');
+    // O seletor só existe depois da leitura (formatos e layout chegam juntos).
+    const seletor = await screen.findByLabelText('Formato da folha');
     expect(within(seletor).getByRole('option', { name: /Personalizado — 100 × 40 mm/ })).toBeTruthy();
 
     fireEvent.change(seletor, { target: { value: 'plaq_personalizado' } });
@@ -614,7 +633,9 @@ describe('a PJ Motors sem bancada gera lote', () => {
     pool = [plaquinha(1, { printed_at: '2026-08-25T11:00:00.000Z' })];
     entrarComo('operador_caixa_loja');
     montar();
-    await screen.findByText('Lotes');
+    // As negativas valem com o lote e a lista NA TELA (o botão de imprimir e o
+    // de marcar danificada nascem com eles), e não antes da leitura.
+    await screen.findByRole('button', { name: /^Imprimir a folha do lote/ });
 
     expect(screen.queryByText('Gerar lote')).toBeNull();
     expect(screen.queryByRole('button', { name: 'Editar o layout' })).toBeNull();
@@ -625,9 +646,12 @@ describe('a PJ Motors sem bancada gera lote', () => {
 
 describe('a busca do balcão', () => {
   it('procura pelo número do jeito que a pessoa fala', async () => {
-    pool = [plaquinha(7, { status: 'associada', equipment_label: 'Shineray PT2' })];
+    pool = [
+      plaquinha(7, { status: 'associada', equipment_label: 'Shineray PT2' }),
+      plaquinha(8, { status: 'disponivel' }),
+    ];
     montar();
-    await screen.findByText('#0007');
+    await screen.findByText('#0008');
 
     fireEvent.change(screen.getByPlaceholderText(/#0007 ou o nome da máquina/), {
       target: { value: '#0007' },
@@ -636,6 +660,15 @@ describe('a busca do balcão', () => {
     await waitFor(() =>
       expect(pedidos.some((p) => p.url.includes('busca=%230007'))).toBe(true),
     );
+    /*
+      O PEDIDO SAIR NÃO É A LISTA VOLTAR. O caso lia a linha logo depois de ver
+      o pedido — e entre os dois a tabela é "Carregando…". Agora ele espera a
+      lista RELIDA pela busca: a #0008 fora e a #0007 de volta, juntas.
+    */
+    await waitFor(() => {
+      expect(screen.queryByText('#0008')).toBeNull();
+      expect(screen.getByText('#0007')).toBeTruthy();
+    });
     const linha = screen.getByText('#0007').closest('tr') as HTMLElement;
     expect(within(linha).getByText('Shineray PT2')).toBeTruthy();
     expect(within(linha).getByText('Na máquina')).toBeTruthy();

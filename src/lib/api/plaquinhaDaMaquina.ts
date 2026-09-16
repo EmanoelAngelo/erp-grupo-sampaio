@@ -51,6 +51,19 @@ export const plaquinhaDaMaquinaApi = {
     ).then((r) => ({ items: Array.isArray(r?.items) ? r.items : [], usaPlaquinha: Boolean(r?.usaPlaquinha) }));
   },
 
+  /**
+   * Os adesivos LIVRES da PJ que podem ir para esta moto — a leitura estreita
+   * do painel de colar e trocar em Estoque › Unidades, sob a mesma capability
+   * das duas escritas (`inventory.units.manage`). A lista do pool (`livres`)
+   * exige `workshop.tags.view`, que o modelo "Estoque" não tem.
+   */
+  livresParaAUnidade: (unitId: string, busca?: string) => {
+    const termo = String(busca ?? '').trim();
+    return apiRequest<{ items: PlaquinhaLivre[] }>(
+      `/core/units/${encodeURIComponent(unitId)}/tag/livres${termo ? `?busca=${encodeURIComponent(termo)}` : ''}`,
+    ).then((r) => ({ items: Array.isArray(r?.items) ? r.items : [] }));
+  },
+
   trocar: (input: { equipmentId: string; novaTagId: string; motivo: string }) =>
     apiRequest<{ anterior: string; atual: string }>(
       `/core/equipment-tags/${input.novaTagId}/replace`,
