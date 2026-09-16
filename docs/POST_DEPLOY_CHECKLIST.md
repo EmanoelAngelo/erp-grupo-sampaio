@@ -6,6 +6,18 @@ existiu; `server/tests/os-documentos-apontam-para-o-que-existe.test.ts` confere)
 
 ## Infraestrutura
 
+- [ ] **Modo do processo**: `DEVORA_API_ENV=production` **e**
+      `NODE_ENV=production` no `.env` da API, e a API reiniciada. É a variável
+      que faz as outras valerem: fora de produção, a chave de sandbox e o token
+      de webhook do `.env` valem COMO SE fossem da operação
+      (`asaasEnvFallbackAllowed`) — Integrações › Asaas mostra "Sandbox:
+      configurada" com a dica de uma chave que não é da empresa, o PIX do balcão
+      nasce nessa conta e a homologação em sandbox pode ser aprovada contra ela,
+      abrindo o portão de produção com uma prova que não é da operação. O mesmo
+      interruptor libera o provedor de TESTE da maquininha
+      (`mockProviderBlocked`), que aprova cartão sem dinheiro trocar de mãos.
+      Confira em Configurações › Implantação (item "Ambiente", sem BLOQUEIA) e
+      em Integrações › Asaas → o que falta (item `MODO_DO_PROCESSO` ausente)
 - [ ] `GET /api/v1/version` — `appVersion: 1.0.0`, e `databaseVersion` igual a
       `databaseTargetVersion` (`databaseSituation: EM_DIA`)
 - [ ] `GET /api/v1/health` ok e `GET /api/v1/readiness` 200
