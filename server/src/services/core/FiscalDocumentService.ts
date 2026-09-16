@@ -180,6 +180,47 @@ export function outroDocumentoVivoDaVenda(
   return outro && !ESTADOS_QUE_NAO_DOCUMENTAM.has(outro.status) ? outro : null;
 }
 
+/**
+ * OS DOCUMENTOS FISCAIS DESTA VENDA, NOS DOIS MODELOS (P0 fiscal).
+ *
+ * O DEFEITO: quem perguntava "esta venda tem nota?" perguntava por
+ * `getDocumentBySale(..., MODEL_NFCE)` — só o cupom. Com a NF-e de balcão
+ * (modelo 55) existindo, a mesma pergunta passou a responder NÃO para uma
+ * venda documentada: a ficha da venda oferecia emitir de novo, e a ficha da
+ * devolução dizia "não há documento fiscal a regularizar" para uma venda com
+ * NF-e AUTORIZADA — enquanto a rota de devolução emitia a nota sem reclamar.
+ * A pergunta é por VENDA, e a resposta tem de olhar os dois modelos.
+ *
+ * Ordem: o cupom primeiro, a nota depois — é a ordem em que a loja os emite.
+ */
+export function documentosDaVenda(companyId: string, saleId: string): FiscalDocument[] {
+  return [
+    getDocumentBySale(companyId, saleId, MODEL_NFCE),
+    getDocumentBySale(companyId, saleId, MODEL_NFE),
+  ].filter((d): d is FiscalDocument => Boolean(d));
+}
+
+/**
+ * O documento que DOCUMENTA esta venda hoje — em qualquer dos dois modelos.
+ *
+ * Autorizado primeiro (é o que vale para o fisco); na falta dele, o que ainda
+ * pode vir a valer (do rascunho à contingência); e só então o que já não
+ * documenta nada (cancelado, rejeitado), porque a ficha precisa dizer "a nota
+ * desta venda foi cancelada" em vez de "esta venda não teve nota".
+ */
+export function documentoQueDocumentaAVenda(
+  companyId: string,
+  saleId: string,
+): FiscalDocument | null {
+  const docs = documentosDaVenda(companyId, saleId);
+  return (
+    docs.find((d) => d.status === 'AUTHORIZED')
+    ?? docs.find((d) => !ESTADOS_QUE_NAO_DOCUMENTAM.has(d.status))
+    ?? docs[0]
+    ?? null
+  );
+}
+
 function recusarSeOutroModeloDocumentaAVenda(companyId: string, saleId: string, model: string): void {
   const outro = outroDocumentoVivoDaVenda(companyId, saleId, model);
   if (!outro) return;
@@ -533,7 +574,10 @@ export function createNfeForSale(input: {
   ensureCoreSchema();
 
   const existente = getDocumentBySale(input.companyId, input.saleId, MODEL_NFE);
-  if (existente) return { document: existente, created: false };
+  if (existente) {
+    recusarSeODestinatarioMudou(existente, input.recipient);
+    return { document: existente, created: false };
+  }
   recusarSeOutroModeloDocumentaAVenda(input.companyId, input.saleId, MODEL_NFE);
 
   assertCanEmit(input.companyId, MODEL_NFE, 'document');
@@ -679,9 +723,66 @@ export function createNfeForSale(input: {
     });
   } catch (err) {
     const jaExiste = getDocumentBySale(input.companyId, input.saleId, MODEL_NFE);
-    if (jaExiste) return { document: jaExiste, created: false };
+    if (jaExiste) {
+      recusarSeODestinatarioMudou(jaExiste, input.recipient);
+      return { document: jaExiste, created: false };
+    }
     throw err;
   }
+}
+
+/** O CPF/CNPJ como ele é comparado: só dígitos, para "11.444.777/0001-61" bater com o cru. */
+function digitosDoDocumento(valor: string | null | undefined): string {
+  return String(valor ?? '').replace(/\D/g, '');
+}
+
+/** O nome como ele é comparado: sem caixa, sem espaço dobrado, sem sobra nas pontas. */
+function nomeComparavel(valor: string | null | undefined): string {
+  return String(valor ?? '').trim().replace(/\s+/g, ' ').toUpperCase();
+}
+
+/**
+ * A CORREÇÃO DO DESTINATÁRIO NÃO PODE SER ENGOLIDA (P0 fiscal).
+ *
+ * O DEFEITO: `createNfeForSale` é idempotente por (venda, modelo) e devolvia a
+ * nota existente para QUALQUER segundo pedido. Medido: quem digitou o CNPJ
+ * errado na primeira emissão reabria a ficha, "corrigia" o destinatário,
+ * clicava — e recebia 200 com a nota ANTIGA (mesmo número, mesma chave) e a
+ * confirmação de sucesso. A nota errada tinha ido ao fisco e a tela dizia que
+ * a correção deu certo.
+ *
+ * A idempotência que importa continua de pé: o clique duplo manda o MESMO
+ * destinatário e recebe a mesma nota. O que passa a ser recusado é o pedido
+ * que muda quem é o destinatário — porque isso não é repetir, é outra nota. E
+ * outra nota exige cancelar a primeira, dentro do prazo.
+ */
+function recusarSeODestinatarioMudou(doc: FiscalDocument, pedido: NfeRecipient): void {
+  const row = getConnection()
+    .prepare('SELECT recipient_name, recipient_document FROM core_fiscal_documents WHERE id = ?')
+    .get(doc.id) as { recipient_name: string | null; recipient_document: string | null } | undefined;
+  const mesmoDocumento =
+    digitosDoDocumento(row?.recipient_document) === digitosDoDocumento(pedido.document);
+  const mesmoNome = nomeComparavel(row?.recipient_name) === nomeComparavel(pedido.name);
+  if (mesmoDocumento && mesmoNome) return;
+
+  throw new ApiError(
+    'CORE_FISCAL_SALE_NFE_RECIPIENT_DIFFERS',
+    `Esta venda já tem NF-e (modelo 55) nº ${doc.number}, série ${doc.serie} (situação ${doc.status}), `
+      + `emitida para ${row?.recipient_name ?? 'destinatário não registrado'}`
+      + `${row?.recipient_document ? ` (${row.recipient_document})` : ''}. Emitir de novo com outro `
+      + 'destinatário não corrige a nota que já foi ao fisco: cancele a nota — dentro do prazo de '
+      + 'cancelamento — e emita a correta. Se a nota estiver rejeitada, use a reemissão, que remonta do '
+      + 'cadastro corrigido com o mesmo número.',
+    409,
+    {
+      documentId: doc.id,
+      model: doc.model,
+      number: doc.number,
+      serie: doc.serie,
+      status: doc.status,
+      accessKey: doc.accessKey,
+    },
+  );
 }
 
 /**

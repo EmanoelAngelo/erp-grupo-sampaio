@@ -828,8 +828,15 @@ export const NAV_ITEMS: NavItem[] = [
           `GET /core/fiscal/operacoes` e `GET /core/fiscal/pendencias-contabeis`
           são `fiscal.view`, como a configuração e a inutilização aqui do lado;
           o `PUT` é `fiscal.policy.manage`, e a TELA esconde o gravar de quem
-          não o tem (`useHasProfile()`), em vez de fechar a leitura para a
-          gerência — que é quem lê o checklist e leva a lista ao contador.
+          não o tem — por `useCan('fiscal.policy.manage')`, a pergunta que o
+          servidor faz e a única que continua certa com acesso personalizado —,
+          em vez de fechar a leitura para a gerência, que é quem lê o checklist
+          e leva a lista ao contador.
+
+          Este comentário dizia `useHasProfile()`: descrevia a primeira versão
+          da tela, que a catraca das guardas legadas reprovou, e não o gate que
+          ficou. Comentário que descreve o mundo anterior é o que ensina a
+          próxima pessoa a repetir o erro.
 
           Fica depois da Configuração fiscal porque é o que se faz DEPOIS dela:
           a configuração é o emitente e a numeração; esta é a decisão do

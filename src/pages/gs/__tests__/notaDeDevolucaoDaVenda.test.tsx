@@ -17,7 +17,14 @@
  *  - o município é escolhido na lista do IBGE e o código vai junto — ninguém
  *    digita os 7 dígitos;
  *  - emitida, a ficha mostra número, série e chave em vez do botão;
- *  - venda sem documento fiscal não oferece o gesto (não há nota a referenciar);
+ *  - a venda documentada pela NF-e DE BALCÃO (modelo 55) oferece o mesmo gesto:
+ *    era o beco sem saída da rodada anterior, em que `estadoFiscalDaVenda` só
+ *    enxergava o cupom e a ficha dizia "não há documento fiscal a regularizar"
+ *    para uma venda com nota AUTORIZADA — enquanto a rota emitia a devolução
+ *    dela sem reclamar. A suíte protegia o defeito por não distinguir "venda
+ *    sem nota" de "venda com NF-e";
+ *  - venda sem documento fiscal NENHUM não oferece o gesto (não há nota a
+ *    referenciar);
  *  - o caixa não recebe o botão: a rota é `fiscal.manage`, e o clique dele
  *    levaria 403.
  *
@@ -38,6 +45,26 @@ const FISCAL_PENDENTE = {
     'A venda tem NFC-e autorizada. A devolução é regularizada com a NF-e de devolução (nota de '
     + 'entrada, finalidade 4, referenciando a NFC-e).',
   documentoStatus: 'AUTHORIZED',
+  documentoModelo: '65',
+};
+
+/*
+  A MESMA venda, documentada pela NF-e DE BALCÃO (modelo 55).
+
+  O DEFEITO que este caso trava: `estadoFiscalDaVenda` só enxergava o cupom, e
+  esta venda respondia `nao_fiscal` — "não há documento fiscal a regularizar" —
+  enquanto a rota emitia a NF-e de devolução dela sem reclamar. A suíte
+  protegia o defeito porque só tinha "venda sem nota" e "venda com cupom": a
+  venda com NF-e não era distinguida de venda nenhuma.
+*/
+const FISCAL_PENDENTE_NFE = {
+  estado: 'pendente_regularizacao',
+  rotulo: 'PENDENTE DE REGULARIZAÇÃO',
+  detalhe:
+    'A venda tem NF-e (modelo 55) autorizada. A devolução é regularizada com a NF-e de devolução '
+    + '(nota de entrada, finalidade 4, referenciando a NF-e (modelo 55)).',
+  documentoStatus: 'AUTHORIZED',
+  documentoModelo: '55',
 };
 
 const FISCAL_NAO_FISCAL = {
@@ -45,6 +72,7 @@ const FISCAL_NAO_FISCAL = {
   rotulo: 'NÃO FISCAL',
   detalhe: 'A venda saiu com comprovante não fiscal: não há documento fiscal a regularizar.',
   documentoStatus: null,
+  documentoModelo: null,
 };
 
 const LINHA = {
@@ -66,7 +94,7 @@ const LINHA = {
   },
 };
 
-let fiscal: typeof FISCAL_PENDENTE | typeof FISCAL_NAO_FISCAL;
+let fiscal: typeof FISCAL_PENDENTE | typeof FISCAL_PENDENTE_NFE | typeof FISCAL_NAO_FISCAL;
 let enviados: { url: string; metodo: string; corpo: Record<string, unknown> | null }[];
 
 function detalhe() {
@@ -243,7 +271,11 @@ describe('a NF-e de devolução da venda sai pela ficha', () => {
       recipient: {
         document: '12345678909',
         name: 'Maria Consumidora',
+        // A condição fiscal agora vem do formulário, e não de um literal
+        // cravado no código: o padrão do balcão é o consumidor.
         ieIndicator: '9',
+        ie: null,
+        consumidorFinal: null,
         street: 'Rua das Flores',
         number: '10',
         complement: null,
@@ -260,7 +292,21 @@ describe('a NF-e de devolução da venda sai pela ficha', () => {
     expect(screen.queryByRole('button', { name: 'Emitir NF-e de devolução' })).toBeNull();
   });
 
-  it('venda sem documento fiscal não oferece o gesto — não há nota a referenciar', async () => {
+  /*
+    O BECO SEM SAÍDA que esta rodada fechou: a venda documentada pela NF-e DE
+    BALCÃO (modelo 55) não oferecia o gesto — `estadoFiscalDaVenda` só enxergava
+    o cupom e respondia "não fiscal" —, enquanto a rota emitia a nota de
+    devolução dessa mesma venda com 200 AUTHORIZED.
+  */
+  it('venda documentada pela NF-e de balcão TAMBÉM oferece o gesto', async () => {
+    fiscal = FISCAL_PENDENTE_NFE;
+    await abrirFicha();
+    expect(await screen.findByText(/PENDENTE DE REGULARIZAÇÃO/)).toBeTruthy();
+    expect(screen.getByText(/NF-e \(modelo 55\) autorizada/)).toBeTruthy();
+    expect(await screen.findByRole('button', { name: 'Emitir NF-e de devolução' })).toBeTruthy();
+  });
+
+  it('venda sem documento fiscal NENHUM não oferece o gesto — não há nota a referenciar', async () => {
     fiscal = FISCAL_NAO_FISCAL;
     await abrirFicha();
     expect(await screen.findByText(/não há documento fiscal a regularizar/)).toBeTruthy();

@@ -443,4 +443,113 @@ describe('a NF-e da venda de balcão pela rota', () => {
       .send({ recipient: CONSUMIDOR_RS, developmentMode: true });
     expect(r.status).toBe(403);
   });
+
+  /*
+    A CORREÇÃO DO DESTINATÁRIO NÃO PODE SER ENGOLIDA.
+
+    O DEFEITO medido: `createNfeForSale` é idempotente por (venda, modelo) e
+    devolvia a nota existente para QUALQUER segundo pedido. Quem digitou o CNPJ
+    errado reabria a ficha, "corrigia" o destinatário e recebia 200 com a nota
+    ANTIGA — mesmo número, mesma chave — e a confirmação de que deu certo.
+  */
+  it('segunda emissão com destinatário DIFERENTE é recusada, nomeando a nota que já foi ao fisco', async () => {
+    const v = venda();
+    const gerente = await login('GERPJ9', 'gerente_loja');
+    const primeira = await request(app)
+      .post(ROTA(v.saleId))
+      .set(gerente)
+      .send({ recipient: CONSUMIDOR_RS, developmentMode: true });
+    expect(primeira.status).toBe(200);
+
+    const corrigida = await request(app)
+      .post(ROTA(v.saleId))
+      .set(gerente)
+      .send({
+        recipient: { ...CONSUMIDOR_RS, name: 'Atacado Sul Ltda', document: '11.444.777/0001-61' },
+        developmentMode: true,
+      });
+    expect(corrigida.status).toBe(409);
+    expect(corrigida.body.error.code).toBe('CORE_FISCAL_SALE_NFE_RECIPIENT_DIFFERS');
+    expect(corrigida.body.error.message).toContain(`nº ${primeira.body.document.number}`);
+    expect(corrigida.body.error.message).toContain('Maria Consumidora');
+    expect(corrigida.body.error.message).toMatch(/cancele a nota/i);
+  });
+
+  /*
+    O DEFEITO: a tela tipava `pendencias` na resposta desta emissão e o servidor
+    nunca as mandava — a natureza da operação `venda_nfe` ainda não confirmada
+    pelo contador não dizia nada a quem acabou de emitir a nota.
+  */
+  it('a resposta declara o que o contador ainda deve na operação da venda', async () => {
+    const v = venda();
+    const gerente = await login('GERPJ13', 'gerente_loja');
+    const r = await request(app)
+      .post(ROTA(v.saleId))
+      .set(gerente)
+      .send({ recipient: CONSUMIDOR_RS, developmentMode: true });
+    expect(r.status).toBe(200);
+    expect(r.body.pendencias.join(' ')).toMatch(/não foi confirmada pelo contador/i);
+  });
+
+  it('o clique duplo com o MESMO destinatário continua devolvendo a mesma nota — um número só', async () => {
+    const v = venda();
+    const gerente = await login('GERPJ10', 'gerente_loja');
+    const a = await request(app)
+      .post(ROTA(v.saleId))
+      .set(gerente)
+      .send({ recipient: CONSUMIDOR_RS, developmentMode: true });
+    // A pontuação do CPF não é identidade: o mesmo destinatário, digitado
+    // limpo, é o mesmo pedido — e não uma nota nova.
+    const b = await request(app)
+      .post(ROTA(v.saleId))
+      .set(gerente)
+      .send({ recipient: { ...CONSUMIDOR_RS, document: '12345678909' }, developmentMode: true });
+    expect(b.status).toBe(200);
+    expect(b.body.document.id).toBe(a.body.document.id);
+    expect(b.body.document.number).toBe(a.body.document.number);
+  });
+});
+
+/**
+ * OS DOCUMENTOS FISCAIS DE UMA VENDA, NOS DOIS MODELOS (P0 fiscal).
+ *
+ * O DEFEITO: a ficha da venda lia o estado por `/fiscal/sales/:id/status`, que
+ * responde só pela NFC-e. Para a venda documentada com a NF-e de balcão a
+ * resposta era `null`: a nota autorizada sumia da ficha e a tela voltava a
+ * oferecer "Emitir NF-e desta venda".
+ */
+describe('os documentos fiscais de uma venda pela rota', () => {
+  const ROTA = (saleId: string) => `/api/v1/core/fiscal/sales/${saleId}/documentos`;
+
+  it('a NF-e de balcão aparece na venda — e o `/status` continua respondendo só pelo cupom', async () => {
+    const v = venda();
+    const gerente = await login('GERPJ11', 'gerente_loja');
+    const emissao = await request(app)
+      .post(`/api/v1/core/fiscal/sales/${v.saleId}/nfe`)
+      .set(gerente)
+      .send({ recipient: CONSUMIDOR_RS, developmentMode: true });
+    expect(emissao.status).toBe(200);
+
+    const docs = await request(app).get(ROTA(v.saleId)).set(gerente);
+    expect(docs.status).toBe(200);
+    expect(docs.body.items).toHaveLength(1);
+    expect(docs.body.items[0].document).toMatchObject({ model: '55', status: 'AUTHORIZED' });
+    expect(docs.body.ufDoEmitente).toBe('RS');
+
+    // A pergunta do BALCÃO não mudou: ela é do cupom, e imprime DANFCE.
+    const status = await request(app).get(`/api/v1/core/fiscal/sales/${v.saleId}/status`).set(gerente);
+    expect(status.status).toBe(200);
+    expect(status.body).toBeNull();
+  });
+
+  it('venda sem documento nenhum responde lista vazia — e o caixa não alcança a leitura da gerência', async () => {
+    const v = venda();
+    const gerente = await login('GERPJ12', 'gerente_loja');
+    const vazio = await request(app).get(ROTA(v.saleId)).set(gerente);
+    expect(vazio.status).toBe(200);
+    expect(vazio.body.items).toEqual([]);
+
+    const caixa = await login('CAIXAPJ8', 'operador_caixa_loja');
+    expect((await request(app).get(ROTA(v.saleId)).set(caixa)).status).toBe(403);
+  });
 });

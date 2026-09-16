@@ -23,6 +23,7 @@ import { AppShell } from '@/components/gs/AppShell';
 import { Badge, Button, Card, EmptyState, Field, Input, PageHeader } from '@/components/gs/ui';
 import { formatCents, formatQuantity } from '@/components/gs/format';
 import { useHasProfile } from '@/hooks/useSession';
+import { useCan } from '@/hooks/useCan';
 import { ApiRequestError } from '@/lib/api/client';
 import { dataBR } from '@/lib/datas';
 import {
@@ -309,11 +310,26 @@ function NovaDevolucao({
 function FichaDaDevolucao({
   devolucao,
   gerencia,
+  podeEmitirNfe,
   aoMudar,
   aoFechar,
 }: {
   devolucao: DevolucaoDetalhe;
+  /** O que as rotas de `requireProfile` cobram: registrar a situação fiscal à mão. */
   gerencia: boolean;
+  /**
+   * O que a rota da EMISSÃO cobra: `fiscal.manage` — a capability, e não o
+   * código do perfil.
+   *
+   * O DEFEITO: o botão novo saía sob `useHasProfile('gerente_loja',
+   * 'gerente_oficina')`, reaproveitado do resto da ficha, enquanto
+   * `POST /core/fiscal/devolucoes/compra/:returnId/nfe` cobra `fiscal.manage`.
+   * Com acesso personalizado em Usuários › Acesso os dois lados divergem: quem
+   * tem a capability sem o perfil não vê o gesto — o mesmo beco sem saída que
+   * esta frente veio fechar — e o gerente a quem tiraram `fiscal.manage` vê o
+   * botão e leva 403. A pergunta certa é a que o servidor faz.
+   */
+  podeEmitirNfe: boolean;
   aoMudar: (d: DevolucaoDetalhe) => void;
   aoFechar: () => void;
 }) {
@@ -447,7 +463,7 @@ function FichaDaDevolucao({
         </p>
       )}
 
-      {gerencia && devolucao.fiscalStatus === 'pendente' && (
+      {podeEmitirNfe && devolucao.fiscalStatus === 'pendente' && (
         <div className="mt-2 flex flex-col gap-2">
           <div>
             <Button loading={emitindo} onClick={() => void emitirNfe()}>
@@ -529,6 +545,9 @@ export default function DevolucoesFornecedorPage() {
   const notaPedida = params.get(PARAM_DA_NOTA);
   const devolucaoPedida = params.get(PARAM_DA_DEVOLUCAO_DE_COMPRA);
   const gerencia = useHasProfile('gerente_loja', 'gerente_oficina');
+  // A emissão pergunta pela CAPABILITY, que é o que a rota cobra; o registro à
+  // mão e a nova devolução continuam sob as rotas de perfil.
+  const podeEmitirNfe = useCan('fiscal.manage');
 
   const [lista, setLista] = useState<DevolucaoResumo[] | null>(null);
   const [erro, setErro] = useState<string | null>(null);
@@ -608,6 +627,7 @@ export default function DevolucoesFornecedorPage() {
         <FichaDaDevolucao
           devolucao={aberta}
           gerencia={gerencia}
+          podeEmitirNfe={podeEmitirNfe}
           aoMudar={(d) => {
             setAberta(d);
             void carregar();

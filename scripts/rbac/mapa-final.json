@@ -15,7 +15,7 @@
   "K": "contador"
  },
  "totais": {
-  "pontos": 1271,
+  "pontos": 1272,
   "por_fatia": {
    "core-1": 58,
    "core-2": 90,
@@ -23,7 +23,7 @@
    "core-4": 73,
    "core-5": 112,
    "core-6": 73,
-   "core-7": 157,
+   "core-7": 158,
    "outros-roteadores": 190,
    "servicos": 124,
    "tela-rotas-menu": 237,
@@ -32,7 +32,7 @@
   "por_tipo": {
    "servico": 170,
    "atalho-admin": 98,
-   "rota": 623,
+   "rota": 624,
    "publica": 100,
    "tela-rota": 109,
    "tela-menu": 105,
@@ -40,7 +40,7 @@
   },
   "por_categoria": {
    "servico-ator": 172,
-   "guarda": 612,
+   "guarda": 613,
    "escopo-caixa": 3,
    "liberador": 1,
    "escopo-bancada": 39,
@@ -59,24 +59,24 @@
    "constante-de-ambiente": 10,
    "tela-botao": 62
   },
-  "rotas_unicas": 697,
-  "rotas_guardadas": 611,
+  "rotas_unicas": 698,
+  "rotas_guardadas": 612,
   "rotas_publicas": 86,
   "rotas_guardadas_por_guarda": {
-   "cap": 535,
+   "cap": 536,
    "qualquer": 70,
    "todas": 2,
    "soAutenticado": 4
   },
   "veredito": {
-   "igual": 1189,
+   "igual": 1190,
    "muda": 58,
    "n/a": 10,
    "igual pelo passo 86": 1,
    "igual (regra)": 4
   },
   "rotas_veredito": {
-   "igual": 695,
+   "igual": 696,
    "muda": 2
   },
   "mudancas_nao_listadas": 0,
@@ -56705,7 +56705,7 @@
    "tipo": "tela-rota",
    "categoria": "tela-rota",
    "guarda_hoje": "protectedRoute('/sistema/fiscal/operacoes', …, ROTA_GESTAO, QUEM_GERENCIA_A_OPERACAO) → <Protected environments=['gestao'] profiles=QUEM_GERENCIA_A_OPERACAO>",
-   "nota": "Tela nova do P0 fiscal da Preço Justo. As rotas já existiam sem tela nenhuma: GET /core/fiscal/operacoes e GET /core/fiscal/pendencias-contabeis (fiscal.view) e PUT /core/fiscal/operacoes/:operacao (fiscal.policy.manage). A tela é fiscal.view porque a gerência precisa LER o que falta do contador (é ela que lê o checklist); o gravar fica escondido de quem não é dono do grupo (useHasProfile()), que é o alcance de fiscal.policy.manage. Dia 1: igual (mesmo conjunto de perfis das vizinhas do Fiscal)."
+   "nota": "Tela nova do P0 fiscal da Preço Justo. As rotas já existiam sem tela nenhuma: GET /core/fiscal/operacoes e GET /core/fiscal/pendencias-contabeis (fiscal.view) e PUT /core/fiscal/operacoes/:operacao (fiscal.policy.manage). A tela é fiscal.view porque a gerência precisa LER o que falta do contador (é ela que lê o checklist); o gravar fica escondido de quem não tem fiscal.policy.manage, pela CAPABILITY (useCan('fiscal.policy.manage') em FiscalOperacoesPage) e não pelo código do perfil — a nota dizia useHasProfile(), que era a primeira versão da tela, reprovada pela catraca das guardas legadas e trocada antes do topo da frente. Dia 1: igual (mesmo conjunto de perfis das vizinhas do Fiscal)."
   },
   {
    "id": "p0fiscal#tela-operacoes-menu",
@@ -56790,6 +56790,48 @@
    "divergencia_tsv": false,
    "rotas_servidor": null,
    "nota": "Rota nova da P0 fiscal: a NF-e (modelo 55) de uma venda de BALCÃO. createNfeForSale existia inteiro e nenhum caminho o chamava fora dos testes — a NF-e do sistema só saía de pedido online. fiscal.manage, e não fiscal.sale.emit: o cupom é gesto do caixa, a NF-e com destinatário completo é da gerência, a mesma régua das NF-e de devolução. FECHADA ao contador, que não emite nota."
+  },
+  {
+   "id": "p0fiscal#documentos-da-venda",
+   "fatia": "core-7",
+   "arquivo": "server/src/routes/v1/core.ts",
+   "linha": null,
+   "linha_rota": null,
+   "tipo": "rota",
+   "categoria": "guarda",
+   "metodo": "GET",
+   "caminho": "/core/fiscal/sales/:saleId/documentos",
+   "tela": "/sistema/vendas",
+   "guarda_hoje": "requireCapability(req, 'fiscal.manage')",
+   "perfis_hoje": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina"
+   ],
+   "capability_fatia": "fiscal.manage",
+   "capability_tsv": "fiscal.manage",
+   "capability_final": "fiscal.manage",
+   "guarda_nova": "requireCapability('fiscal.manage')",
+   "regra_final": null,
+   "escopo": "empresa",
+   "alcance_dia1": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina"
+   ],
+   "comparado_entre": "os 11 modelos",
+   "veredito": "igual",
+   "ganha": [],
+   "perde": [],
+   "mudanca": null,
+   "mudanca_associada": null,
+   "conflito": null,
+   "duplicado_de": null,
+   "divergencia_tsv": false,
+   "rotas_servidor": null,
+   "nota": "Rota nova do residuo da P0 fiscal: os documentos fiscais de UMA venda, nos DOIS modelos. A ficha da venda lia o estado por GET /core/fiscal/sales/:saleId/status, que responde so pela NFC-e: para a venda documentada com a NF-e de balcao a resposta era null, a nota sumia da ficha e a tela voltava a oferecer a emissao. Sob a MESMA capability do gesto de emitir (fiscal.manage), para que a leitura e o gesto nunca divirjam com acesso personalizado. FECHADA ao contador, que nao emite nota."
   }
  ]
 }

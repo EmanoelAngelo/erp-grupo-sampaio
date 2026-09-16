@@ -129,6 +129,7 @@ export const CAPABILITY_DA_ROTA: Readonly<Record<string, string>> = {
   "GET /core/fiscal/queue": "fiscal.view",
   "GET /core/fiscal/readiness": "fiscal.view",
   "GET /core/fiscal/reconciliation": "fiscal.view",
+  "GET /core/fiscal/sales/:saleId/documentos": "fiscal.manage",
   "GET /core/fiscal/sales/:saleId/emission-readiness": "fiscal.sale.emit",
   "GET /core/fiscal/sales/:saleId/nfse": "fiscal.sale.emit",
   "GET /core/fiscal/sales/:saleId/status": "qualquer(fiscal.sale.emit, sales.view)",

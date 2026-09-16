@@ -329,11 +329,12 @@ import {
   advanceDocument,
   emitNfceForSale,
   emitNfeForSale,
+  documentosFiscaisDaVenda,
   fiscalStatusForSale,
   emissionReadinessForSale,
 } from '../../services/core/FiscalPipelineService.js';
 import { reemitirRejeitada } from '../../services/core/FiscalReemissao.js';
-import { gravarOperacao, listarOperacoes } from '../../services/core/FiscalOperacoes.js';
+import { gravarOperacao, lerOperacao, listarOperacoes } from '../../services/core/FiscalOperacoes.js';
 import { pendenciasContabeis } from '../../services/core/PendenciasContabeis.js';
 import {
   destinatarioDaDevolucaoDeCompra,
@@ -8981,17 +8982,26 @@ coreRouter.post('/fiscal/sales/:saleId/nfe', (req: AuthedRequest, res, next) => 
           400,
         );
       }
-      res.json(
-        await emitNfeForSale({
-          companyId,
-          saleId: String(req.params.saleId),
-          userId,
-          recipient,
-          certificatePassword:
-            typeof req.body?.certificatePassword === 'string' ? req.body.certificatePassword : undefined,
-          developmentMode: desenvolvimentoPedido(req),
-        }),
-      );
+      const resultado = await emitNfeForSale({
+        companyId,
+        saleId: String(req.params.saleId),
+        userId,
+        recipient,
+        certificatePassword:
+          typeof req.body?.certificatePassword === 'string' ? req.body.certificatePassword : undefined,
+        developmentMode: desenvolvimentoPedido(req),
+      });
+      /*
+        O QUE O CONTADOR AINDA DEVE, DECLARADO NA RESPOSTA — como já fazem as
+        NF-e de devolução aqui do lado.
+
+        O DEFEITO: a tela tipava `pendencias` na resposta desta emissão e o
+        servidor nunca as mandava, então a natureza da operação `venda_nfe`
+        ainda não confirmada pelo contador não dizia nada a quem acabou de
+        emitir. A lista existe em Fiscal › Operações fiscais; aqui ela aparece
+        junto do fato que a torna real.
+      */
+      res.json({ ...resultado, pendencias: lerOperacao(companyId, 'venda_nfe').pendencias });
     } catch (err) {
       next(err);
     }
@@ -9020,6 +9030,39 @@ coreRouter.get('/fiscal/sales/:saleId/status', (req: AuthedRequest, res, next) =
     abertaAo(req, 'balcao', 'escritorio');
     const { companyId } = scope(req);
     res.json(fiscalStatusForSale(companyId, String(req.params.saleId)));
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * OS DOCUMENTOS FISCAIS DESTA VENDA — os DOIS modelos (P0 fiscal).
+ *
+ * O DEFEITO: a ficha da venda lia o estado por `/fiscal/sales/:id/status`, que
+ * responde só pela NFC-e. Para a venda documentada com a NF-e de balcão a
+ * resposta era `null`: a nota autorizada sumia da ficha e a tela voltava a
+ * oferecer "Emitir NF-e desta venda" sem vestígio do que já foi ao fisco.
+ *
+ * Rota à parte, e não um campo a mais no `/status`, porque as duas perguntas
+ * são diferentes: o `/status` é do painel do BALCÃO — ele imprime DANFCE e
+ * acompanha a fila do cupom, e responder ali com a nota 55 mandaria o caixa
+ * imprimir o papel errado. Esta é a pergunta da GERÊNCIA sobre a venda
+ * inteira, sob a mesma capability da emissão (`fiscal.manage`), para que o
+ * gesto e a leitura que o precede nunca divirjam.
+ *
+ * `ufDoEmitente` vai junto porque é dela que a tela precisa para avisar, ANTES
+ * do clique, que a venda para consumidor final não contribuinte de OUTRA UF
+ * sai sem o grupo ICMSUFDest (DIFAL) — que o sistema não monta e o contador
+ * ainda não decidiu. Uma pergunta, não duas.
+ */
+coreRouter.get('/fiscal/sales/:saleId/documentos', (req: AuthedRequest, res, next) => {
+  try {
+    requireCapability(req, 'fiscal.manage');
+    const { companyId } = scope(req);
+    res.json({
+      items: documentosFiscaisDaVenda(companyId, String(req.params.saleId)),
+      ufDoEmitente: getFiscalConfig(companyId).uf ?? null,
+    });
   } catch (err) {
     next(err);
   }

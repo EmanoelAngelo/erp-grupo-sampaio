@@ -1255,10 +1255,25 @@ export interface MeioDaVendaParaReembolso {
 }
 
 export interface EstadoFiscalDaDevolucao {
-  estado: 'nao_fiscal' | 'pendente_regularizacao' | 'nfce_pendente' | 'nfce_cancelada' | 'nfce_rejeitada';
+  /*
+    OS NOMES DIZIAM `nfce_*` E A VENDA PODE TER NF-e (P0 fiscal). O estado
+    descreve o documento da venda em QUALQUER dos dois modelos — chamar de
+    `nfce_cancelada` uma NF-e 55 cancelada seria a mentira que este conserto
+    veio apagar. `devolucao_documentada` é novo: a devolução cuja NF-e de
+    devolução já está autorizada não tem o que regularizar.
+  */
+  estado:
+    | 'nao_fiscal'
+    | 'pendente_regularizacao'
+    | 'devolucao_documentada'
+    | 'nota_pendente'
+    | 'nota_cancelada'
+    | 'nota_rejeitada';
   rotulo: string;
   detalhe: string;
   documentoStatus: string | null;
+  /** '65' (cupom) ou '55' (nota) — qual documento respondeu. Nulo sem nota. */
+  documentoModelo: string | null;
 }
 
 export interface SaleReturn {
@@ -1335,6 +1350,8 @@ export interface DestinatarioDaDevolucao {
   name: string;
   ieIndicator: '1' | '2' | '9';
   ie?: string | null;
+  /** Uso/consumo do destinatário (indFinal 1) em vez de revenda (0). Nulo: o servidor deduz. */
+  consumidorFinal?: boolean | null;
   street: string;
   number: string;
   complement?: string | null;
@@ -4964,6 +4981,24 @@ export const coreApi = {
 
   getFiscalStatusForSale: (saleId: string) =>
     apiRequest<FiscalSaleStatus | null>(`/core/fiscal/sales/${saleId}/status`),
+
+  /**
+   * OS DOCUMENTOS FISCAIS DESTA VENDA — os DOIS modelos (P0 fiscal).
+   *
+   * `getFiscalStatusForSale` responde só pela NFC-e, e é certo que responda: é
+   * a pergunta do painel do BALCÃO, que imprime DANFCE. Mas a ficha da venda
+   * usava a mesma pergunta para decidir se oferecia a NF-e — e para a venda
+   * documentada com a nota 55 a resposta era `null`: a nota sumia da ficha e o
+   * botão de emitir voltava a aparecer.
+   *
+   * `ufDoEmitente` vem junto: é dela que a tela precisa para avisar, antes do
+   * clique, que a venda para consumidor final de OUTRA UF sai sem o grupo
+   * ICMSUFDest (DIFAL), que o sistema não monta.
+   */
+  getDocumentosFiscaisDaVenda: (saleId: string) =>
+    apiRequest<{ items: FiscalSaleStatus[]; ufDoEmitente: string | null }>(
+      `/core/fiscal/sales/${encodeURIComponent(saleId)}/documentos`,
+    ).then((r) => exigirCampos(r, 'items')),
 
   /**
    * A NF-e (modelo 55) DE UMA VENDA DE BALCÃO (P0 fiscal).
