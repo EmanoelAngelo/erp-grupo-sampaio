@@ -116,7 +116,18 @@ function servidor() {
   });
 }
 
-function entrarComo(perfil: string) {
+/** O acesso de cada perfil, como o servidor o devolve no login. */
+const CAPS: Record<string, string[]> = {
+  gerente_loja: ['fiscal.manage', 'purchases.manage'],
+  estoquista: ['purchases.view'],
+};
+
+/**
+ * `capabilities` explícito é o acesso PERSONALIZADO de Usuários › Acesso: é
+ * nele que o perfil e a capability divergem, e era essa divergência que o
+ * botão da emissão não enxergava.
+ */
+function entrarComo(perfil: string, capabilities = CAPS[perfil] ?? []) {
   setSession(
     {
       accessToken: 't',
@@ -125,6 +136,14 @@ function entrarComo(perfil: string) {
       user: { id: 'u-1', login: perfil, displayName: perfil, profileCode: perfil },
       company: { id: 'loja', slug: 'loja', tradeName: 'Loja', kind: 'retail' },
       companies: [{ id: 'loja', slug: 'loja', tradeName: 'Loja', kind: 'retail', profileCode: perfil }],
+      access: {
+        modelo: { code: perfil, name: perfil, personalizado: capabilities !== CAPS[perfil] },
+        capabilities,
+        terminais: 'todos',
+        bancadas: 'todas',
+        casa: '/sistema',
+        carimbo: `c-${perfil}`,
+      },
     } as never,
     'LOGIN',
     'teste da devolução ao fornecedor',
@@ -263,6 +282,33 @@ describe('GAP-PRD-089 — a devolução nova, a partir da nota', () => {
     expect(await screen.findByText(/código IBGE do município/)).toBeTruthy();
     // Recusa não inventa nota: a pendência fiscal continua onde estava.
     expect(screen.getByText(/finalidade 4/)).toBeTruthy();
+  });
+
+  /*
+    O GESTO SEGUE A CAPABILITY, NÃO O CÓDIGO DO PERFIL.
+
+    O DEFEITO: o botão saía sob `useHasProfile('gerente_loja',
+    'gerente_oficina')`, reaproveitado do resto da ficha, enquanto a rota cobra
+    `fiscal.manage`. Com acesso personalizado os dois lados divergem: quem tem
+    a capability sem o perfil não via o gesto — o mesmo beco sem saída que esta
+    frente veio fechar — e o gerente a quem tiraram `fiscal.manage` via o botão
+    e levava 403.
+  */
+  it('acesso personalizado: quem tem fiscal.manage sem o perfil da gerência VÊ a emissão', async () => {
+    entrarComo('atendente', ['fiscal.manage']);
+    renderizar('/sistema/compras/devolucoes?devolucao-compra=d-1');
+    expect(await screen.findByRole('button', { name: 'Emitir NF-e de devolução' })).toBeTruthy();
+    // O registro à mão continua sob a rota de PERFIL, e ele não a alcança.
+    expect(screen.queryByRole('button', { name: 'Registrar situação fiscal' })).toBeNull();
+  });
+
+  it('acesso personalizado: o gerente sem fiscal.manage NÃO vê a emissão que levaria 403', async () => {
+    entrarComo('gerente_loja', ['purchases.manage']);
+    renderizar('/sistema/compras/devolucoes?devolucao-compra=d-1');
+    expect(await screen.findByText(/finalidade 4/)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Emitir NF-e de devolução' })).toBeNull();
+    // E o que a rota de perfil cobra continua de pé para ele.
+    expect(screen.getByRole('button', { name: 'Registrar situação fiscal' })).toBeTruthy();
   });
 
   it('o estoquista não emite nem registra: a ficha não oferece os gestos', async () => {
