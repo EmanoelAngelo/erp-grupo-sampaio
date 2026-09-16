@@ -13,7 +13,7 @@ produção foram tocados. Este arquivo é o que basta para retomar sem reler nad
 | | |
 | --- | --- |
 | **Branch** | `audit/preco-justo-p0` |
-| **HEAD** | `fba4f7d` — *fix(caixa): o papel e a tela do fechamento diziam que o dinheiro estava na gaveta sem saber* |
+| **HEAD** | `5180621`. O último commit de CÓDIGO é `fba4f7d` (*fix(caixa): o papel e a tela do fechamento diziam que o dinheiro estava na gaveta sem saber*); os dois acima dele são este arquivo e o §12 do relatório. |
 | **Base** | `8a8affd` (*fix(seguranca): a API escuta só em 127.0.0.1 por padrão*), na branch `finalization/grupo-sampaio-enterprise` |
 | **Commits acumulados sobre a base** | 107 |
 | **Árvore de trabalho** | `C:/Users/User/Desktop/devora-p0` — **limpa** |
@@ -71,7 +71,7 @@ primeira rodada.
 | Branch | Tip | Worktree | Estado |
 | --- | --- | --- | --- |
 | `p5/produtos-codigos-saldo` | `5e424cd` | `.claude/worktrees/wf_c026f94c-4c3-1` (**locked**) | 9 commits, árvore **limpa**. O agente dela ainda estava rodando no instante do checkpoint. **Sem verificação adversarial lida.** |
-| `p5/etiqueta-no-papel` | `7f2904c` | `.claude/worktrees/wf_c026f94c-4c3-4` (**locked**) | 6 commits **mais 6 arquivos não commitados** (lista no §7). Agente ainda rodando. **Sem verificação adversarial lida.** |
+| `p5/etiqueta-no-papel` | `6ef9d16` | `.claude/worktrees/wf_c026f94c-4c3-4` (**locked**) | 7 commits, árvore **limpa** — o agente fechou e commitou durante o checkpoint. **Sem verificação adversarial lida.** |
 
 As duas ficaram de fora do merge de propósito: a regra deste checkpoint é não
 juntar o que não foi verificado.
@@ -113,10 +113,10 @@ de cada commit, que traz o defeito medido, o conserto e a mordida.
 
 ## 5. Correções parcialmente concluídas
 
-1. **Etiquetas, rodada final** (`p5/etiqueta-no-papel`) — seis commits feitos e
-   seis arquivos ainda no meio do caminho. Fecha, entre outros, a etiqueta
-   `PRODUCT_LABEL` que nunca chegava à impressora e a calibração do rolo sem
-   efeito. **Não juntar antes de ler a verificação.**
+1. **Etiquetas, rodada final** (`p5/etiqueta-no-papel`, tip `6ef9d16`) — sete
+   commits, árvore limpa. Fecha, entre outros, a etiqueta `PRODUCT_LABEL` que
+   nunca chegava à impressora e a calibração do rolo sem efeito. **Não juntar
+   antes de ler a verificação.**
 2. **Produtos, códigos e saldo, rodada final** (`p5/produtos-codigos-saldo`) —
    nove commits, árvore limpa, sem verificação lida.
 3. **E2E da Preço Justo** — o roteiro foi atualizado para a nova regra do
@@ -165,22 +165,19 @@ corrigida no roteiro.
 
 Na worktree de trabalho (`devora-p0`): **nenhum**. Árvore limpa.
 
-Na worktree do lane de etiquetas — `C:/Users/User/Desktop/Grupo Sampaio/.claude/worktrees/wf_c026f94c-4c3-4`,
-branch `p5/etiqueta-no-papel`, tip `7f2904c`:
+Nas worktrees dos dois lanes (`wf_c026f94c-4c3-1` e `wf_c026f94c-4c3-4`):
+**nenhum**. Ambas limpas.
 
-```
-M server/src/services/core/PrintAgentQueue.ts
-M server/tests/etiqueta-chega-na-impressora.test.ts
-M src/components/gs/EtiquetaDoProduto.tsx
-M src/components/gs/ModelosDeEtiqueta.tsx
-M src/components/gs/__tests__/etiquetaDoProdutoAvisos.test.tsx
-M src/components/gs/__tests__/modelosDeEtiquetaImpressora.test.tsx
-```
+Durante a escrita deste arquivo, a worktree de etiquetas ainda tinha seis
+arquivos no meio do caminho (`PrintAgentQueue.ts`, `etiqueta-chega-na-impressora.test.ts`,
+`EtiquetaDoProduto.tsx`, `ModelosDeEtiqueta.tsx` e os dois testes de tela deles).
+Eu não os commitei de propósito — commitar por cima de um agente vivo corrompe o
+trabalho dele — e o próprio agente fechou o lane no commit `6ef9d16` antes do
+fim do checkpoint. Nada ficou solto.
 
-Não foram commitados por mim de propósito: o agente daquele lane ainda estava
-escrevendo neles no instante do checkpoint, e commitar por cima de um processo
-vivo corrompe o trabalho dele. **Na retomada, conferir primeiro se o agente
-terminou** (se a árvore estiver limpa, ele fechou sozinho).
+Fora do repositório, segue a pasta do dono (`C:/Users/User/Desktop/Grupo Sampaio`)
+com `.claude/launch.json` modificado: é alteração anterior a esta auditoria, não
+minha, e foi deixada como estava.
 
 ---
 
