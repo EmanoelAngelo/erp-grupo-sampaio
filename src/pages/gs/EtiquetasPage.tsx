@@ -753,6 +753,15 @@ export default function EtiquetasPage() {
   /** Os avisos que o servidor devolve com a folha — os mesmos para a folha nova e a reimpressão. */
   function avisosDaFolha(r: RespostaDaImpressaoDeEtiquetas): string[] {
     const mensagens: string[] = [];
+    /*
+      DEFEITO QUE ISTO CORRIGE (P00 das etiquetas): `r.avisos` — as barras
+      abaixo do mínimo GS1, o módulo que não fecha em ponto inteiro, os campos
+      que pedem mais altura do que a etiqueta tem — só aparecia na caixa de
+      resultado das saídas que geram ARQUIVO (PDF, ZPL, EPL, TSPL). Na folha do
+      navegador, que é a saída padrão da loja, o aviso era descartado: o rolo
+      saía com o código que o leitor do caixa não lê, sem uma linha dizendo.
+    */
+    mensagens.push(...(r.avisos ?? []));
     if (r.codigosGerados?.length) {
       mensagens.push(
         `${r.codigosGerados.length} produto(s) ganharam código de barras interno agora: `

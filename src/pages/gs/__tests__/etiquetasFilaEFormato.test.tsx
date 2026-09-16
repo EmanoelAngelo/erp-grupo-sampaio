@@ -309,6 +309,35 @@ describe('gerar a folha', () => {
     expect(screen.queryByRole('alert')).toBeNull();
   });
 
+  /*
+    DEFEITO QUE ISTO CORRIGE (P00 das etiquetas): `r.avisos` — as barras abaixo
+    do mínimo GS1, o módulo que não fecha em ponto inteiro, os campos que não
+    cabem na altura — só aparecia na caixa de resultado das saídas que geram
+    ARQUIVO. Na folha do navegador, a saída padrão da loja, ele era descartado
+    pela tela: o rolo saía com o código que o leitor do caixa não lê, em
+    silêncio.
+  */
+  it('o aviso do papel vindo do servidor sai junto com o resto, na folha do navegador', async () => {
+    catalogoCom({ sab: [candidato('p1', 'Sabão em barra')] });
+    rotas['POST /core/labels/sheet'] = () =>
+      json({
+        html: '<html>folha</html>',
+        etiquetas: 1,
+        folhas: 1,
+        promocoes: [],
+        semPreco: [],
+        avisos: ['Cada barra do código fica com 0,21 mm — abaixo do mínimo GS1 (0,264 mm): leitores a laser podem falhar.'],
+      });
+    montar();
+    await buscar('sab');
+    fireEvent.click(await screen.findByLabelText('Selecionar Sabão em barra'));
+    fireEvent.click(botaoGerar());
+    const avisos = await screen.findByTestId('avisos-da-folha');
+    expect(avisos.textContent).toMatch(/mínimo GS1/);
+    expect(avisos.textContent).toMatch(/Saíram 1 etiqueta\(s\)/);
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+
   it('pop-up bloqueado: "foi baixada" e o aviso de promoção aparecem JUNTOS, e não como erro (C-etiquetas-M05)', async () => {
     vi.spyOn(window, 'open').mockImplementation(() => null);
     const criar = vi.fn(() => 'blob:folha');
