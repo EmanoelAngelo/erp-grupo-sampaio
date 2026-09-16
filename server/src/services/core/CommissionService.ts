@@ -238,11 +238,28 @@ export function setTier(
     .get(id) as unknown as CommissionTier;
 }
 
+/**
+ * SUCESSO FALSO: "Faixa removida." sobre uma faixa que continuou lá.
+ *
+ * O DELETE é escopado por `company_id` (e tem de ser), mas o resultado nunca
+ * era olhado: apagar uma linha e não apagar nada devolviam o mesmo 204, e a
+ * tela dizia "Faixa removida." nos dois casos. Some justamente no caso em que
+ * a pessoa mais precisa saber que nada aconteceu — a faixa órfã que o defeito
+ * antigo de `setTier` gravou com a empresa da vizinha, que a dona do grupo vê
+ * pagar comissão e não consegue tirar.
+ *
+ * Não apagou nada é 404, o mesmo de um id que não existe em empresa nenhuma:
+ * dizer "essa faixa existe, mas não é sua" contaria ao de fora o que a vizinha
+ * cadastrou — é a mesma régua de `grupoDaEmpresa`.
+ */
 export function removeTier(companyId: string, tierId: string): void {
   ensureCoreSchema();
-  getConnection()
+  const r = getConnection()
     .prepare('DELETE FROM core_commission_tiers WHERE id = ? AND company_id = ?')
     .run(tierId, companyId);
+  if (Number(r.changes ?? 0) === 0) {
+    throw new ApiError('CORE_COMMISSION_TIER_NOT_FOUND', 'Faixa não encontrada.', 404);
+  }
 }
 
 // ---------------------------------------------------------------- vendedores
@@ -267,15 +284,33 @@ export function removeTier(companyId: string, tierId: string): void {
 export function setMemberGroup(companyId: string, userId: string, groupId: string | null): void {
   ensureCoreSchema();
   const db = getConnection();
-  if (!assertMembership(userId, companyId)) {
-    throw new ApiError('CORE_COMMISSION_MEMBER_NOT_FOUND', 'Pessoa não encontrada na equipe desta operação.', 404);
-  }
+
+  /*
+    TIRAR A COMISSÃO NÃO PASSA PELO VÍNCULO — e por um motivo de dinheiro.
+
+    A conferência de vínculo nasceu na frente anterior ANTES deste ramo, e o
+    ramo é o DELETE. Quem foi desligado da operação (`removerDaOperacao` apaga
+    `core_user_companies` e não toca em `core_commission_members`) ficava com
+    uma linha de comissão que rota nenhuma removia: o PUT com `groupId: null`
+    respondia 404 e a linha continuava lá, `faixaPara` continuava resolvendo a
+    faixa dela, e uma readmissão a ressuscitava comissionando sem ninguém ter
+    decidido. Era o único caminho de limpeza que existia, e ele fechou.
+
+    Guardar o DELETE não fecha oráculo algum: ele já é escopado por
+    `company_id` + `user_id`, apaga no máximo uma linha DESTA empresa, e a rota
+    responde 200 para qualquer id — apagar nada e apagar uma linha são
+    indistinguíveis de fora. O guarda continua valendo para ATRIBUIR, que é o
+    ato que faz uma pessoa de fora aparecer na apuração daqui.
+  */
   if (!groupId) {
     db.prepare('DELETE FROM core_commission_members WHERE company_id = ? AND user_id = ?').run(
       companyId,
       userId,
     );
     return;
+  }
+  if (!assertMembership(userId, companyId)) {
+    throw new ApiError('CORE_COMMISSION_MEMBER_NOT_FOUND', 'Pessoa não encontrada na equipe desta operação.', 404);
   }
   grupoDaEmpresa(companyId, groupId);
 
@@ -301,11 +336,30 @@ export function listMembers(companyId: string): { user_id: string; group_id: str
  * aparece contada no balde da apuração.
  */
 function faixaPara(companyId: string, userId: string, baseCents: number): CommissionTier | null {
+  /*
+    A EMPRESA ENTRA NOS DOIS JUNTAS — é dinheiro e é isolamento.
+
+    O `JOIN` juntava a faixa SÓ pelo grupo (`t.group_id = g.id`), e o grupo só
+    pelo id (`g.id = m.group_id`). Uma faixa órfã — as que o defeito antigo de
+    `setTier` gravava, com `company_id` da vizinha e `group_id` daqui — é
+    INVISÍVEL para `listTiers` (que filtra pelas duas colunas) e para
+    `removeTier` (idem), mas ENTRAVA nesta apuração: medido, uma faixa de 50%
+    escrita assim pagou 1000 centavos numa venda onde a tela prometia 20 (1%),
+    sem aparecer em GET /core/commissions/setup e sem sair pelo DELETE da dona
+    do grupo.
+
+    O guarda de `setTier` impede que faixas assim NASÇAM; ele não enxerga nem
+    limpa as que qualquer banco anterior ao conserto já tenha. Amarrar a
+    empresa aqui é a defesa em profundidade que neutraliza o resíduo: faixa e
+    grupo têm de ser da MESMA empresa do vínculo que está sendo apurado.
+  */
   const row = getConnection()
     .prepare(
       `SELECT t.* FROM core_commission_members m
-         JOIN core_commission_groups g ON g.id = m.group_id AND g.active = 1
-         JOIN core_commission_tiers t ON t.group_id = g.id
+         JOIN core_commission_groups g
+           ON g.id = m.group_id AND g.company_id = m.company_id AND g.active = 1
+         JOIN core_commission_tiers t
+           ON t.group_id = g.id AND t.company_id = m.company_id
         WHERE m.company_id = ? AND m.user_id = ? AND t.min_cents <= ?
         ORDER BY t.min_cents DESC
         LIMIT 1`,

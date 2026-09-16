@@ -249,6 +249,25 @@ logisticsRouter.post('/quotes', authMiddleware, requirePermission('logistics.quo
     const companyId = req.auth!.companyId;
     // A mesma chave com outro pedido é recusada ANTES de cotar.
     conferirRequisicaoRepetida(idempotencyKey, companyId, requisicaoDe(req));
+
+    /*
+      A QUARTA PORTA DO MESMO DEFEITO. Esta rota passava `req.body` inteiro
+      adiante, e o `carrier` do corpo entrava em `quoteLogisticsCarrier` sem
+      passar pelo catálogo — o tipo `LogisticsCarrierId` da assinatura só
+      existe na compilação. Do outro lado, `simulateQuote` INDEXA uma tabela
+      por transportadora: nome desconhecido virava `undefined.map(...)`, um
+      TypeError, e o gestor recebia 500 "Erro interno." no lugar do motivo.
+      Mesma régua das irmãs (`test-connection`, `test-quote`, `test-tracking`,
+      `DELETE .../credentials`): nome fora do catálogo é 400 com motivo, ANTES
+      de cotar e antes de gravar qualquer cotação no histórico.
+    */
+    // Vazio/ausente continua significando "cote em todas as configuradas", que
+    // é o que `backendLogisticsQuote` já fazia com `if (input.carrier)`.
+    const carrierDoCorpo = (req.body ?? {}).carrier;
+    if (carrierDoCorpo && !isLogisticsCarrierId(carrierDoCorpo)) {
+      throw new ApiError('LOGISTICS_CARRIER_INVALID', 'Transportadora desconhecida.', 400);
+    }
+
     const quoteResult = await backendLogisticsQuote(companyId, req.body ?? {});
 
     // Faltando peso ou dimensão, NÃO se grava cotação: uma cotação sem opções

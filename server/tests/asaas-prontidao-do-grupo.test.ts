@@ -33,8 +33,15 @@ const { upsertAsaasApiKey, upsertAsaasWebhookToken } = await import(
   '../src/services/integrations/AsaasCredentialService.js'
 );
 const { upsertAsaasIntegrationState } = await import('../src/services/integrations/AsaasIntegrationStateService.js');
+const { prontidaoAsaasDaOperacao } = await import('../src/services/core/ProntidaoAsaasDoGrupo.js');
 
 const app = createApp();
+/** O ambiente com que a suíte roda — restaurado depois do caso que o troca. */
+const DA_SUITE = {
+  NODE_ENV: process.env.NODE_ENV,
+  DEVORA_JWT_SECRET: process.env.DEVORA_JWT_SECRET,
+  DEVORA_ENCRYPTION_KEY: process.env.DEVORA_ENCRYPTION_KEY,
+};
 const SENHA = 'Teste@Prontidao017';
 const CHAVE_PJ = '$aact_hmlg_chave_do_preco_justo_0000000';
 const CHAVE_PJ_PROD = '$aact_prod_chave_do_preco_justo_0000000';
@@ -92,6 +99,13 @@ afterEach(() => {
   delete process.env.ASAAS_ENABLED;
   delete process.env.ASAAS_PRODUCTION_ENABLED;
   delete process.env.GRUPO_SAMPAIO_PUBLIC_URL;
+  delete process.env.ASAAS_API_KEY;
+  delete process.env.ASAAS_WEBHOOK_AUTH_TOKEN;
+  process.env.DEVORA_API_ENV = 'test';
+  for (const [nome, valor] of Object.entries(DA_SUITE)) {
+    if (valor === undefined) delete process.env[nome];
+    else process.env[nome] = valor;
+  }
   resetEnvCacheForTests();
 });
 
@@ -106,7 +120,7 @@ async function grupo() {
       tradeName: string;
       canChargeProduction: boolean;
       canChargeSandbox: boolean;
-      missing: { codigo: string; tipo: string; quem: string }[];
+      missing: { codigo: string; tipo: string; quem: string; frase: string }[];
     }[];
   };
 }
@@ -149,6 +163,66 @@ describe('GAP-PRD-017 — o que cada operação ainda precisa, num lugar só', (
     const doServidor = pj.missing.filter((m) => m.quem === 'instalacao').map((m) => m.codigo);
     expect(doServidor).toEqual(['ENDERECO_PUBLICO', 'PRODUCAO_NO_SERVIDOR']);
     expect(pj.canChargeProduction).toBe(false);
+  });
+
+  /**
+   * ==========================================================================
+   * A VARIÁVEL QUE FAZ AS OUTRAS VALEREM
+   * ==========================================================================
+   *
+   * O DEFEITO: a lista pedia ASAAS_PRODUCTION_ENABLED,
+   * GRUPO_SAMPAIO_PUBLIC_URL e as credenciais — nunca o MODO DO PROCESSO. Só
+   * `DEVORA_API_ENV=production` (ou `NODE_ENV=production`) fecha o atalho do
+   * `.env` em `asaasEnvFallbackAllowed()`. Numa instalação fora de produção
+   * com um `.env` trazendo ASAAS_API_KEY e o token do webhook, o dono cumpria
+   * a lista inteira e continuava vendo "Sandbox: configurada" com a dica de
+   * uma chave de OUTRA conta — e podia aprovar a homologação contra ela,
+   * abrindo o portão de produção com prova que não é da operação.
+   */
+  it('a chave que vem do .env faz a lista PEDIR o modo do processo, pelo nome da variável', async () => {
+    // A Gringa não tem chave própria; o servidor tem uma no .env.
+    process.env.ASAAS_API_KEY = '$aact_hmlg_chave_do_ENV_do_servidor_1';
+    process.env.ASAAS_WEBHOOK_AUTH_TOKEN = 'token-do-env-do-servidor';
+    resetEnvCacheForTests();
+
+    const g = await grupo();
+    const gr = g.operations.find((o) => o.companyId === gringa)!;
+    const item = gr.missing.find((m) => m.codigo === 'MODO_DO_PROCESSO');
+
+    expect(item, JSON.stringify(gr.missing)).toBeTruthy();
+    expect(item!.quem).toBe('instalacao');
+    expect(item!.tipo).toBe('configuracao_do_servidor');
+    expect(item!.frase).toContain('DEVORA_API_ENV=production');
+    expect(item!.frase).toContain('NODE_ENV=production');
+  });
+
+  it('e some quando a API sobe em produção — aí o atalho do .env já não vale', async () => {
+    process.env.ASAAS_API_KEY = '$aact_hmlg_chave_do_ENV_do_servidor_1';
+    process.env.ASAAS_WEBHOOK_AUTH_TOKEN = 'token-do-env-do-servidor';
+    /*
+      Processo em produção de verdade: as chaves próprias são a OUTRA tranca
+      que o modo de produção exige, e sem elas o `loadEnv` recusa subir — então
+      elas entram aqui (fictícias) para que este caso meça o que quer medir.
+
+      E a leitura é direta, não pelo HTTP: a sessão emitida em modo de teste é
+      mais uma coisa que muda junto. O caminho da rota já está provado acima.
+    */
+    process.env.NODE_ENV = 'production';
+    process.env.DEVORA_JWT_SECRET = 'segredo-ficticio-de-teste-para-o-modo-de-producao-0001';
+    process.env.DEVORA_ENCRYPTION_KEY = 'chave-ficticia-de-teste-para-o-modo-de-producao-000002';
+    resetEnvCacheForTests();
+
+    const gr = prontidaoAsaasDaOperacao(gringa, 'Gringa');
+    expect(gr.missing.map((m) => m.codigo)).not.toContain('MODO_DO_PROCESSO');
+    // E a chave do ambiente deixa de contar como credencial da operação.
+    expect(gr.missing.map((m) => m.codigo)).toContain('CHAVE_SANDBOX');
+    expect(gr.credentials.sandbox.source).toBe('none');
+  });
+
+  it('sem chave de ambiente nenhuma, a lista não cria alarme: o item não aparece', async () => {
+    const g = await grupo();
+    const gr = g.operations.find((o) => o.companyId === gringa)!;
+    expect(gr.missing.map((m) => m.codigo)).not.toContain('MODO_DO_PROCESSO');
   });
 
   it('nenhum segredo sai na resposta', async () => {

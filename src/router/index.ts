@@ -48,11 +48,30 @@ export function AppRoutes() {
     é o pai de todas as telas, e assiná-lo a cada troca de sessão redesenharia
     o roteador inteiro por uma decisão que só importa depois de um estouro.
   */
-  const aoInicio = useCallback(() => {
+  const casaDoPerfil = useCallback(() => {
     const sessao = getSession();
-    navigate(sessao ? homeOf(sessao.user.profileCode) : '/', { replace: true });
-  }, [navigate]);
+    return sessao ? homeOf(sessao.user.profileCode) : '/';
+  }, []);
+  const aoInicio = useCallback(() => {
+    navigate(casaDoPerfil(), { replace: true });
+  }, [navigate, casaDoPerfil]);
   const aoVoltar = useCallback(() => navigate(-1), [navigate]);
+  const aoRecarregar = useCallback(() => window.location.reload(), []);
+
+  /*
+    AS DUAS PORTAS QUE PODEM NÃO ABRIR.
+
+    `homeOf('operador_caixa_loja')` é '/pdv': com o PDV estourando, "Ir para o
+    início" redesenha a MESMA tela. E `location.key` é 'default' no endereço em
+    que o navegador abriu — o balcão que liga o computador direto no PDV não
+    tem página anterior, então `navigate(-1)` não leva a lugar nenhum. O aviso
+    só mostra a porta que abre; ver `FronteiraDaTela.tsx`.
+  */
+  const inicioLevaEmbora = useCallback(
+    () => casaDoPerfil() !== location.pathname,
+    [casaDoPerfil, location.pathname],
+  );
+  const podeVoltar = location.key !== 'default';
 
   /*
     A fronteira fica AQUI, dentro do roteador: a tela que estoura não leva o
@@ -60,5 +79,13 @@ export function AppRoutes() {
     inteiro está em `FronteiraDaTela.tsx`. `location.key` muda a cada
     navegação — é o que faz o erro ser esquecido ao sair da tela quebrada.
   */
-  return comFronteiraDaTela({ chave: location.key, aoInicio, aoVoltar, children: element });
+  return comFronteiraDaTela({
+    chave: location.key,
+    aoInicio,
+    aoVoltar,
+    aoRecarregar,
+    podeVoltar,
+    inicioLevaEmbora,
+    children: element,
+  });
 }

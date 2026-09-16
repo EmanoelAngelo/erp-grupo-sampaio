@@ -52,6 +52,7 @@ vi.mock('@/pages/gs/NaoEncontradaPage', () => ({
 
 afterEach(() => {
   cleanup();
+  recarregou = 0;
 });
 
 function TelaQueEstoura(): never {
@@ -63,14 +64,28 @@ function TelaSa() {
 }
 
 let navegar: ReturnType<typeof useNavigate>;
+/** Quantas vezes o aviso mandou recarregar — a saída de último caso. */
+let recarregou = 0;
 
-/** O arranjo mínimo: roteador de verdade, fronteira por dentro, chave da navegação. */
-function Moldura() {
+/**
+ * O arranjo mínimo: roteador de verdade, fronteira por dentro, chave da
+ * navegação. `podeVoltar` e `inicioLevaEmbora` são as duas conferências que
+ * decidem quais portas o aviso mostra — aqui vêm do roteador de verdade, como
+ * em `AppRoutes`.
+ */
+function Moldura({ casa = '/sa' }: { casa?: string }) {
   const ir = useNavigate();
-  const { key } = useLocation();
+  const { key, pathname } = useLocation();
   navegar = ir;
   return (
-    <FronteiraDaTela chave={key} aoInicio={() => ir('/sa')} aoVoltar={() => ir(-1)}>
+    <FronteiraDaTela
+      chave={key}
+      aoInicio={() => ir(casa)}
+      aoVoltar={() => ir(-1)}
+      aoRecarregar={() => { recarregou += 1; }}
+      podeVoltar={key !== 'default'}
+      inicioLevaEmbora={() => casa !== pathname}
+    >
       {/* Some quando a fronteira assume — é assim que o teste sabe que ela assumiu. */}
       <span data-tela-viva="" />
       <Routes>
@@ -81,10 +96,10 @@ function Moldura() {
   );
 }
 
-function Sistema({ inicial = '/quebrada' }: { inicial?: string }) {
+function Sistema({ inicial = '/quebrada', casa = '/sa' }: { inicial?: string; casa?: string }) {
   return (
     <MemoryRouter initialEntries={[inicial]}>
-      <Moldura />
+      <Moldura casa={casa} />
     </MemoryRouter>
   );
 }
@@ -145,5 +160,74 @@ describe('a tela que estoura não derruba o sistema', () => {
     expect(screen.getByText('tela sã no ar')).toBeTruthy();
     expect(screen.queryByRole('alert')).toBeNull();
     expect(document.querySelector('[data-tela-viva]')).toBeTruthy();
+  });
+});
+
+// ============================================================================
+// O AVISO NÃO PROMETE O QUE NÃO ENTREGA
+// ============================================================================
+
+/**
+ * O DEFEITO: a frase dizia "o caixa, o menu e as outras telas seguem abrindo".
+ *
+ * O MENU não segue — cada tela desenha o próprio `AppShell`, e o cabeçalho
+ * deste mesmo arquivo de código diz que preservá-lo NÃO é promessa. E o CAIXA
+ * não segue quando o caixa é a tela que estourou: a casa do
+ * `operador_caixa_loja` é `/pdv`, então "Ir para o início" redesenharia a
+ * mesma tela quebrada, e "Voltar" num PDV aberto direto não tem para onde ir.
+ * Duas portas desenhadas que não abrem, embaixo de uma frase que garante as
+ * duas.
+ */
+describe('o aviso mostra só a porta que abre', () => {
+  it('não promete o menu — e diz que ele caiu com a tela', () => {
+    render(<Sistema />);
+    const aviso = screen.getByRole('alert');
+
+    expect(aviso.textContent).not.toContain('o menu e as outras telas seguem');
+    expect(aviso.textContent).toMatch(/menu não sobrevive/i);
+    expect(aviso.textContent).toMatch(/OUTRAS telas do sistema continuam abrindo/i);
+  });
+
+  it('com o PDV estourando e sem página anterior, não oferece porta que volta ao PDV', () => {
+    // A casa do perfil É a tela quebrada: é o caixa do balcão, que liga o
+    // computador direto no endereço do PDV.
+    render(<Sistema inicial="/quebrada" casa="/quebrada" />);
+
+    expect(screen.queryByRole('button', { name: 'Ir para o início' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Voltar' })).toBeNull();
+
+    // Sobra a única saída que existe — dita pelo que ela é.
+    const aviso = screen.getByRole('alert');
+    expect(aviso.textContent).toMatch(/não há página anterior/i);
+    fireEvent.click(screen.getByRole('button', { name: 'Recarregar esta tela' }));
+    expect(recarregou).toBe(1);
+  });
+
+  it('quando a casa é outra tela, "Ir para o início" volta a aparecer', () => {
+    render(<Sistema inicial="/quebrada" casa="/sa" />);
+    expect(screen.getByRole('button', { name: 'Ir para o início' })).toBeTruthy();
+    // E o recarregar NÃO aparece: ele é a saída de quem não tem outra.
+    expect(screen.queryByRole('button', { name: 'Recarregar esta tela' })).toBeNull();
+  });
+
+  it('"Voltar" aparece quando há página anterior de verdade', () => {
+    render(<Sistema inicial="/sa" casa="/quebrada" />);
+    act(() => { navegar('/quebrada'); });
+
+    expect(screen.getByRole('alert')).toBeTruthy();
+    // A casa é a própria tela quebrada, então a única porta é o histórico.
+    expect(screen.queryByRole('button', { name: 'Ir para o início' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Voltar' }));
+    expect(screen.getByText('tela sã no ar')).toBeTruthy();
+  });
+
+  it('o aviso deixa um código para o telefone — e ele some ao sair da tela', () => {
+    render(<Sistema />);
+    const codigo = screen.getByText(/Código para o suporte:/);
+    expect(codigo.textContent).toMatch(/Código para o suporte: err-[0-9a-z]+$/);
+
+    // Ao navegar, o erro é esquecido: o código não pode sobrar na tela seguinte.
+    act(() => { navegar('/sa'); });
+    expect(screen.queryByText(/Código para o suporte:/)).toBeNull();
   });
 });

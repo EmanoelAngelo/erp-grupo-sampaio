@@ -201,18 +201,35 @@ export function conferirImplantacao(ctx: ContextoDaConferencia): ConferenciaDaIm
       id: 'ambiente',
       titulo: 'Ambiente',
       estado: 'ATENCAO',
-      detalhe: 'Homologação (DEVORA_API_ENV=staging): as travas de produção valem, as integrações não vão para produção.',
+      detalhe:
+        'Homologação (DEVORA_API_ENV=staging): as travas de produção valem, as integrações não '
+        + 'vão para produção. O atalho do .env no Asaas (chave de sandbox e token de webhook) '
+        + 'CONTINUA valendo — só `production` o fecha.',
       comoResolver: 'Para ir ao ar de verdade, DEVORA_API_ENV=production.',
     });
   } else {
+    /*
+      O QUE ESTE ITEM NÃO DIZIA. "Integrações se comportam como bancada" é
+      verdade e é vago demais para quem vai abrir a loja. As duas consequências
+      com nome: fora de produção, `asaasEnvFallbackAllowed()` deixa a chave de
+      sandbox e o token de webhook do `.env` valerem COMO SE fossem da operação
+      (a tela do Asaas mostra "configurada" com a dica de uma chave que não é
+      dela, e a homologação pode ser aprovada contra essa conta), e
+      `mockProviderBlocked()` aceita o provedor de teste da maquininha, que
+      aprova cartão sem dinheiro trocar de mãos.
+    */
     itens.push({
       id: 'ambiente',
       titulo: 'Ambiente',
       estado: 'BLOQUEIA',
       detalhe:
         `A API está em ${ambiente}${limpo(env.DEVORA_API_ENV) ? '' : ' (DEVORA_API_ENV ausente — o padrão é development)'}. `
-        + 'Integrações, base fiscal e log se comportam como bancada.',
-      comoResolver: 'Declare DEVORA_API_ENV=production no .env do servidor e reinicie a API.',
+        + 'Integrações, base fiscal e log se comportam como bancada: a chave de sandbox e o token '
+        + 'de webhook do .env valem como credencial da operação no Asaas, e o provedor de TESTE '
+        + 'da maquininha é aceito (ele aprova cartão sem dinheiro trocar de mãos).',
+      comoResolver:
+        'Declare DEVORA_API_ENV=production (e NODE_ENV=production) no .env do servidor e '
+        + 'reinicie a API.',
     });
   }
 

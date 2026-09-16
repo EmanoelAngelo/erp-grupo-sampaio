@@ -27,7 +27,7 @@
 import { getConnection } from '../../db/sqlite.js';
 import { ensureCoreSchema } from '../../db/schema.js';
 import { loadEnv } from '../../config/env.js';
-import { getAsaasCredentialStatus } from '../integrations/AsaasCredentialService.js';
+import { asaasEnvFallbackAllowed, getAsaasCredentialStatus } from '../integrations/AsaasCredentialService.js';
 import { getAsaasIntegrationState } from '../integrations/AsaasIntegrationStateService.js';
 import { getAsaasStatus } from './PaymentService.js';
 import { describeAsaasWebhook } from './AsaasWebhookInfo.js';
@@ -125,6 +125,48 @@ export function prontidaoAsaasDaOperacao(companyId: string, tradeName: string): 
     empurrar('CHAVE_PRODUCAO', 'credencial', 'dono', 'Guardar a API key de PRODUÇÃO da conta Asaas desta operação.');
   } else if (state.productionConnectionVerified !== true) {
     empurrar('TESTE_PRODUCAO', 'acao_na_tela', 'dono', 'Testar a conexão: a chave de produção ainda não foi testada.');
+  }
+  /*
+    ============================================================================
+    A VARIÁVEL QUE FAZ AS OUTRAS VALEREM — e que a lista não pedia
+    ============================================================================
+
+    `asaasEnvFallbackAllowed()` só FECHA o atalho do `.env` (chave de sandbox e
+    token de webhook) quando o processo está em produção, por um dos dois
+    nomes: `DEVORA_API_ENV=production` ou `NODE_ENV=production`. Esta lista
+    pedia ASAAS_PRODUCTION_ENABLED, GRUPO_SAMPAIO_PUBLIC_URL e as credenciais —
+    nunca o MODO DO PROCESSO.
+
+    Numa instalação que suba a API fora de produção (é como a API roda em
+    `tsx watch`) com um `.env` trazendo ASAAS_API_KEY e token de webhook, o
+    dono cumpre a lista inteira e ainda assim: Integrações › Asaas mostra
+    "Sandbox: configurada" com a dica de uma chave que NÃO é desta operação, o
+    PIX do balcão nasce na conta alheia, o token do `.env` vale para operar sem
+    token próprio, e a homologação (5ª tranca) pode ser aprovada contra essa
+    conta — abrindo o portão de produção com uma prova que não é da operação. E
+    fora do Asaas, o mesmo interruptor libera o provedor MOCK da maquininha
+    (`mockProviderBlocked`), que aprova cartão sem dinheiro trocar de mãos.
+
+    Não é código faltando: é item de entrega que a lista tem de PEDIR.
+
+    A conferência é ESTREITA de propósito: só quando o atalho está aberto E
+    alguma credencial está de fato vindo do ambiente. Pedir o modo do processo
+    numa instalação sem chave nenhuma no `.env` seria alarme sem dano — e a
+    régua geral do modo do processo já é item próprio, com o mesmo nome de
+    variável, em Configurações › Implantação (item "Ambiente", que BLOQUEIA).
+  */
+  const credencialDeAmbiente =
+    cred.sandbox.source === 'env' || cred.webhook.source === 'env' || cred.production.source === 'env';
+  if (asaasEnvFallbackAllowed() && credencialDeAmbiente) {
+    empurrar(
+      'MODO_DO_PROCESSO',
+      'configuracao_do_servidor',
+      'instalacao',
+      'Subir a API em modo de produção (DEVORA_API_ENV=production, e também NODE_ENV=production) '
+      + 'e reiniciar: é essa variável que fecha o atalho do .env. Enquanto ela não estiver, a '
+      + 'chave e o token do servidor valem COMO SE fossem desta operação — inclusive para '
+      + 'aprovar a homologação em sandbox.',
+    );
   }
   if (!env.asaasProductionEnabled) {
     empurrar(
