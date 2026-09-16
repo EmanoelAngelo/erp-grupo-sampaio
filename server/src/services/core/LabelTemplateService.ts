@@ -590,5 +590,35 @@ export function formatoDoModelo(m: LabelTemplateInput & { id?: string }): LabelF
     dpi: m.dpi,
     priceHighlight: m.priceHighlight,
     complementText: m.complementText,
+    /*
+      O PAINEL "SAÍDA, CALIBRAÇÃO E MÍDIA" ERA DECORATIVO (P00 das etiquetas).
+
+      O DEFEITO: o modelo GRAVAVA calibração, densidade, velocidade, corte,
+      sensor, vão e avanço final — as nove colunas existem, a tela as edita e a
+      migração as acrescentou — e esta função, que é o ÚNICO caminho de um
+      modelo até o desenho (`formatoDoPedido` → `formatoDoModelo`), não as
+      copiava. Todo mundo do outro lado já as lia: `paginarEtiquetas` usa
+      `offsetXmm/offsetYmm`, `renderLabelSheet` as aplica no CSS da folha, e
+      `gerarZpl`/`gerarEpl`/`gerarTspl` põem densidade, velocidade, corte,
+      sensor e vão DENTRO do arquivo. Elas chegavam sempre `undefined`.
+
+      O estrago na loja: a térmica que puxa o rolo 1 mm torto imprimia tudo 1 mm
+      torto para sempre — a etiqueta de teste mandava "ajuste o deslocamento do
+      modelo e imprima de novo", a pessoa ajustava, salvava, e o adesivo saía
+      exatamente igual. O corte configurado nunca cortava, a densidade nunca
+      escurecia, e o sensor de marca preta nunca era declarado: o rolo de marca
+      preta saía desalinhado numa impressora que a tela dizia estar configurada.
+
+      Nada de novo nasce aqui: é a ponte que faltava entre o que o modelo guarda
+      e quem já sabia usar.
+    */
+    offsetXmm: m.offsetXmm,
+    offsetYmm: m.offsetYmm,
+    densidade: m.darkness,
+    velocidade: m.printSpeed,
+    corte: m.cutMode,
+    sensor: m.mediaType,
+    vaoDoRoloMm: m.mediaGapMm,
+    avancoFinalMm: m.feedAfterMm,
   };
 }
