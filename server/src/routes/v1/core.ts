@@ -4828,7 +4828,18 @@ coreRouter.get('/cash/:sessionId/summary', (req: AuthedRequest, res, next) => {
   }
 });
 
-/** O que o fechamento deixou pendente, em números, para a auditoria (GAP-PRD-081). */
+/**
+ * O que o fechamento deixou pendente, em números, para a auditoria (GAP-PRD-081).
+ *
+ * O DEFEITO (P00-caixa-divida): este resumo contava só as duas listas antigas,
+ * e a auditoria do `cash.close` de um turno que fechou devendo R$ 50,00 ao
+ * cliente saía {"cobrancas":0,"pagamentosPendentes":0,"totalCents":5000} —
+ * trilha que se contradiz sozinha (zero pendências somando cinquenta reais)
+ * justamente no evento que existe para tornar o fechamento rastreável. Agora
+ * cada tipo é contado, e a devolução vai também POR EXTENSO (número da
+ * devolução, número da venda e o que falta pagar): sem isso não há como saber,
+ * meses depois, que aquele valor era dinheiro do cliente.
+ */
 function resumoDasPendenciasDoFechamento(cru: string | null | undefined): Record<string, unknown> | null {
   if (!cru) return null;
   try {
@@ -4837,10 +4848,25 @@ function resumoDasPendenciasDoFechamento(cru: string | null | undefined): Record
       totalCents?: number;
       cobrancas?: unknown[];
       pagamentosPendentes?: unknown[];
+      vendasOffline?: unknown[];
+      devolucoesAguardandoReembolso?: {
+        number?: number;
+        saleNumber?: number | null;
+        pendenteCents?: number;
+      }[];
     };
+    const devolucoes = p.devolucoesAguardandoReembolso ?? [];
     return {
       cobrancas: p.cobrancas?.length ?? 0,
       pagamentosPendentes: p.pagamentosPendentes?.length ?? 0,
+      vendasOffline: p.vendasOffline?.length ?? 0,
+      devolucoesAguardandoReembolso: devolucoes.length,
+      // A dívida com o cliente, dita: qual devolução, de qual venda, quanto.
+      devolucoes: devolucoes.map((d) => ({
+        number: d.number ?? null,
+        saleNumber: d.saleNumber ?? null,
+        pendenteCents: d.pendenteCents ?? 0,
+      })),
       totalCents: p.totalCents ?? 0,
       motivo: p.motivo ?? null,
     };

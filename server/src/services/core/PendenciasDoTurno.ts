@@ -43,7 +43,9 @@
  *                               (GAP-PRD-045, `vendasOfflinePendentesDaGaveta`);
  *   devolução sem reembolso     a mercadoria voltou e o cliente ainda não
  *                               recebeu (auditoria do PDV,
- *                               `devolucoesAguardandoReembolsoDoTurno`).
+ *                               `devolucoesAguardandoReembolsoDoTurno`) — a
+ *                               única que NÃO é "deste turno" pela janela: ela
+ *                               é de todo fechamento até o cliente ser pago.
  */
 import { findRows } from '../../db/database.js';
 import { getConnection } from '../../db/sqlite.js';
@@ -74,9 +76,10 @@ export interface PagamentoPendenteDoTurno {
 }
 
 /**
- * Devolução em DUAS ETAPAS registrada neste turno cujo reembolso ainda não foi
- * registrado — auditoria do PDV, P0 da Preço Justo. Ver
- * `devolucoesAguardandoReembolsoDoTurno`.
+ * Devolução em DUAS ETAPAS da operação cujo reembolso ainda não foi registrado
+ * — auditoria do PDV, P0 da Preço Justo. Ela é pendência de TODO fechamento
+ * até ser paga, e não só do turno em que foi registrada (P00-caixa-divida).
+ * Ver `devolucoesAguardandoReembolsoDoTurno`.
  */
 export interface DevolucaoAguardandoReembolso {
   id: string;
@@ -103,9 +106,10 @@ export interface PendenciasEletronicas {
    */
   vendasOffline: VendaOfflinePendenteDoTurno[];
   /**
-   * Devolução em duas etapas deste turno com reembolso pendente ou parcial —
-   * dinheiro que a loja DEVE, e que ainda está na gaveta quando o reembolso
-   * for em espécie.
+   * Devolução em duas etapas com reembolso pendente ou parcial — dinheiro que
+   * a loja DEVE, e que ainda está na gaveta quando o reembolso for em espécie.
+   * Acompanha a DÍVIDA: segue aparecendo em cada fechamento enquanto o cliente
+   * não for pago (P00-caixa-divida).
    */
   devolucoesAguardandoReembolso: DevolucaoAguardandoReembolso[];
   quantidade: number;
@@ -246,11 +250,37 @@ export function pendenciasEletronicasDoTurno(companyId: string, turno: TurnoLido
  *
  * `core_sale_returns.cash_session_id` NÃO serve: ele é a gaveta de onde o
  * dinheiro SAIU e nasce nulo de propósito (GAP-PRD-161) — na devolução em duas
- * etapas ele continua nulo justamente porque nada saiu ainda. A amarra é a
- * mesma que este arquivo já usa para a cobrança sem carimbo: a JANELA do turno
- * (registrada depois da abertura e, se já fechou, antes do fechamento). Na
- * Preço Justo a janela é exata, porque a operação tem uma gaveta aberta por vez
- * (`CORE_CASH_ALREADY_OPEN`).
+ * etapas ele continua nulo justamente porque nada saiu ainda.
+ *
+ * ## POR QUE A PENDÊNCIA ACOMPANHA A DÍVIDA, E NÃO A JANELA DO TURNO
+ *
+ * O DEFEITO DA PRIMEIRA VERSÃO DESTE CONSERTO (medido pela verificação
+ * adversarial, P00-caixa-divida): a devolução só era procurada DENTRO da
+ * janela do turno — registrada depois da abertura e antes do fechamento. Como
+ * o operador de caixa não tem `sales.returns.operate`, a única saída dele é
+ * declarar ciência; feito isso, o turno fecha e a dívida SOME do fechamento
+ * para sempre. Medido pela rota: o turno 2, com os mesmos R$ 50,00 do cliente
+ * ainda na gaveta, devolvia zero pendências e fechava calado, com diferença
+ * zero — exatamente o dano que este arquivo diz impedir, adiado em um turno.
+ *
+ * O dinheiro do reembolso em espécie não vai embora quando o turno fecha: ele
+ * é contado, entra no esperado do turno seguinte e continua não sendo da loja.
+ * Logo a pergunta certa não é "esta devolução nasceu no meu turno?", e sim "a
+ * loja ainda deve isso a alguém?". Toda devolução em duas etapas com saldo a
+ * reembolsar é pendência de TODO fechamento até ser paga — como a cobrança da
+ * maquininha já é enquanto não é conciliada.
+ *
+ * Duas consequências, ditas por extenso:
+ *
+ *   - a devolução lançada com NENHUMA gaveta aberta (o gestor, de manhã cedo)
+ *     passa a ser vista pelo turno seguinte, e não mais por nenhum — era risco
+ *     declarado da primeira versão;
+ *   - o mesmo cliente é cobrado em cada fechamento enquanto ninguém o paga.
+ *     Isso é o ponto, e não ruído: o dinheiro dele está na gaveta que está
+ *     sendo entregue. Quem quiser parar de declarar registra o reembolso.
+ *
+ * O turno JÁ FECHADO continua mostrando o que era dele: a devolução registrada
+ * depois do fechamento não entra no histórico dele (`created_at <= closed_at`).
  *
  * A devolução do fluxo IMEDIATO nunca entra: nele o registro já dá o dinheiro
  * por devolvido, e `refund_flow` é nulo. As outras cinco operações do grupo
@@ -269,11 +299,10 @@ export function devolucoesAguardandoReembolsoDoTurno(
          FROM core_sale_returns r
          JOIN core_sales s ON s.id = r.sale_id
         WHERE r.company_id = ? AND r.refund_flow = 'duas_etapas'
-          AND r.created_at >= ?
           AND (? IS NULL OR r.created_at <= ?)
         ORDER BY r.number`,
     )
-    .all(companyId, turno.opened_at, turno.closed_at, turno.closed_at) as unknown as {
+    .all(companyId, turno.closed_at, turno.closed_at) as unknown as {
     id: string;
     number: number;
     saleId: string;

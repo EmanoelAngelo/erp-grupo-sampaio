@@ -46,6 +46,12 @@ export function PendenciasDoFechamento({
   /** Para dar nomes únicos quando há mais de uma gaveta na tela. */
   idBase?: string;
 }) {
+  // O que desta lista ESTÁ na contagem da gaveta sem ser da loja: o dinheiro
+  // da venda guardada recusada e o reembolso que o cliente ainda não recebeu.
+  const naGavetaCents =
+    (pendencias.vendasOffline ?? []).reduce((s, v) => s + v.receivedCents, 0)
+    + (pendencias.devolucoesAguardandoReembolso ?? []).reduce((s, d) => s + d.pendenteCents, 0);
+  const temEletronico = pendencias.cobrancas.length + pendencias.pagamentosPendentes.length > 0;
   return (
     <div
       role="alert"
@@ -92,10 +98,36 @@ export function PendenciasDoFechamento({
           </li>
         ))}
       </ul>
+      {/*
+        O RODAPÉ NÃO PODE DESMENTIR A LINHA LOGO ACIMA DELE (P00-caixa-divida).
+
+        O DEFEITO: ele afirmava, para toda a lista, "Cartão e PIX não estão na
+        gaveta: a contagem continua sendo só do dinheiro" — verdade quando a
+        lista era só de maquininha, mentira depois que entraram a venda
+        guardada recusada (dinheiro NA gaveta, sem venda) e a devolução sem
+        reembolso (dinheiro que a loja DEVE e que, em espécie, está na gaveta e
+        vai para o turno seguinte como se fosse dela). A frase desmentia a
+        linha que ela mesma explicava.
+
+        Agora o rodapé é escolhido pelo que a lista CONTÉM, e diz o valor que
+        está na gaveta sem ser da loja.
+      */}
       <span className="text-[var(--gs-text-soft)]">
-        Cartão e PIX não estão na gaveta: a contagem continua sendo só do dinheiro. Estas pendências
-        são do gerente, em Vendas › Conferência de maquininha e em Vendas › Devoluções — fechar agora
-        não as resolve, só registra que você fechou sabendo delas.
+        {naGavetaCents > 0 ? (
+          <>
+            {temEletronico ? 'Cartão e PIX não estão na gaveta: caem na conta. ' : ''}
+            Atenção: {formatCents(naGavetaCents)} desta lista ESTÁ na contagem desta gaveta e não é
+            da loja — o dinheiro da venda guardada e o reembolso ainda não pago, quando for em
+            espécie, saem daí. Fechar agora não resolve nada disso, em Vendas › Conferência de
+            maquininha e em Vendas › Devoluções: só registra que você fechou sabendo.
+          </>
+        ) : (
+          <>
+            Cartão e PIX não estão na gaveta: a contagem continua sendo só do dinheiro. Estas
+            pendências são do gerente, em Vendas › Conferência de maquininha e em Vendas ›
+            Devoluções — fechar agora não as resolve, só registra que você fechou sabendo delas.
+          </>
+        )}
       </span>
       <label className="flex items-center gap-2 font-semibold">
         <input
