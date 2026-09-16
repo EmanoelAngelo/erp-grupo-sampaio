@@ -41,15 +41,29 @@
  *  5. A METADE QUE FALSIFICA O RESTO. Dentro da própria empresa, faixa e
  *     vendedor continuam passando. Sem este caso, recusar tudo deixaria o
  *     arquivo verde.
+ *
+ *  6. A FAIXA ÓRFÃ QUE PAGAVA EM SILÊNCIO. `faixaPara` juntava a faixa só pelo
+ *     grupo. Uma linha com `company_id` da vizinha e `group_id` daqui — o que
+ *     o defeito de `setTier` gravava — não aparece em `listTiers`, não sai
+ *     pelo DELETE da dona do grupo, e ENTRAVA na apuração: 50% onde a tela
+ *     promete 1%.
+ *
+ *  7. O BECO DE QUEM SAIU DA OPERAÇÃO. A conferência de vínculo do item 4
+ *     nasceu na frente de segurança ANTES do ramo do `groupId: null`, que é o
+ *     DELETE — e o desligamento não apagava a linha de comissão. Resultado:
+ *     quem saía ficava com um vínculo de comissão que rota nenhuma removia, e
+ *     a readmissão o ressuscitava comissionando.
  */
 process.env.TZ = 'UTC';
 process.env.DEVORA_API_ENV = 'test';
 
+import { randomUUID } from 'node:crypto';
 import { beforeEach, describe, expect, it } from 'vitest';
 import request from 'supertest';
 import { createApp } from '../src/app.js';
 import { getConnection } from '../src/db/sqlite.js';
 import { resetDbForTests } from '../src/db/database.js';
+import { registrarComissaoDaVenda } from '../src/services/core/CommissionService.js';
 import {
   linkUserToCompany,
   upsertCompany,
@@ -223,5 +237,227 @@ describe('e dentro da própria empresa tudo continua passando', () => {
       .set(gerenteA.auth)
       .send({ groupId: null });
     expect(semGrupo.status).toBe(200);
+  });
+});
+
+// ============================================================================
+// A FAIXA ÓRFÃ NÃO PAGA — nem some do relatório e continua pagando
+// ============================================================================
+
+/** Cria o grupo da A com uma faixa de 1% a partir de zero, e devolve o id. */
+async function grupoDeUmPorCentoNaA(): Promise<string> {
+  const criado = await request(app)
+    .post('/api/v1/core/commissions/groups')
+    .set(gerenteA.auth)
+    .send({ name: 'Vendedores da A' });
+  expect(criado.status, JSON.stringify(criado.body)).toBe(201);
+  const id = String(criado.body.group.id);
+
+  const faixa = await request(app)
+    .put(`/api/v1/core/commissions/groups/${id}/tiers`)
+    .set(gerenteA.auth)
+    .send({ minCents: 0, rateBps: 100 });
+  expect(faixa.status, JSON.stringify(faixa.body)).toBe(200);
+  return id;
+}
+
+/**
+ * A linha que o defeito antigo de `setTier` gravava: `company_id` da VIZINHA,
+ * `group_id` do grupo daqui. Escrita à mão de propósito — a rota não a grava
+ * mais, e é justamente o resíduo de um banco anterior ao conserto que se quer
+ * neutralizar.
+ */
+function faixaOrfaNoGrupo(groupId: string, companyIdDaVizinha: string, minCents: number, rateBps: number): string {
+  const id = randomUUID();
+  getConnection()
+    .prepare(
+      `INSERT INTO core_commission_tiers (id, company_id, group_id, min_cents, rate_bps, created_at)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+    )
+    .run(id, companyIdDaVizinha, groupId, minCents, rateBps, new Date().toISOString());
+  return id;
+}
+
+/**
+ * Uma venda da A no banco — o mínimo que a chave estrangeira de
+ * `core_commission_entries.sale_id` exige. A apuração é o que este caso mede;
+ * o caminho do PDV até a venda tem suíte própria.
+ */
+function vendaDaA(sellerId: string, totalCents: number): string {
+  const id = randomUUID();
+  getConnection()
+    .prepare(
+      `INSERT INTO core_sales (id, company_id, number, seller_id, status, subtotal_cents,
+                               total_cents, idempotency_key, created_at)
+       VALUES (?, ?, ?, ?, 'completed', ?, ?, ?, ?)`,
+    )
+    .run(id, empresaA, 1, sellerId, totalCents, totalCents, `idem-${id}`, new Date().toISOString());
+  return id;
+}
+
+describe('a faixa com a empresa da vizinha não entra na apuração daqui', () => {
+  it('a venda paga a faixa da PRÓPRIA empresa (1%), não os 50% da linha órfã', async () => {
+    const grupoA = await grupoDeUmPorCentoNaA();
+    faixaOrfaNoGrupo(grupoA, empresaB, 1_000, 5_000);
+
+    const membro = await request(app)
+      .put(`/api/v1/core/commissions/members/${gerenteA.userId}`)
+      .set(gerenteA.auth)
+      .send({ groupId: grupoA });
+    expect(membro.status, JSON.stringify(membro.body)).toBe(200);
+
+    // R$ 20,00 de base: a faixa da A paga 20 centavos; a órfã pagaria 1000.
+    const saleId = vendaDaA(gerenteA.userId, 2_000);
+    registrarComissaoDaVenda({
+      companyId: empresaA,
+      saleId,
+      sellerId: gerenteA.userId,
+      baseCents: 2_000,
+    });
+
+    const linha = getConnection()
+      .prepare('SELECT amount_cents, rate_bps FROM core_commission_entries WHERE sale_id = ?')
+      .get(saleId) as { amount_cents: number; rate_bps: number } | undefined;
+
+    expect(linha, 'a venda tinha de gerar comissão pela faixa da própria empresa').toBeTruthy();
+    expect(linha!.rate_bps).toBe(100);
+    expect(linha!.amount_cents).toBe(20);
+  });
+
+  it('e remover a faixa órfã pela empresa errada não diz "removida": 404, e a linha continua', async () => {
+    const grupoA = await grupoDeUmPorCentoNaA();
+    const orfa = faixaOrfaNoGrupo(grupoA, empresaB, 1_000, 5_000);
+
+    const res = await request(app)
+      .delete(`/api/v1/core/commissions/tiers/${orfa}`)
+      .set(gerenteA.auth);
+
+    // O DELETE é escopado por empresa e não apagou nada: sucesso falso era a
+    // tela dizer "Faixa removida." sobre uma linha que continuou lá.
+    expect(res.status, JSON.stringify(res.body)).toBe(404);
+    expect(res.body?.error?.code).toBe('CORE_COMMISSION_TIER_NOT_FOUND');
+    const ainda = getConnection()
+      .prepare('SELECT COUNT(*) AS n FROM core_commission_tiers WHERE id = ?')
+      .get(orfa) as { n: number };
+    expect(ainda.n).toBe(1);
+  });
+
+  it('a faixa da própria empresa continua saindo pelo DELETE', async () => {
+    const grupoA = await grupoDeUmPorCentoNaA();
+    const minha = (
+      getConnection()
+        .prepare('SELECT id FROM core_commission_tiers WHERE group_id = ? AND company_id = ?')
+        .get(grupoA, empresaA) as { id: string }
+    ).id;
+
+    const res = await request(app)
+      .delete(`/api/v1/core/commissions/tiers/${minha}`)
+      .set(gerenteA.auth);
+
+    expect(res.status, JSON.stringify(res.body)).toBe(204);
+    expect(faixasDoGrupo(grupoA)).toBe(0);
+  });
+});
+
+// ============================================================================
+// QUEM SAIU DA OPERAÇÃO NÃO FICA COM VÍNCULO DE COMISSÃO PRESO
+// ============================================================================
+
+/** Uma vendedora da A que também tem vínculo na B — senão o desligamento é recusado. */
+async function vendedoraDasDuas(): Promise<Ator> {
+  const a = await ator('VEND.COM.A', empresaA, 'atendente');
+  linkUserToCompany(a.userId, empresaB, 'atendente', false);
+  return a;
+}
+
+function vinculosDeComissao(userId: string, companyId: string): number {
+  return (
+    getConnection()
+      .prepare('SELECT COUNT(*) AS n FROM core_commission_members WHERE user_id = ? AND company_id = ?')
+      .get(userId, companyId) as { n: number }
+  ).n;
+}
+
+describe('o desligamento leva o vínculo de comissão junto', () => {
+  it('sair da operação apaga a linha — e a readmissão não volta comissionando sozinha', async () => {
+    const grupoA = await grupoDeUmPorCentoNaA();
+    const vendedora = await vendedoraDasDuas();
+
+    const membro = await request(app)
+      .put(`/api/v1/core/commissions/members/${vendedora.userId}`)
+      .set(gerenteA.auth)
+      .send({ groupId: grupoA });
+    expect(membro.status, JSON.stringify(membro.body)).toBe(200);
+    expect(vinculosDeComissao(vendedora.userId, empresaA)).toBe(1);
+
+    const saiu = await request(app)
+      .post(`/api/v1/core/team/${vendedora.userId}/remove-from-company`)
+      .set(gerenteA.auth)
+      .send({});
+    expect(saiu.status, JSON.stringify(saiu.body)).toBe(200);
+    expect(vinculosDeComissao(vendedora.userId, empresaA)).toBe(0);
+
+    // Readmitida, ela volta SEM grupo: comissionar de novo é decisão de alguém.
+    const devolta = await request(app)
+      .post('/api/v1/core/team/link')
+      .set(gerenteA.auth)
+      .send({ login: 'VEND.COM.A', profileCode: 'atendente' });
+    expect(devolta.status, JSON.stringify(devolta.body)).toBe(201);
+    expect(vinculosDeComissao(vendedora.userId, empresaA)).toBe(0);
+  });
+
+  it('a linha que já ficou órfã em base antiga ainda sai pelo PUT com groupId nulo', async () => {
+    const grupoA = await grupoDeUmPorCentoNaA();
+    const vendedora = await vendedoraDasDuas();
+
+    const saiu = await request(app)
+      .post(`/api/v1/core/team/${vendedora.userId}/remove-from-company`)
+      .set(gerenteA.auth)
+      .send({});
+    expect(saiu.status, JSON.stringify(saiu.body)).toBe(200);
+
+    /*
+      O estado que qualquer banco anterior ao conserto tem: a pessoa já saiu da
+      operação e a linha de comissão ficou. Escrita à mão porque a rota não a
+      cria mais nesse estado — e é exatamente ela que precisava voltar a sair.
+    */
+    getConnection()
+      .prepare(
+        `INSERT INTO core_commission_members (company_id, user_id, group_id, created_at)
+         VALUES (?, ?, ?, ?)`,
+      )
+      .run(empresaA, vendedora.userId, grupoA, new Date().toISOString());
+    expect(vinculosDeComissao(vendedora.userId, empresaA)).toBe(1);
+
+    const tirou = await request(app)
+      .put(`/api/v1/core/commissions/members/${vendedora.userId}`)
+      .set(gerenteA.auth)
+      .send({ groupId: null });
+
+    // Antes: 404 CORE_COMMISSION_MEMBER_NOT_FOUND, e a linha ficava para sempre.
+    expect(tirou.status, JSON.stringify(tirou.body)).toBe(200);
+    expect(vinculosDeComissao(vendedora.userId, empresaA)).toBe(0);
+  });
+
+  it('e ATRIBUIR grupo a quem não é da operação continua sendo 404', async () => {
+    const grupoA = await grupoDeUmPorCentoNaA();
+    const vendedora = await vendedoraDasDuas();
+
+    const saiu = await request(app)
+      .post(`/api/v1/core/team/${vendedora.userId}/remove-from-company`)
+      .set(gerenteA.auth)
+      .send({});
+    expect(saiu.status, JSON.stringify(saiu.body)).toBe(200);
+
+    // Apagar nunca vaza nada; ATRIBUIR é o ato que faria gente de fora
+    // aparecer na apuração daqui — e esse continua guardado.
+    const res = await request(app)
+      .put(`/api/v1/core/commissions/members/${vendedora.userId}`)
+      .set(gerenteA.auth)
+      .send({ groupId: grupoA });
+
+    expect(res.status, JSON.stringify(res.body)).toBe(404);
+    expect(res.body?.error?.code).toBe('CORE_COMMISSION_MEMBER_NOT_FOUND');
+    expect(vinculosDeComissao(vendedora.userId, empresaA)).toBe(0);
   });
 });

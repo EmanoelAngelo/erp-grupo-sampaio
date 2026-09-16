@@ -789,6 +789,21 @@ export function removerDaOperacao(input: {
         WHERE user_id = ?
           AND workshop_id IN (SELECT id FROM core_workshops WHERE company_id = ?)`,
     ).run(input.userId, input.companyId);
+    /*
+      O VÍNCULO DE COMISSÃO SAI JUNTO — senão a readmissão comissiona sozinha.
+
+      Quem era removido da operação deixava para trás a linha de
+      `core_commission_members`: a pessoa sumia da tela (ComissõesPage lista a
+      EQUIPE), mas a linha continuava no banco, `faixaPara` continuava
+      resolvendo a faixa dela, e o dia em que a pessoa fosse revinculada ela
+      voltava comissionada no grupo antigo sem ninguém ter decidido isso. O que
+      já foi APURADO (`core_commission_entries`) fica: é dinheiro de venda que
+      aconteceu, e período fechado não se reescreve por desligamento.
+    */
+    db.prepare('DELETE FROM core_commission_members WHERE company_id = ? AND user_id = ?').run(
+      input.companyId,
+      input.userId,
+    );
     const removido = db
       .prepare('SELECT is_default FROM core_user_companies WHERE user_id = ? AND company_id = ?')
       .get(input.userId, input.companyId) as { is_default: number };
