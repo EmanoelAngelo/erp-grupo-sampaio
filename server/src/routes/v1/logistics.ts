@@ -29,7 +29,6 @@ import {
   isLogisticsCarrierId,
   lerEntradaDeCredencial,
   removeLogisticsCredentials,
-  type LogisticsCarrierId,
 } from '../../services/logistics/LogisticsCredentialService.js';
 import {
   cancelarEnvio,
@@ -57,8 +56,33 @@ logisticsRouter.get('/readiness', authMiddleware, requirePermission('logistics.v
   res.json(logisticsReadiness(req.auth!.companyId));
 });
 
-logisticsRouter.get('/providers-status', authMiddleware, requirePermission('logistics.view'), async (req: AuthedRequest, res) => {
-  res.json(await logisticsProvidersStatus(req.auth!.companyId));
+/*
+  ============================================================================
+  HANDLER `async` SEM `next(err)` NÃO RESPONDE NUNCA — nem com erro
+  ============================================================================
+
+  Este roteador roda sobre Express 4, que NÃO conhece promessa: o que um
+  handler `async` rejeita não chega ao tratador de erros. A requisição fica
+  aberta, sem resposta e sem status, até o cliente desistir — e a tela
+  Logística fica girando para sempre. Em produção a rejeição só vira uma linha
+  de log (`instalarRedeDeSeguranca`); na suíte, derruba o processo do teste.
+
+  Eram três rotas assim aqui. Duas delas (as de teste, logo abaixo) tinham
+  também o gatilho: o `:carrier` da URL entrava sem conferência nenhuma, e
+  `simulateQuote` indexa uma tabela por transportadora — nome desconhecido é
+  `undefined.map(...)`, um TypeError dentro da promessa. As irmãs
+  (`test-connection`, `DELETE credentials`) já conferiam o nome; estas duas
+  ficaram de fora.
+
+  As três passam a devolver o erro pelo `next` — e as de teste recusam a
+  transportadora desconhecida com o mesmo 400 das irmãs, antes de chamar nada.
+*/
+logisticsRouter.get('/providers-status', authMiddleware, requirePermission('logistics.view'), async (req: AuthedRequest, res, next) => {
+  try {
+    res.json(await logisticsProvidersStatus(req.auth!.companyId));
+  } catch (err) {
+    next(err);
+  }
 });
 
 /**
@@ -366,22 +390,35 @@ logisticsRouter.post('/carriers/:carrier/test-connection', authMiddleware, requi
   }
 });
 
-logisticsRouter.post('/carriers/:carrier/test-quote', authMiddleware, requirePermission('logistics.quote.request'), async (req: AuthedRequest, res) => {
-  const result = await backendLogisticsQuote(req.auth!.companyId, {
-    ...req.body,
-    carrier: String(req.params.carrier) as LogisticsCarrierId,
-  });
-  res.json(result);
+logisticsRouter.post('/carriers/:carrier/test-quote', authMiddleware, requirePermission('logistics.quote.request'), async (req: AuthedRequest, res, next) => {
+  try {
+    const carrier = String(req.params.carrier);
+    if (!isLogisticsCarrierId(carrier)) {
+      throw new ApiError('LOGISTICS_CARRIER_INVALID', 'Transportadora desconhecida.', 400);
+    }
+    res.json(await backendLogisticsQuote(req.auth!.companyId, { ...req.body, carrier }));
+  } catch (err) {
+    next(err);
+  }
 });
 
-logisticsRouter.post('/carriers/:carrier/test-tracking', authMiddleware, requirePermission('logistics.tracking.view'), async (req: AuthedRequest, res) => {
-  const result = await trackLogisticsCarrier(
-    req.auth!.companyId,
-    String(req.params.carrier) as LogisticsCarrierId,
-    String(req.body?.trackingCode ?? 'TEST-001'),
-    req.body?.storeId,
-  );
-  res.json(result);
+logisticsRouter.post('/carriers/:carrier/test-tracking', authMiddleware, requirePermission('logistics.tracking.view'), async (req: AuthedRequest, res, next) => {
+  try {
+    const carrier = String(req.params.carrier);
+    if (!isLogisticsCarrierId(carrier)) {
+      throw new ApiError('LOGISTICS_CARRIER_INVALID', 'Transportadora desconhecida.', 400);
+    }
+    res.json(
+      await trackLogisticsCarrier(
+        req.auth!.companyId,
+        carrier,
+        String(req.body?.trackingCode ?? 'TEST-001'),
+        req.body?.storeId,
+      ),
+    );
+  } catch (err) {
+    next(err);
+  }
 });
 
 logisticsRouter.get('/homologation', authMiddleware, requirePermission('logistics.homologation.run'), (req: AuthedRequest, res) => {
@@ -391,7 +428,13 @@ logisticsRouter.get('/homologation', authMiddleware, requirePermission('logistic
 logisticsRouter.post('/homologation/run', authMiddleware, requirePermission('logistics.homologation.run'), async (req: AuthedRequest, res, next) => {
   try {
     const idempotencyKey = requireIdempotencyKey(req.headers['idempotency-key'] as string);
-    const carrier = String(req.body?.carrier ?? 'melhor_envio') as LogisticsCarrierId;
+    // Nome desconhecido não vira linha de homologação: gravava `carrier:
+    // 'qualquer-coisa'` com "Credenciais ausentes." e sujava a última rodada
+    // que a tela mostra.
+    const carrier = String(req.body?.carrier ?? 'melhor_envio');
+    if (!isLogisticsCarrierId(carrier)) {
+      throw new ApiError('LOGISTICS_CARRIER_INVALID', 'Transportadora desconhecida.', 400);
+    }
     // A mesma chave com outro pedido é recusada ANTES de a rodada rodar.
     conferirRequisicaoRepetida(idempotencyKey, req.auth!.companyId, requisicaoDe(req));
     const runResult = await runLogisticsHomologationBackend(req.auth!.companyId, carrier, req.body?.storeId);

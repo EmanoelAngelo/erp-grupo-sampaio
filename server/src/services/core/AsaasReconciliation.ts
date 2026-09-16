@@ -30,6 +30,7 @@
  */
 import { getConnection } from '../../db/sqlite.js';
 import { ensureCoreSchema } from '../../db/schema.js';
+import { ApiError } from '../../utils/errors.js';
 import { hojeNaLoja, limitesDoPeriodo, somarDias } from './CalendarioOperacional.js';
 import type { PaymentOriginType } from './PaymentService.js';
 import type { StatusDaCobranca } from './FinanceChargeService.js';
@@ -192,10 +193,72 @@ export interface ReconciliationReport {
   rows: ReconciliationRow[];
 }
 
-/** Um dia inteiro, do primeiro ao último instante, no relógio da loja. */
+const SO_DATA = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * O dia existe no calendário?
+ *
+ * `Date.parse('2026-02-31T12:00:00Z')` NÃO devolve `NaN` — o V8 rola para 3 de
+ * março. Um 31 de fevereiro passaria como data válida e conciliaria um dia que
+ * ninguém pediu. A conferência é reconstruir a data e exigir que as três
+ * partes voltem iguais: 2026-02-31 volta como 2026-03-03 e cai fora.
+ */
+function diaDoCalendario(valor: string): boolean {
+  if (!SO_DATA.test(valor)) return false;
+  const [ano, mes, dia] = valor.split('-').map(Number);
+  const d = new Date(Date.UTC(ano, mes - 1, dia));
+  return d.getUTCFullYear() === ano && d.getUTCMonth() === mes - 1 && d.getUTCDate() === dia;
+}
+
+/**
+ * Um dia inteiro, do primeiro ao último instante, no relógio da loja.
+ *
+ * ============================================================================
+ * O RECORTE É CONFERIDO — "não houve o que conferir" não pode ser a resposta a
+ * um período impossível
+ * ============================================================================
+ *
+ * As duas pontas vinham da query string direto para cá, sem nenhuma conferência,
+ * e cada jeito de errar tinha um desfecho pior que o anterior:
+ *
+ *   - PONTAS TROCADAS (`from` depois de `to`) — o `BETWEEN` do SQL não casa
+ *     nada, o relatório volta vazio, e a tela imprime "Nenhum recebimento do
+ *     provedor neste período — não houve o que conferir". É a frase escrita
+ *     justamente para NÃO dar garantia falsa, dizendo garantia falsa: quem
+ *     confere dinheiro fecha a tela achando que olhou o período.
+ *   - DATA IMPOSSÍVEL (`2026-99-99`) — `Date.UTC(2026, 98, 99)` é uma data
+ *     válida lá em 2034. A janela vira um pedaço de futuro, e o desfecho é o
+ *     mesmo vazio tranquilizador.
+ *   - TEXTO QUE NÃO É DATA (`abc`) — `instanteDaParede` estoura um TypeError, e
+ *     a tela recebe 500 "erro interno", que não diz a ninguém o que corrigir.
+ *
+ * A régua é a que `FluxoDeCaixa` já usa nas datas dele: formato AAAA-MM-DD, dia
+ * que existe no calendário, e fim não anterior ao começo. Recusa com motivo, em
+ * 400 — não um relatório vazio que parece um "tudo certo".
+ */
 function janela(from?: string, to?: string): { from: string; to: string } {
-  const fim = to ?? hojeNaLoja();
-  const inicio = from ?? somarDias(fim, -30);
+  for (const [nome, valor] of [
+    ['from', from],
+    ['to', to],
+  ] as const) {
+    if (valor === undefined || valor === null || valor === '') continue;
+    if (!diaDoCalendario(valor)) {
+      throw new ApiError(
+        'CORE_RECONCILIATION_DATE_INVALID',
+        `Data inválida em ${nome}: use AAAA-MM-DD.`,
+        400,
+      );
+    }
+  }
+  const fim = to || hojeNaLoja();
+  const inicio = from || somarDias(fim, -30);
+  if (fim < inicio) {
+    throw new ApiError(
+      'CORE_RECONCILIATION_RANGE_INVALID',
+      'O fim do período é anterior ao começo: confira as datas do recorte.',
+      400,
+    );
+  }
   const limites = limitesDoPeriodo(inicio, fim);
   return { from: limites.inicio, to: limites.fim };
 }

@@ -237,8 +237,40 @@ export function getAsaasCredentialStatus(
   const sandboxVault = vaultSecrets.find((s) => s.secretType === 'asaas_sandbox_api_key');
   const productionVault = vaultSecrets.find((s) => s.secretType === 'asaas_production_api_key');
   const webhookVault = vaultSecrets.find((s) => s.secretType === 'webhook_token');
-  const envSandbox = secretProvider.getAsaasStatus('sandbox');
-  const envProduction = secretProvider.getAsaasStatus('production');
+
+  /*
+    ================================================================
+    DEFEITO: A TELA DIZIA "CONFIGURADA" SOBRE A CHAVE QUE O SERVIDOR RECUSA
+    ================================================================
+
+    A chave de ambiente entrava aqui direto de `secretProvider.getAsaasStatus`,
+    que só pergunta "existe no `.env`?". Mas quem ENTREGA a chave para cobrar é
+    `getAsaasApiKey`, e ela tem duas guardas que este status não tinha:
+
+      - produção NUNCA vem do `.env` (o bloco no alto deste arquivo explica:
+        não há como o código saber de quem é aquela chave, e o custo de
+        adivinhar é dinheiro na conta de outro CNPJ);
+      - sandbox pelo `.env` só fora de produção (`asaasEnvFallbackAllowed`) —
+        a mesma régua que o token do webhook já seguia, logo abaixo.
+
+    A consequência é medível numa instalação com `ASAAS_PRODUCTION_ENABLED=true`
+    e a chave de produção no `.env` — exatamente o `.env` desta bancada, como
+    `tests/setup.ts` registra. Integrações › Asaas mostrava "Produção:
+    configurada", com a dica mascarada de uma chave que não é da operação;
+    "Testar conexão" escolhe os ambientes a testar POR ESTE `configured`,
+    entrava no de produção e recebia de volta "Nenhuma API key de produção
+    configurada para esta operação" — deixando o botão sempre vermelho, mesmo
+    com o sandbox verde. Duas afirmações do mesmo servidor sobre a mesma chave,
+    uma negando a outra, no dia da implantação.
+
+    O conserto é a mesma régua da entrega, aplicada aqui: chave de ambiente que
+    `getAsaasApiKey` recusaria não é "configurada".
+  */
+  const SEM_CHAVE_DE_AMBIENTE = { configured: false, maskedHint: undefined } as const;
+  const envSandbox = asaasEnvFallbackAllowed()
+    ? secretProvider.getAsaasStatus('sandbox')
+    : SEM_CHAVE_DE_AMBIENTE;
+  const envProduction = SEM_CHAVE_DE_AMBIENTE;
   // Token de ambiente que o servidor RECUSA (produção) não é "configurado": a
   // tela diria "Configurada" e o Asaas levaria 503 (GAP-PRD-113).
   const envWebhook = asaasEnvFallbackAllowed() ? secretProvider.getAsaasWebhookToken() : null;
