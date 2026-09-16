@@ -41,7 +41,10 @@ import { marcarCobrancasAEstornar } from './EstornoNaMaquininha.js';
 import { listKitComponents, produtoControlaEstoque } from './CatalogAuxService.js';
 import { fluxoDaDevolucao } from './SalePolicyService.js';
 import { fiscalStatusForSale } from './FiscalPipelineService.js';
-import { notaDeDevolucaoDoRegistro } from './SituacaoFiscalDaDevolucao.js';
+import {
+  destinatarioSugeridoDaDevolucaoDeVenda,
+  notaDeDevolucaoDoRegistro,
+} from './SituacaoFiscalDaDevolucao.js';
 import {
   chaveReusada,
   impressaoDe,
@@ -1453,6 +1456,14 @@ export function getSaleReturn(companyId: string, returnId: string): Record<strin
     fiscal: estadoFiscalDaVenda(companyId, saleId),
     // A NF-e de devolução DESTE registro, quando já existe (P0 fiscal).
     notaDeDevolucao: notaDeDevolucaoDoRegistro(companyId, 'devolucao_venda', returnId),
+    /*
+      QUEM A LOJA JÁ SABE QUE COMPROU (P0 fiscal). A NF-e de devolução de venda
+      exige o endereço do destinatário com código IBGE, e a loja não o tem — o
+      balcão vende com CPF e pronto. O que ela tem é o nome e o documento que
+      foram para a NFC-e, e é com eles que o formulário da tela nasce
+      preenchido, em vez de a pessoa redigitar o que o sistema já sabe.
+    */
+    destinatarioSugerido: destinatarioSugeridoDaDevolucaoDeVenda(companyId, returnId),
   };
 }
 

@@ -1291,6 +1291,64 @@ export interface SaleReturnDetail extends SaleReturn {
     sugestao: { method: MeioDoReembolso; cents: number }[];
   };
   fiscal?: EstadoFiscalDaDevolucao;
+  /** A NF-e de devolução DESTE registro, quando já existe (P0 fiscal). */
+  notaDeDevolucao?: NotaDeDevolucaoDoRegistro | null;
+  /**
+   * Quem a loja já sabe que comprou — o destinatário da NFC-e, ou o cliente da
+   * venda. O endereço não vem: a loja não o tem, e é por isso que o formulário
+   * o pede em vez de o sistema inventá-lo.
+   */
+  destinatarioSugerido?: { name: string; document: string } | null;
+}
+
+/** A nota de devolução de um registro de devolução (venda ou compra). */
+export interface NotaDeDevolucaoDoRegistro {
+  documentId: string;
+  model: string;
+  serie: number;
+  number: number;
+  accessKey: string | null;
+  status: string;
+  protocol: string | null;
+  referencedAccessKey: string | null;
+}
+
+/**
+ * O destinatário de uma NF-e de devolução de VENDA.
+ *
+ * O leiaute exige o endereço com o código IBGE do município: a nota de entrada
+ * identifica a cidade pelo código, não pelo nome. Por isso o formulário usa o
+ * seletor de município — quem devolve nunca digita o código.
+ */
+export interface DestinatarioDaDevolucao {
+  document: string;
+  name: string;
+  ieIndicator: '1' | '2' | '9';
+  ie?: string | null;
+  street: string;
+  number: string;
+  complement?: string | null;
+  district: string;
+  cityName: string;
+  cityIbge: string;
+  uf: string;
+  zip?: string | null;
+}
+
+/** O que a emissão da NF-e de devolução devolve — o recorte que a ficha mostra. */
+export interface EmissaoDaNotaDeDevolucao {
+  document: {
+    id: string;
+    model: string;
+    serie: number;
+    number: number;
+    accessKey: string | null;
+    status: string;
+    protocol: string | null;
+  };
+  statusLabel?: string;
+  /** O que o contador ainda não confirmou nesta operação — declarado, nunca escondido. */
+  pendencias: string[];
 }
 
 /** A venda que está sendo devolvida — o que a tela mostra antes dos itens. */
@@ -6831,6 +6889,22 @@ export const coreApi = {
   },
 
   getSaleReturn: (id: string) => apiRequest<SaleReturnDetail>(`/core/sale-returns/${id}`),
+
+  /**
+   * A NF-e DE DEVOLUÇÃO DE VENDA (P0 fiscal).
+   *
+   * A rota existia e nenhuma tela a chamava: a ficha da devolução dizia que a
+   * regularização é "a NF-e de devolução, emitida pela devolução" e não
+   * oferecia o gesto. O destinatário vai no corpo porque a loja NÃO o tem: a
+   * NFC-e do balcão sai com o CPF e pronto, e o leiaute da nota de entrada
+   * exige o endereço com código IBGE. Quem digita é quem está com o cliente na
+   * frente — o sistema não inventa endereço.
+   */
+  emitirNfeDeDevolucaoDeVenda: (returnId: string, recipient: DestinatarioDaDevolucao) =>
+    apiRequest<EmissaoDaNotaDeDevolucao>(
+      `/core/fiscal/devolucoes/venda/${encodeURIComponent(returnId)}/nfe`,
+      { method: 'POST', body: { recipient } },
+    ).then((r) => exigirCampos(r, 'document')),
 
   createSaleReturn: (input: {
     saleId: string;

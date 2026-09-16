@@ -37,6 +37,7 @@ import {
 } from '../src/services/core/FiscalDevolucao.js';
 import { reemitirRejeitada } from '../src/services/core/FiscalReemissao.js';
 import { getSaleReturn } from '../src/services/core/SaleReturnService.js';
+import { destinatarioSugeridoDaDevolucaoDeVenda } from '../src/services/core/SituacaoFiscalDaDevolucao.js';
 import { getDevolucao } from '../src/services/core/SupplierReturnService.js';
 import { renderDanfe } from '../src/services/core/DanfeRenderer.js';
 import { parseSefazResponse, type AuthorizeRequest, type SefazResponse } from '../src/services/core/SefazAdapter.js';
@@ -628,5 +629,68 @@ describe('o destinatário da devolução de compra sai do cadastro do fornecedor
     expect(() => destinatarioDaDevolucaoDeCompra(empresa, returnId)).toThrow(
       /não tem fornecedor cadastrado/,
     );
+  });
+});
+
+/**
+ * O QUE A LOJA JÁ SABE SOBRE QUEM DEVOLVEU (P0 fiscal).
+ *
+ * A NF-e de devolução de VENDA é nota de ENTRADA, e o leiaute exige o endereço
+ * do destinatário com código IBGE — endereço que a loja não tem (a NFC-e do
+ * balcão sai com o CPF). O que ela tem é o nome e o documento que foram para a
+ * nota, e é com eles que o formulário da tela nasce preenchido. Montar o
+ * destinatário sozinho poria endereço inventado numa nota fiscal.
+ */
+describe('o destinatário SUGERIDO da devolução de venda', () => {
+  it('vem do cliente da venda quando a NFC-e não guarda destinatário', () => {
+    const v = venda();
+    inserir('core_customers', {
+      id: 'cli-1',
+      company_id: empresa,
+      name: 'Maria Consumidora',
+      document: '123.456.789-09',
+      active: 1,
+    });
+    getConnection().prepare('UPDATE core_sales SET customer_id = ? WHERE id = ?').run('cli-1', v.saleId);
+    const returnId = devolucaoDeVenda(v);
+
+    expect(destinatarioSugeridoDaDevolucaoDeVenda(empresa, returnId)).toEqual({
+      name: 'Maria Consumidora',
+      document: '12345678909',
+    });
+  });
+
+  it('venda sem cliente e sem destinatário na nota: nulo — o formulário nasce vazio, e é honesto', () => {
+    const returnId = devolucaoDeVenda(venda());
+    expect(destinatarioSugeridoDaDevolucaoDeVenda(empresa, returnId)).toBeNull();
+  });
+
+  it('o destinatário da NOTA ganha do cadastro: é quem foi para o fisco', async () => {
+    const v = venda();
+    inserir('core_customers', {
+      id: 'cli-2',
+      company_id: empresa,
+      name: 'Nome de hoje no cadastro',
+      document: '123.456.789-09',
+      active: 1,
+    });
+    getConnection().prepare('UPDATE core_sales SET customer_id = ? WHERE id = ?').run('cli-2', v.saleId);
+
+    /*
+      A NF-e guarda o destinatário DAQUELA nota (`recipient_name`); a NFC-e não
+      guarda nenhum. Aqui a nota da venda passa a ter destinatário gravado — o
+      caso da venda faturada em NF-e —, e ele tem de ganhar do cadastro: o
+      cadastro mostra o nome de HOJE, e a nota mostra o que foi ao fisco.
+    */
+    await emitNfceForSale({ companyId: empresa, saleId: v.saleId, developmentMode: true });
+    getConnection()
+      .prepare('UPDATE core_fiscal_documents SET recipient_name = ?, recipient_document = ? WHERE sale_id = ?')
+      .run('Maria da Nota', '52998224725', v.saleId);
+
+    const returnId = devolucaoDeVenda(v);
+    expect(destinatarioSugeridoDaDevolucaoDeVenda(empresa, returnId)).toEqual({
+      name: 'Maria da Nota',
+      document: '52998224725',
+    });
   });
 });
