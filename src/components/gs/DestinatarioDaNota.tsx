@@ -22,14 +22,28 @@
  * de entrada, finalidade 4) e a ficha da venda (a nota da venda de balcão).
  * Um formulário só — duas cópias divergiriam no primeiro campo novo do
  * leiaute. As funções puras moram em `@/lib/destinatarioDaNota`.
+ *
+ * A CONDIÇÃO FISCAL (indIEDest) É PERGUNTADA, e era o campo sem escritor: o
+ * corpo saía com '9' (não contribuinte) cravado no código e o formulário não
+ * oferecia nada para corrigi-lo, então o cliente PJ CONTRIBUINTE — o caso de
+ * uso que justifica a NF-e de balcão — recebia uma nota que declarava a
+ * operação errada, sem caminho nenhum no sistema para emiti-la certa.
  */
 import { Field, Input } from '@/components/gs/ui';
 import { CidadeComSugestoes } from '@/components/gs/CidadeComSugestoes';
 import { UFS } from '@/lib/api/municipios';
 import {
   documentoDoDestinatarioConfere,
+  type IndicadorDeIe,
   type RascunhoDoDestinatario,
 } from '@/lib/destinatarioDaNota';
+
+/** O que cada indicador significa no balcão — a frase, não o número. */
+const CONDICOES: { valor: IndicadorDeIe; texto: string }[] = [
+  { valor: '9', texto: 'Não contribuinte (consumidor)' },
+  { valor: '1', texto: 'Contribuinte com inscrição estadual' },
+  { valor: '2', texto: 'Contribuinte isento de inscrição' },
+];
 
 export function FormularioDoDestinatario({
   valor,
@@ -60,6 +74,85 @@ export function FormularioDoDestinatario({
       <Field label="CEP">
         {(p) => <Input {...p} value={valor.zip} onChange={(e) => set('zip')(e.target.value)} />}
       </Field>
+
+      {/*
+        A CONDIÇÃO FISCAL DE QUEM RECEBE — o campo que não tinha escritor.
+
+        O DEFEITO: o corpo saía sempre com `ieIndicator: '9'` (não
+        contribuinte) e o formulário não perguntava nada, então TODA nota das
+        telas novas ia com indIEDest 9 e indFinal 1 — inclusive para CNPJ. O
+        cliente PJ contribuinte, que é o caso de uso da NF-e de balcão, não
+        tinha caminho nenhum no sistema para receber a nota certa. Errar isto
+        muda a tributação da operação.
+      */}
+      <Field
+        label="Condição fiscal do destinatário"
+        required
+        hint="É o indicador de inscrição estadual da nota (indIEDest) — muda a tributação da operação."
+      >
+        {(p) => (
+          <select
+            {...p}
+            value={valor.ieIndicator}
+            onChange={(e) => {
+              const ieIndicator = e.target.value as IndicadorDeIe;
+              onMudar({
+                ...valor,
+                ieIndicator,
+                // Deixar de ser contribuinte com IE apaga a inscrição: ela era
+                // da condição anterior, e iria para a nota contradizendo-a.
+                ie: ieIndicator === '1' ? valor.ie : '',
+                /*
+                  O padrão de cada condição é o que o servidor DEDUZIRIA sem a
+                  declaração (`indicadorDeConsumidorFinal`): não contribuinte e
+                  isento são consumidor final; contribuinte com inscrição
+                  compra para revender. Trocar a condição e herdar a resposta
+                  da anterior faria a tela declarar o que ninguém disse.
+                */
+                consumidorFinal: ieIndicator !== '1',
+              });
+            }}
+            className="w-full rounded-[var(--gs-radius)] border border-[var(--gs-border)]
+              bg-[var(--gs-surface)] px-3 py-2"
+          >
+            {CONDICOES.map((c) => (
+              <option key={c.valor} value={c.valor}>
+                {c.texto}
+              </option>
+            ))}
+          </select>
+        )}
+      </Field>
+      {valor.ieIndicator === '1' && (
+        <Field
+          label="Inscrição estadual"
+          required
+          hint="Só dígitos (no RS, o CGC/TE)."
+          error={
+            valor.ie && !/\d/.test(valor.ie)
+              ? '"ISENTO" não é inscrição: para isento, escolha "Contribuinte isento de inscrição".'
+              : undefined
+          }
+        >
+          {(p) => <Input {...p} value={valor.ie} onChange={(e) => set('ie')(e.target.value)} />}
+        </Field>
+      )}
+      {valor.ieIndicator !== '9' && (
+        <Field label="Destino da mercadoria" hint="Decide o indFinal da nota.">
+          {(p) => (
+            <select
+              {...p}
+              value={valor.consumidorFinal ? 'consumo' : 'revenda'}
+              onChange={(e) => onMudar({ ...valor, consumidorFinal: e.target.value === 'consumo' })}
+              className="w-full rounded-[var(--gs-radius)] border border-[var(--gs-border)]
+                bg-[var(--gs-surface)] px-3 py-2"
+            >
+              <option value="revenda">Revenda ou industrialização</option>
+              <option value="consumo">Uso ou consumo do destinatário</option>
+            </select>
+          )}
+        </Field>
+      )}
       <Field label="Logradouro" required>
         {(p) => <Input {...p} value={valor.street} onChange={(e) => set('street')(e.target.value)} />}
       </Field>
