@@ -118,8 +118,8 @@ export function PendenciasDoFechamento({
             {temEletronico ? 'Cartão e PIX não estão na gaveta: caem na conta. ' : ''}
             Atenção: {formatCents(naGavetaCents)} desta lista ESTÁ na contagem desta gaveta e não é
             da loja — o dinheiro da venda guardada e o reembolso ainda não pago, quando for em
-            espécie, saem daí. Fechar agora não resolve nada disso, em Vendas › Conferência de
-            maquininha e em Vendas › Devoluções: só registra que você fechou sabendo.
+            espécie, saem daí. Resolva em Vendas › Conferência de maquininha e em Vendas ›
+            Devoluções; fechar agora não resolve nada disso, só registra que você fechou sabendo.
           </>
         ) : (
           <>
