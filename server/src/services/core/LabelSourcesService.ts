@@ -145,6 +145,29 @@ export interface LabelCandidate {
    * gastar adesivo, em vez de o papel sair com "código inválido".
    */
   avisoDoCodigo: string | null;
+  /**
+   * O produto controla lote (`core_products.tracks_batches`). Sem isto a tela
+   * não sabe distinguir "não tem lote nenhum" de "controla lote e ainda não
+   * declararam nenhum com saldo" — e a segunda pede aviso, porque a etiqueta
+   * do iogurte sai SEM validade.
+   */
+  rastreiaLote: boolean;
+  /**
+   * Os lotes COM SALDO deste produto, na MESMA ordem em que a folha escolhe
+   * sozinha (`loteDaEtiqueta` de BarcodeService: vence primeiro, depois o mais
+   * antigo). O primeiro é o automático; a tela mostra qual é e deixa trocar.
+   */
+  lotes: LoteDoCandidato[];
+}
+
+/** Um lote na fila de etiquetas: o que se lê na embalagem e o que está na prateleira. */
+export interface LoteDoCandidato {
+  batchId: string;
+  code: string;
+  /** AAAA-MM-DD; nulo é "ninguém declarou", nunca "não vence". */
+  expiresOn: string | null;
+  /** Saldo somado do razão — a mesma conta de `balancesByBatch`. */
+  quantity: number;
 }
 
 export interface LabelProblem {
@@ -206,6 +229,81 @@ function candidato(companyId: string, l: LinhaBase, documentQuantity: number | n
     stockQuantity: l.stockQuantity,
     documentQuantity,
     avisoDoCodigo: avisoDoCodigo(l.barcode),
+    // Preenchidos de uma vez só em `comOsLotes`, no fim de `listLabelCandidates`:
+    // uma consulta por candidato daria 300 idas ao banco numa busca de catálogo.
+    rastreiaLote: false,
+    lotes: [],
+  };
+}
+
+/*
+  A FILA NÃO SABIA QUE LOTE IA PARA O PAPEL (P00 das etiquetas, a escolha de lote).
+
+  O DEFEITO: a etiqueta com validade já saía com o lote FEFO — o que vence
+  primeiro entre os que têm saldo (`loteDaEtiqueta` em BarcodeService) — e o
+  servidor SEMPRE aceitou `batchId` por item em `POST /labels/sheet`. Só que a
+  lista de candidatos não trazia lote nenhum: a tela não tinha como mostrar
+  qual validade ia sair, nem como escolher outra. Na prática, quem etiquetava a
+  caixa que acabou de chegar (validade longa) colava nela a validade do lote
+  VELHO que ainda estava na prateleira — e o adesivo passa a vencer a
+  mercadoria antes da hora, ou pior, a vencer depois dela.
+
+  Agora a lista traz os lotes com saldo, na MESMA ordem em que a folha escolhe
+  sozinha, e diz quem controla lote. A tela mostra o automático, deixa trocar e
+  avisa quando o produto controla lote e não há nenhum com saldo.
+
+  Duas consultas para a lista inteira, e não uma por item: a origem "estoque"
+  traz 300 candidatos.
+*/
+const SQL_SALDO_DO_LOTE = `(SELECT COALESCE(SUM(mv.quantity), 0)
+                              FROM core_stock_movements mv
+                             WHERE mv.batch_id = b.id AND mv.company_id = b.company_id)`;
+
+function comOsLotes(companyId: string, r: LabelCandidates): LabelCandidates {
+  if (r.candidates.length === 0) return r;
+  const db = getConnection();
+  const ids = [...new Set(r.candidates.map((c) => c.productId))];
+  const marcas = `(${ids.map(() => '?').join(', ')})`;
+
+  const rastreiam = new Set(
+    (db
+      .prepare(`SELECT id FROM core_products WHERE company_id = ? AND tracks_batches = 1 AND id IN ${marcas}`)
+      .all(companyId, ...ids) as unknown as { id: string }[]).map((x) => x.id),
+  );
+
+  /*
+    Os lotes saem para TODO candidato, e não só para quem tem `tracks_batches`:
+    é o que `loteDaEtiqueta` faz ao montar a folha (ela não olha a coluna), e o
+    produto que teve o controle DESLIGADO depois de receber lote continua
+    imprimindo a validade dele. A fila tem de mostrar o que vai sair.
+  */
+  const linhas = db
+    .prepare(
+      `SELECT b.product_id AS productId, b.id AS batchId, b.code AS code, b.expires_on AS expiresOn,
+              ${SQL_SALDO_DO_LOTE} AS quantity
+         FROM core_product_batches b
+        WHERE b.company_id = ? AND b.product_id IN ${marcas}
+        ORDER BY (b.expires_on IS NULL), b.expires_on ASC, b.created_at ASC`,
+    )
+    .all(companyId, ...ids) as unknown as (LoteDoCandidato & { productId: string })[];
+
+  const porProduto = new Map<string, LoteDoCandidato[]>();
+  for (const { productId, ...lote } of linhas) {
+    // Lote sem saldo não está na prateleira: etiquetá-lo com a validade dele
+    // seria anunciar a caixa que já saiu. É o mesmo filtro do FEFO da folha.
+    if (!(lote.quantity > 0)) continue;
+    const lista = porProduto.get(productId);
+    if (lista) lista.push(lote);
+    else porProduto.set(productId, [lote]);
+  }
+
+  return {
+    ...r,
+    candidates: r.candidates.map((c) => ({
+      ...c,
+      rastreiaLote: rastreiam.has(c.productId),
+      lotes: porProduto.get(c.productId) ?? [],
+    })),
   };
 }
 
@@ -671,21 +769,23 @@ export function listLabelCandidates(
     return t;
   };
 
+  // O lote entra por AQUI, no funil das sete origens: pendurá-lo em cada uma
+  // deixaria a origem nova de amanhã sem ele.
   switch (query.source) {
     case 'catalogo':
-      return daBusca(companyId, exigir(query.search, 'o que buscar'));
+      return comOsLotes(companyId, daBusca(companyId, exigir(query.search, 'o que buscar')));
     case 'estoque':
-      return doEstoque(companyId, query.lowOnly === true);
+      return comOsLotes(companyId, doEstoque(companyId, query.lowOnly === true));
     case 'compra':
-      return doPedidoDeCompra(companyId, exigir(query.purchaseOrderId, 'o pedido de compra'));
+      return comOsLotes(companyId, doPedidoDeCompra(companyId, exigir(query.purchaseOrderId, 'o pedido de compra')));
     case 'nota':
-      return doNotaDeEntrada(companyId, exigir(query.noteId, 'a nota de entrada'));
+      return comOsLotes(companyId, doNotaDeEntrada(companyId, exigir(query.noteId, 'a nota de entrada')));
     case 'inventario':
-      return daContagem(companyId, exigir(query.countId, 'a contagem'));
+      return comOsLotes(companyId, daContagem(companyId, exigir(query.countId, 'a contagem')));
     case 'codigos':
-      return dosCodigos(companyId, exigir(query.codes, 'os códigos'));
+      return comOsLotes(companyId, dosCodigos(companyId, exigir(query.codes, 'os códigos')));
     case 'grade':
-      return daGrade(companyId, exigir(query.productId, 'o produto'));
+      return comOsLotes(companyId, daGrade(companyId, exigir(query.productId, 'o produto')));
     default:
       throw new ApiError('CORE_LABEL_SOURCE_UNKNOWN', 'Origem de etiqueta desconhecida.', 400);
   }

@@ -58,7 +58,7 @@ import {
   type IdDoPerfil,
   type PerfilDeImpressao,
 } from './LabelProfiles.js';
-import { nomeDaEmpresa, problemasDosCodigos, renderLabelSheet, resumoDaFolha } from './LabelSheet.js';
+import { avisosDoFormato, nomeDaEmpresa, problemasDosCodigos, renderLabelSheet, resumoDaFolha } from './LabelSheet.js';
 import { formatoDoModelo, obterModelo } from './LabelTemplateService.js';
 
 // ------------------------------------------------------------ o pedido
@@ -149,7 +149,32 @@ export function emitirEtiquetas(input: {
   if (perfil.saida === 'html') {
     const html = renderLabelSheet({ format: f, items, companyId: input.companyId, comecarEm: input.comecarEm, moldura: input.moldura });
     const r = resumoDaFolha(f, items, input.comecarEm);
-    return { perfil: perfil.id, html, arquivo: null, comandos: null, etiquetas: r.etiquetas, folhas: r.folhas, avisos: [] };
+    /*
+      A FOLHA DO NAVEGADOR TAMBÉM DIZ O QUE PODE SAIR ERRADO (P00 das etiquetas).
+
+      O DEFEITO: esta linha devolvia `avisos: []`. O navegador é a saída PADRÃO
+      — é por ele que a loja imprime todo dia — e era a única que saía muda: as
+      barras abaixo do mínimo GS1 (o leitor do caixa falha ou demora), o módulo
+      que não fecha em ponto inteiro na impressora do modelo (umas barras com 2
+      pontos e outras com 3) e os campos marcados que pedem mais altura do que a
+      etiqueta tem (o código de barras sai cortado embaixo) só apareciam ao
+      trocar a saída para ZPL/EPL/TSPL/PDF, ou na prévia do editor de modelos.
+      Quem nunca abriu o editor gastava o rolo inteiro para descobrir na gôndola.
+
+      São os MESMOS avisos da prévia (`avisosDoFormato`, a geometria do
+      formato): a folha do navegador é desenhada por `renderLabelSheet`, em
+      milímetro, e é dela que a prévia do modelo sai também — então o que vale
+      para uma vale para a outra, e as duas passam a dizer a mesma coisa.
+    */
+    return {
+      perfil: perfil.id,
+      html,
+      arquivo: null,
+      comandos: null,
+      etiquetas: r.etiquetas,
+      folhas: r.folhas,
+      avisos: avisosDoFormato(f),
+    };
   }
   if (!perfil.aceitaFolha && f.midia === 'folha') {
     throw new ApiError(

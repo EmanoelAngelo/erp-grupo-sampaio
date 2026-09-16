@@ -18,7 +18,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { prenderFoco } from '@/components/gs/armadilhaDeFoco';
 import { AppShell } from '@/components/gs/AppShell';
 import { Badge, Button, Card, EmptyState, Input, PageHeader } from '@/components/gs/ui';
-import { useHasProfile } from '@/hooks/useSession';
+import { useCan } from '@/hooks/useCan';
 import { ApiRequestError } from '@/lib/api/client';
 import { coreApi, type Printer, type SituacaoDaImpressora } from '@/lib/api/core';
 import { acompanharNoAgente, impressaoApi } from '@/lib/api/impressao';
@@ -89,7 +89,23 @@ export default function ImpressorasPage({ acompanhamento }: { acompanhamento?: A
   const [aviso, setAviso] = useState<string | null>(null);
   const [editando, setEditando] = useState<Partial<Printer> | null>(null);
   const [testando, setTestando] = useState<string | null>(null);
-  const podeGerir = useHasProfile('gerente_loja', 'gerente_oficina');
+  /*
+    A TELA PERGUNTA PELA CAPABILITY, E NÃO PELO PERFIL (P00 das etiquetas).
+
+    O DEFEITO: aqui era `useHasProfile('gerente_loja', 'gerente_oficina')`,
+    enquanto as rotas que os botões chamam (POST /core/print/printers e
+    /printers/:id/test) já cobram `settings.printers.manage`. Hoje os dois
+    conjuntos coincidem por acaso — mas o acesso desta casa é entregue por
+    CAPABILITY, em Usuários › Acesso: o dono que desse "Impressoras (cadastrar,
+    testar)" ao estoquista via o servidor aceitar e a tela continuar escondendo
+    "Nova impressora", "Editar" e "Imprimir teste". Fica-se sem saber o que
+    fazer: o acesso foi dado e a tela nega, sem dizer nada. E, ao contrário,
+    tirar a capability de um gerente deixava os botões lá, prometendo o que o
+    servidor recusa com 403.
+
+    A pergunta certa é a mesma que o servidor faz.
+  */
+  const podeGerir = useCan('settings.printers.manage');
 
   const carregar = useCallback(async () => {
     setError(null);

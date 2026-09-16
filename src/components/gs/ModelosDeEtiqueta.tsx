@@ -121,7 +121,14 @@ export function ModelosDeEtiqueta({
   const [campos, setCampos] = useState<CampoDeEtiqueta[]>([]);
   const [impressoras, setImpressoras] = useState<Printer[]>([]);
   const [editando, setEditando] = useState<{ id: string | null; m: RascunhoDeModelo } | null>(null);
-  const [previa, setPrevia] = useState<{ html: string; etiquetas: number; folhas: number; avisos?: string[] } | null>(null);
+  const [previa, setPrevia] = useState<{
+    html: string;
+    etiquetas: number;
+    folhas: number;
+    avisos?: string[];
+    /** A saída que desenhou a prévia — a do modelo (ver o comentário da prévia, abaixo). */
+    perfil?: PerfilDeImpressao['id'];
+  } | null>(null);
   const [erroDaPrevia, setErroDaPrevia] = useState<string | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const [aviso, setAviso] = useState<string | null>(null);
@@ -577,8 +584,23 @@ export function ModelosDeEtiqueta({
           </div>
 
           <div className="flex flex-col gap-2">
+            {/*
+              A PRÉVIA É DESENHADA PELA SAÍDA DO MODELO (P00 das etiquetas).
+
+              O DEFEITO: o servidor desenhava a prévia sempre em HTML/CSS (o
+              desenho do navegador), mesmo no modelo cuja saída padrão é ZPL,
+              EPL, TSPL, PDF ou o driver — que passam por outro desenhista, em
+              pontos da impressora. O gestor montava o modelo olhando um adesivo
+              que não era o que a térmica dele ia imprimir. Agora é o mesmo
+              caminho da impressão, e a legenda diz qual saída desenhou.
+            */}
             <span className={ROTULO}>
               Prévia {previa ? `— ${previa.etiquetas} etiqueta(s) de exemplo em ${previa.folhas} página(s)` : ''}
+              {previa?.perfil && (
+                <span data-testid="saida-da-previa" className="font-normal text-[var(--gs-muted)]">
+                  {` · desenhada pela saída ${perfis.find((p) => p.id === previa.perfil)?.rotulo ?? previa.perfil}`}
+                </span>
+              )}
             </span>
             {erroDaPrevia ? (
               <p role="alert" className="m-0 px-3 py-2 rounded-[var(--gs-radius)] bg-[var(--gs-warning-bg)] text-[length:var(--gs-text-sm)]">

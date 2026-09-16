@@ -53,6 +53,16 @@ function servidor() {
   );
 }
 
+/**
+ * O acesso que o perfil realmente tem no produto — a tela de Impressoras pergunta
+ * pela CAPABILITY `settings.printers.manage`, que é a mesma que as rotas cobram
+ * (P00 das etiquetas). Uma lista vazia descreveria um gerente que não existe.
+ */
+const ACESSO_DE_HOJE: Record<string, string[]> = {
+  gerente_loja: ['settings.printers.view', 'settings.printers.manage', 'pdv.sell'],
+  operador_caixa_loja: ['settings.printers.view', 'pdv.sell'],
+};
+
 function entrarComo(profileCode: string) {
   setSession(
     {
@@ -62,6 +72,11 @@ function entrarComo(profileCode: string) {
       user: { id: 'u1', login: 'pessoa', displayName: 'Pessoa', profileCode },
       company: { id: 'c1', slug: 'preco-justo', tradeName: 'Preço Justo', kind: 'retail' },
       companies: [],
+      access: {
+        capabilities: ACESSO_DE_HOJE[profileCode] ?? [],
+        modelo: { personalizado: false },
+        casa: '/sistema',
+      },
     } as never,
     'LOGIN',
     'teste do agente de impressão',

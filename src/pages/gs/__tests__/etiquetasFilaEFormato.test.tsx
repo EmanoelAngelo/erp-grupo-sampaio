@@ -86,7 +86,16 @@ function servidor() {
   );
 }
 
-function entrar(capabilities: string[] = []) {
+/*
+  O PADRÃO É O ACESSO QUE O PERFIL DESTE TESTE REALMENTE TEM.
+
+  Era `[]` — um gerente_loja sem capability nenhuma, que não existe no produto:
+  `labels.products.print` é do modelo padrão dele (e do estoquista, e do caixa
+  da loja). Com a tela passando a perguntar pela capability antes de oferecer
+  "Gerar folha" e os modelos (P00 das etiquetas), a lista vazia deixou de
+  descrever o cenário destes casos, que é o de quem imprime.
+*/
+function entrar(capabilities: string[] = ['labels.products.print']) {
   setSession(
     {
       accessToken: 'tok',
@@ -176,7 +185,7 @@ describe('o modelo padrão da loja não depende da ordem das respostas (C-etique
   });
 
   it('o modelo escolhido é apagado e não há padrão: cai no formato padrão, não em vazio (C-etiquetas-19)', async () => {
-    entrar(['settings.printers.manage']);
+    entrar(['labels.products.print', 'settings.printers.manage']);
     const outro = { ...MODELO_PADRAO, id: 'm2', name: 'Gôndola', isDefault: false };
     let lista: unknown[] = [outro];
     rotas['GET /core/labels/templates'] = () => json({ items: lista, campos: [] });
@@ -297,6 +306,35 @@ describe('gerar a folha', () => {
     expect(avisos.textContent).toMatch(/escolha "Zebra ZD220"/);
     expect(avisos.textContent).toMatch(/promoção/);
     expect(janela.print).toHaveBeenCalled();
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+
+  /*
+    DEFEITO QUE ISTO CORRIGE (P00 das etiquetas): `r.avisos` — as barras abaixo
+    do mínimo GS1, o módulo que não fecha em ponto inteiro, os campos que não
+    cabem na altura — só aparecia na caixa de resultado das saídas que geram
+    ARQUIVO. Na folha do navegador, a saída padrão da loja, ele era descartado
+    pela tela: o rolo saía com o código que o leitor do caixa não lê, em
+    silêncio.
+  */
+  it('o aviso do papel vindo do servidor sai junto com o resto, na folha do navegador', async () => {
+    catalogoCom({ sab: [candidato('p1', 'Sabão em barra')] });
+    rotas['POST /core/labels/sheet'] = () =>
+      json({
+        html: '<html>folha</html>',
+        etiquetas: 1,
+        folhas: 1,
+        promocoes: [],
+        semPreco: [],
+        avisos: ['Cada barra do código fica com 0,21 mm — abaixo do mínimo GS1 (0,264 mm): leitores a laser podem falhar.'],
+      });
+    montar();
+    await buscar('sab');
+    fireEvent.click(await screen.findByLabelText('Selecionar Sabão em barra'));
+    fireEvent.click(botaoGerar());
+    const avisos = await screen.findByTestId('avisos-da-folha');
+    expect(avisos.textContent).toMatch(/mínimo GS1/);
+    expect(avisos.textContent).toMatch(/Saíram 1 etiqueta\(s\)/);
     expect(screen.queryByRole('alert')).toBeNull();
   });
 

@@ -50,6 +50,9 @@ import { ApiRequestError, envelope, exigirCampos } from '@/lib/api/client';
 import { subscribeQueue, type QueuedRequest } from '@/lib/api/offlineQueue';
 import { caixaDesteComputador, guardarCaixaDesteComputador } from '@/lib/api/terminais';
 import { dataBR, dataHoraBR } from '@/lib/datas';
+// A MESMA ponte de impressão do PDV: o servidor decide o transporte (agente do
+// caixa ou navegador) e a tela diz por onde o papel saiu.
+import { printDocument } from '@/lib/print';
 import { PARAM_DA_VENDA } from '@/lib/rotasDeOrigem';
 import { Paginacao } from '@/components/gs/Paginacao';
 import { paginaDeClientes, paginaDeProdutos, paginaDeVendas } from '@/lib/api/paginas';
@@ -2518,6 +2521,7 @@ export function VendasPage() {
 
   const abrirFicha = useCallback(async (venda: Sale) => {
     setErroFicha(null);
+    setPapel(null);
     setAbrindo(venda.number);
     try {
       setFicha(await coreApi.getSale(venda.id));
@@ -2528,6 +2532,66 @@ export function VendasPage() {
       );
     } finally {
       setAbrindo(null);
+    }
+  }, []);
+
+  /*
+    ============================================================================
+    A SEGUNDA VIA DO COMPROVANTE (P00 da impressão da loja)
+    ============================================================================
+
+    O DEFEITO: o comprovante de uma venda só podia ser impresso no painel de
+    "venda concluída" do PDV, que existe pelos segundos entre fechar a venda e
+    o caixa apertar Esc (ou começar a próxima). Passado esse instante, NÃO
+    HAVIA no sistema inteiro um jeito de imprimir de novo o cupom da venda #340:
+    a lista de Vendas abre a ficha com itens, pagamentos e títulos, e nenhum
+    botão de papel. O cliente que volta pedindo a via — para a troca, para a
+    garantia, para o reembolso da empresa dele — ouvia que o sistema não
+    imprime. O motor sempre soube fazê-lo (`POST /print/jobs` aceita
+    SALE_RECEIPT e DANFCE, e alcança todo perfil que chega a esta tela): era
+    rota sem tela.
+
+    O PAPEL É ESCOLHIDO PELO ESTADO FISCAL DE AGORA, e não pela linha da lista
+    — o mesmo cuidado de `escolherPapel` no PDV (F-cupom-fiscal-M02). Com a
+    NFC-e autorizada (ou em contingência, cujo DANFCE já vale no balcão), a via
+    é o DANFCE; sem nota, é o comprovante NÃO fiscal, que é o que aquela venda
+    gerou. Entregar o comprovante a quem tem nota autorizada seria dar ao
+    cliente o papel errado.
+
+    Venda CANCELADA imprime com a tarja "VENDA CANCELADA — não vale como
+    comprovante de compra" (o renderizador já a põe, F-19): o pedido é legítimo
+    (a troca precisa do papel do que foi desfeito) e o papel não mente.
+  */
+  const [papel, setPapel] = useState<{ tom: 'ok' | 'erro'; texto: string } | null>(null);
+  const [imprimindo, setImprimindo] = useState(false);
+
+  const segundaVia = useCallback(async (venda: SaleDetail) => {
+    setPapel(null);
+    setImprimindo(true);
+    try {
+      // Sem resposta do fiscal (rede, servidor antigo), o papel é o comprovante
+      // — o mesmo desfecho do PDV: nunca deixar o cliente sem nada na mão.
+      const s = await coreApi.getFiscalStatusForSale(venda.id).catch(() => null);
+      const doc = s?.document;
+      const temDanfce = Boolean(doc && (doc.status === 'AUTHORIZED' || s?.contingencia?.pendente));
+      const feita = temDanfce
+        ? await printDocument('DANFCE', String(doc!.id))
+        : await printDocument('SALE_RECEIPT', venda.id);
+      setPapel({
+        tom: 'ok',
+        texto:
+          `Segunda via da venda #${venda.number}: ${temDanfce ? 'DANFCE da NFC-e' : 'comprovante não fiscal'}`
+          + `${feita?.aviso ? ` — saiu pelo navegador: ${feita.aviso}` : '.'}`,
+      });
+    } catch (err) {
+      setPapel({
+        tom: 'erro',
+        texto: `Não foi possível imprimir a segunda via: ${
+          err instanceof Error && err.message ? err.message : 'confira a impressora e tente de novo.'
+        }`,
+      });
+    } finally {
+      setImprimindo(false);
     }
   }, []);
 
@@ -2631,20 +2695,52 @@ export function VendasPage() {
               <h2 className="m-0 text-[length:var(--gs-text-lg)] font-bold text-[var(--gs-purple-900)]">
                 Venda #{ficha.number} — {formatCents(ficha.total_cents)}
               </h2>
-              <Button
-                variant="ghost"
-                size="sm"
-                aria-label="Fechar a ficha da venda"
-                onClick={() => setFicha(null)}
-              >
-                Fechar
-              </Button>
+              <span className="flex gap-2">
+                {/* Segunda via NÃO refaz a venda: é um papel novo para o mesmo
+                    documento — sem estoque, sem caixa, sem nota nova. */}
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  loading={imprimindo}
+                  onClick={() => void segundaVia(ficha)}
+                  title="Imprime de novo o papel desta venda: o DANFCE, se houver NFC-e autorizada; senão, o comprovante não fiscal."
+                >
+                  Segunda via do comprovante
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  aria-label="Fechar a ficha da venda"
+                  onClick={() => setFicha(null)}
+                >
+                  Fechar
+                </Button>
+              </span>
             </header>
             <div className="px-6 py-5 flex flex-col gap-6">
               <p className="m-0 text-[length:var(--gs-text-sm)] text-[var(--gs-muted)]">
                 {dataHoraBR(ficha.created_at)}
                 {ficha.status === 'cancelled' ? ' · venda cancelada' : ''}
               </p>
+              {papel && (
+                <p
+                  data-testid="papel-da-venda"
+                  role={papel.tom === 'erro' ? 'alert' : 'status'}
+                  className={`m-0 px-4 py-3 rounded-[var(--gs-radius)] text-[length:var(--gs-text-sm)] ${
+                    papel.tom === 'erro'
+                      ? 'bg-[var(--gs-danger-bg)] text-[var(--gs-danger)]'
+                      : 'bg-[var(--gs-success-bg)] text-[var(--gs-success)]'
+                  }`}
+                >
+                  {papel.texto}
+                </p>
+              )}
+              {ficha.status === 'cancelled' && (
+                <p className="m-0 text-[length:var(--gs-text-sm)] text-[var(--gs-warning)]">
+                  Esta venda foi cancelada: a segunda via sai com a tarja &quot;VENDA CANCELADA — não vale como
+                  comprovante de compra&quot;.
+                </p>
+              )}
 
               <section className="flex flex-col gap-2">
                 <h3 className="m-0 text-[length:var(--gs-text-base)] font-bold text-[var(--gs-purple-900)]">
