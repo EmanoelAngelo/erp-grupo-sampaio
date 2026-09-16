@@ -1979,6 +1979,23 @@ export interface LabelCandidate {
   documentQuantity: number | null;
   /** O código cadastrado que a etiqueta não consegue desenhar, com o motivo. */
   avisoDoCodigo?: string | null;
+  /** O produto controla lote: sem lote com saldo, a etiqueta sai SEM validade. */
+  rastreiaLote?: boolean;
+  /**
+   * Os lotes com saldo, na ordem em que a folha escolhe sozinha (o que vence
+   * primeiro). Ausente num servidor antigo: a fila fica sem a escolha de lote,
+   * e o servidor segue decidindo pelo FEFO, como sempre fez.
+   */
+  lotes?: LoteDoCandidato[];
+}
+
+/** Um lote na fila de etiquetas: o que se lê na embalagem e o que está na prateleira. */
+export interface LoteDoCandidato {
+  batchId: string;
+  code: string;
+  /** AAAA-MM-DD; nulo é "ninguém declarou", nunca "não vence". */
+  expiresOn: string | null;
+  quantity: number;
 }
 
 export interface LabelProblem {
@@ -5517,7 +5534,11 @@ export const coreApi = {
     startAt?: number;
     /** A saída (perfil de impressão). Sem ela, o navegador — o comportamento de sempre. */
     perfil?: PerfilDeImpressao['id'];
-    items: { productId: string; quantity: number }[];
+    /**
+     * `batchId` é o lote escolhido na fila. Sem ele, o servidor usa o que vence
+     * primeiro entre os que têm saldo (FEFO) — o mesmo critério da baixa.
+     */
+    items: { productId: string; quantity: number; batchId?: string }[];
   }) => apiRequest<RespostaDaImpressaoDeEtiquetas>('/core/labels/sheet', { method: 'POST', body: input }),
 
   /** O histórico de impressão de etiquetas da operação: quem, quando, o quê, por qual saída. */
