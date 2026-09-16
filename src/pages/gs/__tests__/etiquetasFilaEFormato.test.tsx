@@ -86,7 +86,16 @@ function servidor() {
   );
 }
 
-function entrar(capabilities: string[] = []) {
+/*
+  O PADRÃO É O ACESSO QUE O PERFIL DESTE TESTE REALMENTE TEM.
+
+  Era `[]` — um gerente_loja sem capability nenhuma, que não existe no produto:
+  `labels.products.print` é do modelo padrão dele (e do estoquista, e do caixa
+  da loja). Com a tela passando a perguntar pela capability antes de oferecer
+  "Gerar folha" e os modelos (P00 das etiquetas), a lista vazia deixou de
+  descrever o cenário destes casos, que é o de quem imprime.
+*/
+function entrar(capabilities: string[] = ['labels.products.print']) {
   setSession(
     {
       accessToken: 'tok',
@@ -176,7 +185,7 @@ describe('o modelo padrão da loja não depende da ordem das respostas (C-etique
   });
 
   it('o modelo escolhido é apagado e não há padrão: cai no formato padrão, não em vazio (C-etiquetas-19)', async () => {
-    entrar(['settings.printers.manage']);
+    entrar(['labels.products.print', 'settings.printers.manage']);
     const outro = { ...MODELO_PADRAO, id: 'm2', name: 'Gôndola', isDefault: false };
     let lista: unknown[] = [outro];
     rotas['GET /core/labels/templates'] = () => json({ items: lista, campos: [] });

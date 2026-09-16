@@ -162,6 +162,22 @@ export default function EtiquetasPage() {
   // disso ANTES de gerar a folha, e não pelo aviso depois do papel gasto.
   const podeGerarCodigo = useCan('products.manage');
   /*
+    QUEM IMPRIME ETIQUETA (P00 das etiquetas).
+
+    O DEFEITO: esta tela é ROTA_GESTAO e a lista de produtos é aberta ao
+    ESCRITÓRIO inteiro — o atendente entra, busca, marca a fila e escolhe o
+    formato. Só que `POST /labels/sheet` cobra `labels.products.print`, que não
+    o alcança: o clique em "Gerar folha" abria uma janela em branco, fechava e
+    devolvia 403 depois de todo o trabalho. E "Modelos de etiqueta"
+    (`GET /labels/templates`, a mesma capability) pintava uma caixa vermelha de
+    "Falha ao carregar os modelos" já na abertura da tela, sem dizer por quê.
+
+    Agora a tela diz na cara, antes: quem não imprime vê a lista e a fila, e o
+    botão desabilitado com o motivo escrito — e não a promessa que o servidor
+    recusa.
+  */
+  const podeImprimir = useCan('labels.products.print');
+  /*
     A SAÍDA DA IMPRESSÃO (P0 das etiquetas): navegador, driver, PDF ou os
     comandos da térmica (ZPL, EPL, TSPL). Começa no padrão do catálogo (o
     navegador) e segue a saída padrão do MODELO escolhido — a não ser que a
@@ -519,7 +535,12 @@ export default function EtiquetasPage() {
   const qtdInvalida = Object.entries(rascunhoQtd).some(([id, t]) => fila[id] !== undefined && lerQuantidade(t) === null);
   const acimaDoTeto = totalEtiquetas > TETO_DA_FOLHA;
   const motivoParaNaoGerar =
-    naFila === 0
+    // O primeiro motivo é o que o servidor cobraria de qualquer jeito: sem
+    // `labels.products.print`, a folha é 403 — e o resto nem chega a importar.
+    !podeImprimir
+      ? 'Seu acesso vê as etiquetas, mas não imprime: "Etiquetas do produto (imprimir)" é entregue em Usuários › Acesso. '
+        + 'Monte a fila e peça a quem imprime, ou peça o acesso a quem administra.'
+      : naFila === 0
       ? 'Selecione ao menos um produto.'
       : !formatId
         ? 'Escolha o formato da etiqueta.'
@@ -563,7 +584,6 @@ export default function EtiquetasPage() {
   const perfilAtual = perfis.find((p) => p.id === perfilId);
   /** Sem perfis (servidor antigo) ou com o navegador escolhido: a folha abre em janela, como sempre. */
   const saidaNoNavegador = !perfilAtual || perfilAtual.saida === 'html';
-  const podeImprimir = useCan('labels.products.print');
 
   const carregarHistorico = useCallback(async () => {
     try {
@@ -912,7 +932,12 @@ export default function EtiquetasPage() {
 
       {tab === 'produtos' && (
         <>
-          <ModelosDeEtiqueta podeEditar={podeConfigurar} formatosProntos={formats} onMudou={aoMudarModelos} perfis={perfis} />
+          {/* Os modelos vêm de `GET /labels/templates`, que cobra a mesma
+              capability da folha: para quem não imprime, o cartão só sabia
+              pintar "Falha ao carregar os modelos de etiqueta" na abertura. */}
+          {podeImprimir && (
+            <ModelosDeEtiqueta podeEditar={podeConfigurar} formatosProntos={formats} onMudou={aoMudarModelos} perfis={perfis} />
+          )}
 
           <Card title="De onde vêm os produtos" subtitle={origemAtual?.hint} className="mb-5">
             <div className="flex flex-wrap gap-2 mb-4">
@@ -1323,7 +1348,9 @@ export default function EtiquetasPage() {
                 <strong>{folhasPrevistas}</strong> folha(s)
               </p>
             )}
-            {motivoParaNaoGerar && naFila > 0 && (
+            {/* "Seu acesso não imprime" vale mesmo com a fila vazia: é o que
+                explica um botão desabilitado desde a abertura da tela. */}
+            {motivoParaNaoGerar && (naFila > 0 || !podeImprimir) && (
               <p data-testid="motivo-para-nao-gerar" className="mt-2 mb-0 text-[length:var(--gs-text-sm)] text-[var(--gs-danger)]">
                 {motivoParaNaoGerar}
               </p>
