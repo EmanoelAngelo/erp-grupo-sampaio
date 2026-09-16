@@ -37,6 +37,8 @@ import { diaDaLojaSql, hojeNaLoja } from './CalendarioOperacional.js';
 import { ApiError } from '../../utils/errors.js';
 import { createEntry } from './FinanceService.js';
 import { systemCategoryId } from './FinanceSetupService.js';
+// O vínculo é a régua de quem atravessa empresa — ver `setMemberGroup`.
+import { assertMembership } from '../auth/IdentityService.js';
 
 const agora = () => new Date().toISOString();
 const hoje = () => hojeNaLoja();
@@ -151,6 +153,50 @@ export function listTiers(companyId: string, groupId: string): CommissionTier[] 
     .all(companyId, groupId) as unknown as CommissionTier[];
 }
 
+/**
+ * ============================================================================
+ * O DEFEITO: A FAIXA ENTRAVA NO GRUPO DA VIZINHA
+ * ============================================================================
+ *
+ * `setTier` recebia `groupId` do caminho da rota (`PUT
+ * /commissions/groups/:id/tiers`) e NUNCA conferia de quem é o grupo — o irmão
+ * ao lado, `setMemberGroup`, confere na linha seguinte à sua, com a mesma
+ * consulta. A conferência nasceu num e não no outro, e o silêncio durou.
+ *
+ * As três consequências, todas medidas pelo HTTP:
+ *
+ *  1. TRAVESSIA DE EMPRESA, NA ESCRITA. A busca por faixa existente filtra por
+ *     `company_id`, logo nunca acha a da vizinha e cai no INSERT. O INSERT
+ *     grava `company_id` da SESSÃO e `group_id` da OUTRA empresa — a chave
+ *     estrangeira aponta para `core_commission_groups(id)` sem empresa
+ *     nenhuma, então o banco aceita. A gerente da Preço Justo escrevia uma
+ *     linha pendurada no grupo de comissão da Gringa, e a linha ficava lá:
+ *     `DELETE ... ON CASCADE` do grupo da Gringa passa a apagar dado da Preço
+ *     Justo, e a apuração da Preço Justo carrega uma faixa de um grupo que ela
+ *     não enxerga (`listTiers` filtra pelas duas colunas e não a devolve).
+ *
+ *  2. ORÁCULO DE EXISTÊNCIA ENTRE EMPRESAS. `UNIQUE (group_id, min_cents)` é
+ *     do GRUPO, não da empresa. Repetir o mesmo `minCents` de uma faixa que a
+ *     vizinha já tem estourava UNIQUE e virava 500; um valor que ela não tem
+ *     dava 200. Dois status diferentes contam ao de fora o que a vizinha
+ *     cadastrou — exatamente o oráculo que a regra do grupo proíbe.
+ *
+ *  3. 500 ONDE O CERTO É 404. Grupo inexistente estourava a chave estrangeira
+ *     e subia como `API_UNAVAILABLE` com pilha no log. A varredura de perfis
+ *     do RBAC imprimia esse erro em CINCO arquivos a cada corrida, e ninguém
+ *     lia: erro que sempre aparece é erro que ninguém vê.
+ *
+ * O conserto é a conferência que `setMemberGroup` já fazia, na mesma frase e
+ * com o mesmo código de erro: grupo de outra empresa responde IGUAL a grupo
+ * inexistente — 404, sem contar qual dos dois é.
+ */
+function grupoDaEmpresa(companyId: string, groupId: string): void {
+  const grupo = getConnection()
+    .prepare('SELECT id FROM core_commission_groups WHERE id = ? AND company_id = ?')
+    .get(groupId, companyId);
+  if (!grupo) throw new ApiError('CORE_COMMISSION_GROUP_NOT_FOUND', 'Grupo não encontrado.', 404);
+}
+
 export function setTier(
   companyId: string,
   groupId: string,
@@ -164,6 +210,7 @@ export function setTier(
   if (!Number.isInteger(rateBps) || rateBps < 0) {
     throw new ApiError('CORE_COMMISSION_RATE', 'Percentual inválido.', 400);
   }
+  grupoDaEmpresa(companyId, groupId);
   const db = getConnection();
   const existente = db
     .prepare(
@@ -200,9 +247,29 @@ export function removeTier(companyId: string, tierId: string): void {
 
 // ---------------------------------------------------------------- vendedores
 
+/**
+ * O DEFEITO DO OUTRO LADO DA MESMA ROTA: o GRUPO era conferido, a PESSOA não.
+ *
+ * `PUT /commissions/members/:userId` tira o id da equipe do caminho, e a tela
+ * que o chama só lista gente da própria operação — mas a rota é HTTP, e quem
+ * digita o id manda quem quiser. Com um id de fora do vínculo, a linha nascia
+ * assim mesmo: `core_commission_members` referencia `core_users(id)`, que é a
+ * tabela do grupo INTEIRO, então o banco aceitava o mecânico da Oficina como
+ * vendedor comissionado da Preço Justo. Duas consequências: a apuração da
+ * Preço Justo passava a nomear gente que nunca vendeu nela, e a linha
+ * sobrevivia ao desligamento da pessoa na outra operação.
+ *
+ * A régua é a mesma do resto do sistema — quem atravessa empresa é o VÍNCULO:
+ * `assertMembership` lê `core_user_companies` (com a empresa ativa). Sem
+ * vínculo, 404 igual ao de quem não existe: dizer "esse usuário existe, mas
+ * não é daqui" contaria ao de fora quem trabalha na vizinha.
+ */
 export function setMemberGroup(companyId: string, userId: string, groupId: string | null): void {
   ensureCoreSchema();
   const db = getConnection();
+  if (!assertMembership(userId, companyId)) {
+    throw new ApiError('CORE_COMMISSION_MEMBER_NOT_FOUND', 'Pessoa não encontrada na equipe desta operação.', 404);
+  }
   if (!groupId) {
     db.prepare('DELETE FROM core_commission_members WHERE company_id = ? AND user_id = ?').run(
       companyId,
@@ -210,10 +277,7 @@ export function setMemberGroup(companyId: string, userId: string, groupId: strin
     );
     return;
   }
-  const grupo = db
-    .prepare('SELECT id FROM core_commission_groups WHERE id = ? AND company_id = ?')
-    .get(groupId, companyId);
-  if (!grupo) throw new ApiError('CORE_COMMISSION_GROUP_NOT_FOUND', 'Grupo não encontrado.', 404);
+  grupoDaEmpresa(companyId, groupId);
 
   db.prepare(
     `INSERT INTO core_commission_members (company_id, user_id, group_id, created_at)

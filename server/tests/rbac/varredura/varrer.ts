@@ -141,5 +141,40 @@ export function varrerComo(modelo: string): void {
       }
       expect(divergentes.join('\n')).toBe('');
     });
+
+    /**
+     * ========================================================================
+     * O DEFEITO DA PRÓPRIA VARREDURA: ELA MEDIA E JOGAVA FORA
+     * ========================================================================
+     *
+     * Esta varredura já batia em todas as rotas guardadas, com um parâmetro de
+     * caminho INVENTADO, e guardava o status de cada uma. Só que a única
+     * pergunta feita às medidas era sobre o 403 do guarda: o status de quem
+     * PASSAVA nunca era conferido. Uma rota que atravessa o guarda e explode
+     * lá dentro ficava verde.
+     *
+     * E explodia. `PUT /core/commissions/groups/:id/tiers` estourava a chave
+     * estrangeira com o id inventado e voltava 500 `API_UNAVAILABLE`, em CINCO
+     * dos onze arquivos, a cada corrida. A pilha ia para o `stderr` do vitest,
+     * ao lado do verde, desde que a varredura existe. Erro que aparece sempre
+     * é erro que ninguém vê.
+     *
+     * `API_UNAVAILABLE` é o código que `app.ts` usa APENAS para o erro que
+     * ninguém tratou — todo erro previsto vira `ApiError` com código próprio.
+     * Então a regra é exata, e não uma proibição preguiçosa de 5xx: uma rota
+     * pode responder 501 (`CORE_PRINT_RENDERER_MISSING`, sem layout) ou 503
+     * (`ASAAS_DISABLED`, integração desligada) porque isso é resposta pensada.
+     * O que ela não pode é deixar o erro do banco subir cru.
+     *
+     * Um id que não existe é a coisa mais comum que uma rota recebe — link
+     * velho, aba aberta ontem, registro apagado por outra pessoa. Se ela
+     * responde 500 aqui, responde 500 no balcão.
+     */
+    it('nenhuma rota deixou erro não tratado subir — id inventado é 404, nunca 500', () => {
+      const naoTratadas = medidas
+        .filter((m) => m.codigo === 'API_UNAVAILABLE')
+        .map((m) => `${m.chave}: ${m.status} ${m.codigo}`);
+      expect(naoTratadas.join('\n')).toBe('');
+    });
   });
 }
