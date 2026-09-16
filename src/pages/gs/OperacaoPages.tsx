@@ -80,6 +80,7 @@ import {
 import { useCan } from '@/hooks/useCan';
 import { FormularioDoDestinatario } from '@/components/gs/DestinatarioDaNota';
 import {
+  avisoDoDifal,
   destinatarioCompleto,
   destinatarioParaEnvio,
   rascunhoDoDestinatario,
@@ -2852,53 +2853,102 @@ export function VendasPage() {
  * a regra do caso: quem vendeu no balcão e precisa da NF-e cancela o cupom,
  * dentro do prazo, e só então emite a nota.
  *
+ * ## O DEFEITO QUE ESTA VERSÃO CONSERTA
+ *
+ * A seção perguntava por `/fiscal/sales/:id/status`, que responde SÓ pela
+ * NFC-e. Para a venda documentada com a própria NF-e desta seção a resposta
+ * era `null`: reaberta a ficha, a nota autorizada não aparecia em lugar
+ * nenhum e o botão "Emitir NF-e desta venda" voltava a ser oferecido. Quem
+ * errasse o CNPJ na primeira emissão "corrigia" e recebia a confirmação de
+ * sucesso — com a nota antiga, que já tinha ido ao fisco.
+ *
+ * Agora a pergunta é `/fiscal/sales/:id/documentos`, que responde pelos DOIS
+ * modelos e sob a MESMA capability do gesto (`fiscal.manage`), para que a
+ * leitura e o botão nunca divirjam.
+ *
  * ## O que esta seção mostra, e por quê
  *
- * A pergunta ao servidor é a mesma que o PDV faz (`/fiscal/sales/:id/status`),
- * e a resposta decide o que aparece:
- *
+ *  - NF-e desta venda, em qualquer estado: ela é mostrada, com número, série,
+ *    situação e chave, e a emissão NÃO se oferece — uma venda tem uma nota. Se
+ *    a nota estiver cancelada ou rejeitada, a tela diz onde se resolve
+ *    (Fiscal › Documentos fiscais), que é onde estão o cancelamento e a
+ *    reemissão;
  *  - NFC-e viva (qualquer estado que não seja cancelada ou rejeitada): a venda
  *    JÁ está documentada, e emitir a NF-e documentaria a mesma mercadoria duas
  *    vezes — faturamento e ICMS em dobro na apuração. A tela diz isso e diz o
  *    caminho: cancelar o cupom primeiro, dentro do prazo;
- *  - sem cupom vivo: o formulário do destinatário e o botão.
+ *  - sem documento: o formulário do destinatário e o botão;
+ *  - LEITURA QUE FALHOU NÃO É VENDA SEM NOTA: se o servidor não responde, a
+ *    seção declara a falha e não oferece a emissão. Oferecer ali seria apostar
+ *    que não há nota — a aposta que produziu este defeito.
  *
  * O ENDEREÇO É DIGITADO porque a loja não o tem — inventá-lo seria pôr dado
  * falso numa nota fiscal.
  */
+/** O que a ficha sabe dos documentos desta venda: lendo, a leitura, ou a falha. */
+type DocumentosDaVenda =
+  | 'lendo'
+  | 'falhou'
+  | { items: FiscalSaleStatus[]; ufDoEmitente: string | null };
+
 function NotaDaVendaDeBalcao({ venda }: { venda: SaleDetail }) {
   const podeEmitir = useCan('fiscal.manage');
-  const [cupom, setCupom] = useState<FiscalSaleStatus | null | 'lendo'>('lendo');
-  const [nota, setNota] = useState<EmissaoDaNotaDeDevolucao['document'] | null>(null);
+  const [documentos, setDocumentos] = useState<DocumentosDaVenda>('lendo');
+  // A nota que ACABOU de sair. Ela não substitui a leitura — some assim que a
+  // releitura traz o mesmo fato —, mas garante que quem clicou veja o número
+  // mesmo se a releitura falhar.
+  const [emitida, setEmitida] = useState<EmissaoDaNotaDeDevolucao['document'] | null>(null);
   const [form, setForm] = useState(() => rascunhoDoDestinatario(null));
   const [aberto, setAberto] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   const [emitindo, setEmitindo] = useState(false);
 
   useEffect(() => {
+    if (!podeEmitir) return undefined;
     let vivo = true;
-    setCupom('lendo');
+    setDocumentos('lendo');
     coreApi
-      .getFiscalStatusForSale(venda.id)
-      .then((r) => vivo && setCupom(r))
-      .catch(() => vivo && setCupom(null));
+      .getDocumentosFiscaisDaVenda(venda.id)
+      .then((r) => vivo && setDocumentos(r))
+      // Leitura que falhou NÃO é venda sem nota: a seção declara a falha e não
+      // oferece a emissão. Oferecer aqui seria apostar que não há documento.
+      .catch(() => vivo && setDocumentos('falhou'));
     return () => {
       vivo = false;
     };
-  }, [venda.id]);
+  }, [venda.id, podeEmitir]);
 
-  if (!podeEmitir || cupom === 'lendo') return null;
+  if (!podeEmitir || documentos === 'lendo') return null;
 
-  const cupomVivo = cupom && !['CANCELLED', 'REJECTED'].includes(cupom.document.status)
-    ? cupom.document
-    : null;
+  const lidos = documentos === 'falhou' ? [] : documentos.items;
+  const ufDoEmitente = documentos === 'falhou' ? null : documentos.ufDoEmitente;
+  // A NF-e da venda em QUALQUER estado: uma venda tem uma nota, e cancelada ou
+  // rejeitada se resolve em Fiscal › Documentos fiscais, não com uma segunda.
+  const daLeitura = lidos.find((d) => d.document.model === '55') ?? null;
+  const cupom = lidos.find((d) => d.document.model === '65') ?? null;
+  const cupomVivo = cupom && !['CANCELLED', 'REJECTED'].includes(cupom.document.status) ? cupom : null;
+  const difal = avisoDoDifal(form, ufDoEmitente);
+  // A leitura manda; a nota recém-emitida só cobre o instante entre o clique e
+  // a releitura (e a releitura que falhou).
+  const nota = daLeitura
+    ? { ...daLeitura.document, rotulo: daLeitura.statusLabel }
+    : emitida
+      ? { ...emitida, rotulo: emitida.status }
+      : null;
 
   async function emitir() {
     setEmitindo(true);
     setErro(null);
     try {
       const r = await coreApi.emitirNfeDaVenda(venda.id, destinatarioParaEnvio(form));
-      setNota(r.document);
+      setEmitida(r.document);
+      /*
+        A ficha é RELIDA do servidor: é a leitura que decide o que a seção
+        mostra daqui em diante. Foi por confiar na memória da tela — e não na
+        resposta do servidor — que a nota sumia ao reabrir a ficha.
+      */
+      const relida = await coreApi.getDocumentosFiscaisDaVenda(venda.id).catch(() => null);
+      if (relida) setDocumentos(relida);
       setAberto(false);
     } catch (err) {
       setErro(err instanceof ApiRequestError ? err.message : 'Falha ao emitir a NF-e desta venda.');
@@ -2913,9 +2963,14 @@ function NotaDaVendaDeBalcao({ venda }: { venda: SaleDetail }) {
         NF-e desta venda
       </h3>
 
-      {nota ? (
+      {documentos === 'falhou' ? (
+        <p role="alert" className="m-0 text-[length:var(--gs-text-sm)] text-[var(--gs-danger)]">
+          Não foi possível ler os documentos fiscais desta venda. Sem essa resposta não dá para
+          dizer se ela já tem nota — e emitir sem saber criaria a segunda. Recarregue a ficha.
+        </p>
+      ) : nota ? (
         <>
-          <p className="m-0 text-[length:var(--gs-text-sm)] font-semibold">
+          <p className="m-0 text-[length:var(--gs-text-sm)] font-semibold" data-testid="nfe-da-venda-emitida">
             NF-e {nota.number}, série {nota.serie} — {nota.status}
             {nota.protocol ? ` · protocolo ${nota.protocol}` : ''}
           </p>
@@ -2924,12 +2979,19 @@ function NotaDaVendaDeBalcao({ venda }: { venda: SaleDetail }) {
               {nota.accessKey}
             </p>
           )}
+          {['CANCELLED', 'REJECTED'].includes(nota.status) && (
+            <p className="m-0 text-[length:var(--gs-text-sm)] text-[var(--gs-muted)]">
+              Esta venda não recebe uma segunda NF-e: a nota ({nota.rotulo}) se resolve em Fiscal ›
+              Documentos fiscais, onde ficam a reemissão da rejeitada (mesmo número) e o histórico
+              do cancelamento.
+            </p>
+          )}
         </>
       ) : cupomVivo ? (
         <p className="m-0 text-[length:var(--gs-text-sm)] text-[var(--gs-muted)]">
-          Esta venda já tem NFC-e nº {cupomVivo.number} ({cupom?.statusLabel}). Emitir também a NF-e
-          documentaria a mesma mercadoria duas vezes. Para trocar de documento, cancele o cupom em
-          Fiscal › Documentos fiscais — dentro do prazo de cancelamento.
+          Esta venda já tem NFC-e nº {cupomVivo.document.number} ({cupomVivo.statusLabel}). Emitir
+          também a NF-e documentaria a mesma mercadoria duas vezes. Para trocar de documento,
+          cancele o cupom em Fiscal › Documentos fiscais — dentro do prazo de cancelamento.
         </p>
       ) : !aberto ? (
         <div>
@@ -2949,6 +3011,16 @@ function NotaDaVendaDeBalcao({ venda }: { venda: SaleDetail }) {
       ) : (
         <div className="p-3 rounded-[var(--gs-radius)] border border-[var(--gs-border)]">
           <FormularioDoDestinatario valor={form} onMudar={setForm} />
+          {/*
+            O DIFAL NÃO É MONTADO POR NINGUÉM, e a tela diz isso ONDE se clica.
+            A pendência já está declarada em Fiscal › Operações fiscais; aqui
+            ela aparece no instante em que a UF do destinatário a torna real.
+          */}
+          {difal && (
+            <p role="status" className="m-0 mt-2 text-[length:var(--gs-text-sm)] text-[var(--gs-warning)]">
+              {difal}
+            </p>
+          )}
           {erro && (
             <p role="alert" className="m-0 mt-2 text-[length:var(--gs-text-sm)] text-[var(--gs-danger)]">
               {erro}

@@ -1968,7 +1968,14 @@ function NotaDeDevolucaoDaVenda({
     );
   }
 
-  // Sem NFC-e autorizada não há nota a referenciar: a emissão nem se oferece.
+  /*
+    Sem nota AUTORIZADA da venda não há o que referenciar: a emissão nem se
+    oferece. O estado vem de `estadoFiscalDaVenda`, que passou a enxergar os
+    DOIS modelos — era aqui o beco: a venda documentada pela NF-e de balcão
+    (modelo 55) respondia `nao_fiscal`, a ficha afirmava "não há documento
+    fiscal a regularizar" e o botão sumia, enquanto a rota emitia a nota de
+    devolução dessa mesma venda sem reclamar.
+  */
   if (!podeEmitir || devolucao.fiscal?.estado !== 'pendente_regularizacao') return null;
 
   if (!aberto) {
