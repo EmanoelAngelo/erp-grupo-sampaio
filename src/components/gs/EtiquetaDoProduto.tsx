@@ -11,8 +11,9 @@
  */
 import { useEffect, useState } from 'react';
 import { Button, Card } from '@/components/gs/ui';
+import { ResultadoDaImpressao, type ResultadoDaSaida } from '@/components/gs/SaidaDaEtiqueta';
 import { ApiRequestError } from '@/lib/api/client';
-import { coreApi, type ModeloDeEtiqueta } from '@/lib/api/core';
+import { coreApi, type ModeloDeEtiqueta, type PerfilDeImpressao } from '@/lib/api/core';
 
 const ROTULO = 'text-[length:var(--gs-text-sm)] font-semibold text-[var(--gs-text-soft)]';
 const CAIXA =
@@ -106,7 +107,26 @@ export function EtiquetaDoProduto({
   const [aviso, setAviso] = useState<string | null>(null);
   const [problemas, setProblemas] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
+  /*
+    A SAÍDA DO MODELO VALE AQUI TAMBÉM (P00 das etiquetas).
+
+    O DEFEITO: esta aba chamava `labelSheet` SEM `perfil` e escrevia `r.html`
+    numa janela do navegador — sempre. A tela de Etiquetas, com o mesmo modelo,
+    respeita a saída padrão dele (ZPL, EPL, TSPL, PDF ou o driver). Então a loja
+    que configurou a térmica ZPL do balcão imprimia daqui uma folha HTML pelo
+    diálogo do Windows: outro papel, outra escala, e sem a calibração e os
+    ajustes que só vão dentro do arquivo de comandos. O mesmo modelo saindo de
+    dois jeitos conforme a tela de onde se clicou é o tipo de diferença que
+    ninguém desconfia — e que só aparece no adesivo torto.
+
+    Agora o modelo manda nas duas telas. Quando a saída gera ARQUIVO, nenhuma
+    janela abre: o arquivo e a prévia ficam aqui embaixo, como em Etiquetas.
+  */
+  const [resultado, setResultado] = useState<ResultadoDaSaida | null>(null);
   const quantidade = lerQuantidade(quantidadeTexto);
+  const modeloAtual = (modelos ?? []).find((m) => m.id === modeloId) ?? null;
+  const saidaDoModelo = (modeloAtual?.outputProfile ?? null) as PerfilDeImpressao['id'] | null;
+  const noNavegador = !saidaDoModelo || saidaDoModelo === 'navegador';
 
   useEffect(() => {
     void coreApi
@@ -144,18 +164,36 @@ export function EtiquetaDoProduto({
     setErro(null);
     setAviso(null);
     setProblemas([]);
+    setResultado(null);
     if (quantidade === null) {
       setErro(`Informe a quantidade de etiquetas: um número de 1 a ${TETO}.`);
       return;
     }
     setBusy(true);
-    // A janela abre DENTRO do clique: depois do await o navegador a bloqueia como pop-up.
-    const janela = window.open('', '_blank');
+    // A janela abre DENTRO do clique: depois do await o navegador a bloqueia como
+    // pop-up. Só no navegador: as outras saídas mostram o arquivo na própria tela.
+    const janela = noNavegador ? window.open('', '_blank') : null;
     try {
-      const r = await coreApi.labelSheet({ templateId: modeloId, items: [{ productId, quantity: quantidade }] });
+      const r = await coreApi.labelSheet({
+        templateId: modeloId,
+        items: [{ productId, quantity: quantidade }],
+        ...(noNavegador ? {} : { perfil: saidaDoModelo as PerfilDeImpressao['id'] }),
+      });
       const gerado = r.codigosGerados?.find((c) => c.productId === productId)?.barcode ?? null;
       const sobreOCodigo = gerado ? ` Este produto ganhou o código de barras ${gerado}.` : '';
-      if (janela) {
+      if (r.arquivo) {
+        setResultado({
+          titulo: `Etiquetas — ${r.etiquetas} etiqueta(s)`,
+          html: r.html,
+          arquivo: r.arquivo,
+          comandos: r.comandos ?? null,
+          avisos: r.avisos ?? [],
+        });
+        setAviso(
+          `${r.etiquetas} etiqueta(s): o arquivo ${r.arquivo.nome} está pronto logo abaixo, com a prévia — baixe e mande `
+            + `à impressora. O estoque não muda.${sobreOCodigo}`,
+        );
+      } else if (janela) {
         janela.document.open();
         janela.document.write(r.html);
         janela.document.close();
@@ -254,12 +292,26 @@ export function EtiquetaDoProduto({
             <Button onClick={() => void imprimir()} loading={busy} disabled={!modeloId || quantidade === null}>
               {quantidade === null ? 'Imprimir etiquetas' : `Imprimir ${quantidade} etiqueta(s)`}
             </Button>
+            {/* Por onde a etiqueta vai sair, dito ANTES do clique: a saída é a
+                do modelo (Produtos › Etiquetas › Modelos), a mesma das duas telas. */}
+            <span data-testid="saida-do-modelo" className="text-[length:var(--gs-text-xs)] text-[var(--gs-muted)]">
+              {noNavegador
+                ? 'Saída do modelo: navegador — abre a janela de impressão do sistema.'
+                : `Saída do modelo: ${String(saidaDoModelo).toUpperCase()} — o arquivo aparece aqui embaixo, para mandar à impressora.`}
+            </span>
           </div>
           <iframe
             title="Prévia da etiqueta do produto"
             srcDoc={previa}
             className="w-full h-[320px] border border-[var(--gs-border)] rounded-[var(--gs-radius)] bg-white"
           />
+          {/* O que saiu fora do navegador: a prévia na geometria do arquivo, o
+              arquivo para baixar e os comandos — o mesmo bloco de Etiquetas. */}
+          {resultado && (
+            <div className="lg:col-span-2">
+              <ResultadoDaImpressao resultado={resultado} onFechar={() => setResultado(null)} />
+            </div>
+          )}
         </div>
       )}
     </Card>
