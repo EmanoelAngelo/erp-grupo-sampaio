@@ -654,23 +654,76 @@ export function applyMovement(input: MovementInput): { balance: number; duplicat
       A recusa é aqui porque aqui é onde todo chamador passa — inclusive os que
       ainda não existem.
     */
+    /*
+      ================================================================
+      O SALDO QUE JÁ FICOU PRESO TEM COMO SAIR — e não tinha (P00-prod-05)
+      ================================================================
+
+      A recusa acima era TOTAL: qualquer direção, com saldo ou sem. Para o
+      produto que nunca teve saldo isso está certo e é o caso de sempre. Para o
+      que JÁ TEM — o banco antigo, de antes de `generateVariants` passar a
+      recusar a grade sobre mercadoria — ela fechava a última porta:
+
+        - vender não dá (o balcão esconde o modelo, e `SalesService` recusa
+          antes de chegar aqui);
+        - contar não dá (a contagem de inventário não lista o modelo);
+        - excluir a grade não dá (variante com histórico não se apaga);
+        - e ZERAR não dava, porque a saída caía nesta mesma recusa.
+
+      Ou seja: mercadoria que aparece na posição de estoque e no valor do
+      estoque, para sempre, sem nenhum gesto no sistema que a resolva. Só
+      mexendo no banco à mão — que é exatamente o que esta entrega não pode
+      exigir do dono.
+
+      A SAÍDA É A REGULARIZAÇÃO, e é o gesto que a própria recusa de
+      `generateVariants` manda fazer ("Dê saída do saldo do modelo e lance a
+      entrada em cada tamanho"). Ela não abre nada: a ENTRADA continua recusada
+      (é ela que faria o saldo preso CRESCER), a venda continua recusada lá em
+      cima, o `CHECK (quantity >= 0)` impede tirar mais do que há, e a rota
+      manual já exige MOTIVO em toda saída e em todo ajuste negativo — então a
+      regularização nasce com rastro.
+    */
+    const saidaDeRegularizacao =
+      input.movementType === 'out' || (input.movementType === 'adjust' && input.quantity < 0);
+    // Lido só quando a recusa está em jogo: o caminho comum (produto que não é
+    // modelo nem kit virtual) não paga consulta nenhuma por causa disto.
+    const presoNoProduto = () =>
+      dono.tem_grade || (dono.is_kit && dono.kit_explode_on_sale)
+        ? getBalance(input.companyId, input.productId)
+        : 0;
+
     if (dono.tem_grade) {
-      throw new ApiError(
-        'CORE_PRODUCT_IS_GRID_MODEL',
-        `"${dono.name}" é um modelo de grade: o saldo fica na variante (tamanho/cor), `
-          + 'e não no modelo. Escolha a variante.',
-        400,
-        { productId: input.productId },
-      );
+      const preso = presoNoProduto();
+      if (!saidaDeRegularizacao || preso <= 0) {
+        throw new ApiError(
+          'CORE_PRODUCT_IS_GRID_MODEL',
+          preso > 0
+            ? `"${dono.name}" é um modelo de grade e tem ${preso} preso no modelo, de antes de a `
+              + 'grade existir. O balcão não vende esse saldo e a contagem não o alcança: a única '
+              + 'coisa a fazer com ele é dar SAÍDA (ou ajuste negativo), com motivo, e lançar a '
+              + 'entrada em cada tamanho.'
+            : `"${dono.name}" é um modelo de grade: o saldo fica na variante (tamanho/cor), `
+              + 'e não no modelo. Escolha a variante.',
+          400,
+          { productId: input.productId, preso },
+        );
+      }
     }
     if (dono.is_kit && dono.kit_explode_on_sale) {
-      throw new ApiError(
-        'CORE_PRODUCT_IS_KIT',
-        `"${dono.name}" é um kit que desmembra na venda: o saldo dele é o dos componentes, `
-          + 'e movimentar o kit contaria a mesma mercadoria duas vezes.',
-        400,
-        { productId: input.productId },
-      );
+      const preso = presoNoProduto();
+      if (!saidaDeRegularizacao || preso <= 0) {
+        throw new ApiError(
+          'CORE_PRODUCT_IS_KIT',
+          preso > 0
+            ? `"${dono.name}" é um kit que desmembra na venda e tem ${preso} preso no kit. Esse `
+              + 'saldo conta a mesma mercadoria duas vezes (ela já está nos componentes): dê '
+              + 'SAÍDA dele, com motivo, para a posição voltar a dizer a verdade.'
+            : `"${dono.name}" é um kit que desmembra na venda: o saldo dele é o dos componentes, `
+              + 'e movimentar o kit contaria a mesma mercadoria duas vezes.',
+          400,
+          { productId: input.productId, preso },
+        );
+      }
     }
 
     const already = db

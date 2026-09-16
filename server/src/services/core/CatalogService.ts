@@ -371,6 +371,75 @@ function estoqueMinimo(valor: unknown): number | undefined {
 }
 
 /**
+ * A TARA DA EMBALAGEM, EM GRAMAS, CONFERIDA ANTES DE SER GRAVADA (P00-prod-03).
+ *
+ * O DEFEITO: a tara era o único campo do cadastro que não passava por alfândega
+ * nenhuma — `input.tareGrams ?? null` na criação, `input.tareGrams ?? null` na
+ * edição. Duas entradas passavam, e as duas estragam o peso no balcão:
+ *
+ *   - TEXTO. `tareGrams: "abc"` ficava gravado como a palavra "abc" numa coluna
+ *     INTEGER (o SQLite guarda o que lhe derem), e a exportação da balança
+ *     escreve `String(tare_grams ?? 0)` direto no arquivo: a balança recebia
+ *     "abc" como tara;
+ *   - NEGATIVO. Tara é o que se DESCONTA do peso bruto. Com -50 a balança
+ *     SOMARIA 50 gramas a cada pesagem — o cliente pagando pela embalagem que
+ *     o campo existe justamente para não cobrar.
+ *
+ * Zero é legítimo e significa "sem embalagem a descontar", igual a vazio.
+ * Inteiro porque a balança trabalha em gramas cheias: "12,5 g" é erro de
+ * digitação, e é aqui que ele para.
+ *
+ * Devolve `undefined` para ausente (a edição preserva) e `null` para vazio (a
+ * edição limpa) — a mesma convenção dos códigos fiscais.
+ */
+function taraEmGramas(valor: unknown): number | null | undefined {
+  if (valor === undefined) return undefined;
+  if (valor === null || valor === '') return null;
+  const numero = Number(valor);
+  if (!Number.isInteger(numero) || numero < 0) {
+    throw new ApiError(
+      'CORE_INVALID_TARE',
+      'A tara é o peso da embalagem em GRAMAS inteiras, zero ou mais (ex.: 12 para a bandeja). '
+        + 'Ela é descontada do peso na balança — um valor negativo somaria peso em vez de descontar.',
+      400,
+    );
+  }
+  return numero;
+}
+
+/**
+ * O PISO PERCENTUAL — MARKUP OU MARGEM MÍNIMA — CONFERIDO NAS DUAS PORTAS
+ * (P00-prod-03).
+ *
+ * O DEFEITO tinha duas metades:
+ *
+ *   - a CRIAÇÃO não conferia nada. Só o PUT chamava `percentualEditado`, e o
+ *     POST gravava o que viesse: `minMarkupPercent: "abc"` ficava na coluna. E
+ *     "abc" não estoura em lugar nenhum — `pisoDoPreco` descarta o que não é
+ *     finito e `avaliarPreco` compara número com texto (sempre falso). O
+ *     resultado é o pior: o gestor configura o piso, a tela diz "Produto
+ *     criado", e a venda abaixo do mínimo passa em silêncio para sempre;
+ *   - NEGATIVO passava nas duas. Piso abaixo de zero não é piso: -300% de
+ *     margem autoriza qualquer preço, e é indistinguível de um campo em branco
+ *     para quem lê o cadastro depois.
+ *
+ * Vazio (e nulo) continua sendo o pedido legítimo de TIRAR o piso.
+ */
+function percentualDoPiso(valor: unknown, rotulo: string): number | null {
+  if (valor === null || valor === '' || valor === undefined) return null;
+  const numero = Number(valor);
+  if (!Number.isFinite(numero) || numero < 0) {
+    throw new ApiError(
+      'CORE_PRICE_FLOOR_INVALID',
+      `${rotulo} deve ser um número maior ou igual a zero (ex.: 30 para 30%). `
+        + 'Deixe em branco para o produto não ter esse piso.',
+      400,
+    );
+  }
+  return numero;
+}
+
+/**
  * O código interno como a loja o lê: sem espaços e em MAIÚSCULAS (A-produto-M04).
  *
  * O UNIQUE do banco é sensível a caixa: "pj-0105" e "PJ-0105" conviviam como
@@ -412,10 +481,20 @@ export function donoDoCodigoNoBipe(
     )
     .get(companyId, ignorarProductId, codigo, codigo, codigo) as { name: string } | undefined;
   if (direto) return direto.name;
+  /*
+    A JUNÇÃO CONFERE A EMPRESA NOS DOIS LADOS (P00-prod-01).
+
+    `b.company_id` era o único corte, e a linha torta — a que `addProductBarcode`
+    deixava nascer com a empresa de uma loja e a mercadoria de outra — fazia
+    esta recusa sair com o NOME de um produto alheio: "7890000000017 já
+    identifica 'Arroz Tipo 1 5kg'" para quem nunca viu esse produto. Com a
+    empresa conferida no produto também, a linha herdada fica inerte: ela não
+    nomeia ninguém, e o cadastro do código no produto certo passa.
+  */
   const adicional = db
     .prepare(
       `SELECT p.name FROM core_product_barcodes b
-         JOIN core_products p ON p.id = b.product_id
+         JOIN core_products p ON p.id = b.product_id AND p.company_id = b.company_id
         WHERE b.company_id = ? AND b.barcode = ? AND b.product_id IS NOT ?
         LIMIT 1`,
     )
@@ -668,6 +747,15 @@ export function createProduct(
   exigirCentavosNaoNegativos(input.priceCents, input.costCents, input.minPriceCents);
   const embalagem = fatorDeEmbalagem(input.packFactor);
   const minimoDeEstoque = estoqueMinimo(input.minStock) ?? 0;
+  /*
+    A TARA E OS PISOS PERCENTUAIS PASSAM PELA MESMA ALFÂNDEGA DO RESTO
+    (P00-prod-03). Eram os três campos que a criação gravava CRUS: texto na
+    coluna de gramas, e um piso que "existe" no cadastro e não vale em venda
+    nenhuma. Antes da transação, como o peso e o dinheiro.
+  */
+  const tara = taraEmGramas(input.tareGrams) ?? null;
+  const markupMinimo = percentualDoPiso(input.minMarkupPercent, 'O markup mínimo');
+  const margemMinima = percentualDoPiso(input.minMarginPercent, 'A margem mínima');
   // A classificação fiscal é conferida antes de abrir a transação, como as
   // medidas: NCM de 6 dígitos não chega a gravar metade do produto.
   const fiscal = {
@@ -858,12 +946,12 @@ export function createProduct(
       textoOuNulo(input.reference),
       String(input.storageLocation ?? '').trim() || null,
       input.minPriceCents ?? 0,
-      input.minMarkupPercent ?? null,
-      input.minMarginPercent ?? null,
+      markupMinimo,
+      margemMinima,
       input.openPrice ? 1 : 0,
       input.weighable ? 1 : 0,
       String(input.pluCode ?? '').trim() || null,
-      input.tareGrams ?? null,
+      tara,
       input.serialized ? 1 : 0,
       // Ausente = controla, que é o que todo produto significou até esta
       // rodada. Só o `false` explícito cria o serviço de balcão.
@@ -1164,12 +1252,7 @@ function exigirQueNinguemMudouOMesmoCampo(
 /** Percentual do piso: ausente preserva, vazio limpa, texto é recusado. */
 function percentualEditado(valor: unknown, atual: unknown, rotulo: string): unknown {
   if (valor === undefined) return atual;
-  if (valor === null || valor === '') return null;
-  const numero = Number(valor);
-  if (!Number.isFinite(numero)) {
-    throw new ApiError('CORE_PRICE_FLOOR_INVALID', `${rotulo} deve ser um número (ex.: 30 para 30%).`, 400);
-  }
-  return numero;
+  return percentualDoPiso(valor, rotulo);
 }
 
 export function updateProduct(
@@ -1528,7 +1611,14 @@ function atualizarProduto(
     // haveria como TIRAR um produto da balança sem apagar o cadastro.
     plu_code:
       input.pluCode === undefined ? current.plu_code : String(input.pluCode).trim() || null,
-    tare_grams: input.tareGrams === undefined ? current.tare_grams : (input.tareGrams ?? null),
+    /*
+      Ausente preserva; vazio (ou nulo) limpa — e o valor passa pela mesma
+      alfândega da criação (P00-prod-03). Antes era `input.tareGrams ?? null`
+      dos dois lados: "abc" e -50 entravam pela edição exatamente como entravam
+      pelo cadastro.
+    */
+    tare_grams:
+      input.tareGrams === undefined ? current.tare_grams : taraEmGramas(input.tareGrams),
     // Ausente preserva; só o booleano explícito muda de lado. Ver a recusa de
     // saldo logo acima: desligar com estoque não chega até aqui.
     stock_control: controlaEstoque ? 1 : 0,
@@ -1914,6 +2004,47 @@ const MINIATURA_DO_BALCAO = `
        THEN 1 ELSE 0 END AS tem_foto`;
 
 /**
+ * "O TERMO É UM CÓDIGO DESTE PRODUTO?" — uma expressão só, usada nos TRÊS
+ * lugares da busca que perguntam isso: `matched_exact`, o filtro e a ordenação.
+ *
+ * Consome quatro parâmetros, todos o termo digitado, nesta ordem: código de
+ * barras principal, código interno, SKU e código adicional.
+ *
+ * ## Por que uma constante, e não três cópias (P00-prod-02)
+ *
+ * Eram três expressões escritas à mão, e elas JÁ TINHAM DIVERGIDO: o SKU
+ * aparecia só no filtro, e ficava de fora da marca e da ordenação. Quem
+ * digitava o SKU no balcão achava o produto e caía na LISTA — a tela só o
+ * mandava para o carrinho por uma comparação própria, que o servidor não
+ * conhecia. Uma expressão só é o que impede a quarta divergência.
+ *
+ * ## O SKU é comparado em QUALQUER CAIXA
+ *
+ * `p.sku = ?` era sensível a caixa, enquanto o CADASTRO recusa um código novo
+ * que colida com o SKU de outro produto com `upper(sku) = upper(?)` — e a
+ * recusa diz, com todas as letras, "o bipe no balcão acha os dois". O bipe não
+ * achava: "sh-200" não trazia o produto de SKU "SH-200", e o desfecho conhecido
+ * de "nenhum produto encontrado" para algo que está na mão da pessoa é
+ * cadastrar o item de novo e rachar o saldo em dois cadastros. Agora a busca
+ * cobra a mesma régua que o cadastro cobra.
+ *
+ * ## A empresa é conferida na linha do código adicional
+ *
+ * `core_product_barcodes` tem `company_id` próprio, e a subconsulta o ignorava:
+ * uma linha gravada com a empresa de uma loja e a mercadoria de outra
+ * (P00-prod-01) fazia ESTE balcão atender ao bipe de um código que nunca foi
+ * dele. A linha existe em banco antigo, então a guarda vale mesmo depois de a
+ * porta que a criava ter sido fechada.
+ */
+const CASOU_POR_CODIGO = `p.barcode = ?
+    OR upper(p.internal_code) = upper(?)
+    OR upper(p.sku) = upper(?)
+    OR EXISTS (SELECT 1 FROM core_product_barcodes codigo_adicional
+                WHERE codigo_adicional.company_id = p.company_id
+                  AND codigo_adicional.product_id = p.id
+                  AND codigo_adicional.barcode = ?)`;
+
+/**
  * A linha da busca como o BALCÃO a recebe.
  *
  * `image_url` SAI da resposta de propósito: é o caminho do original, e o PDV
@@ -1968,6 +2099,13 @@ export function searchProducts(
      * código: essa acha peça de qualquer jeito, ligada ou desligada.
      */
     includeParts?: boolean;
+    /**
+     * Trazer TAMBÉM o modelo de grade (e o kit que desmembra) que ficou com
+     * SALDO PRESO — ver o comentário de `SALDO_PRESO` abaixo. Padrão: não, que
+     * é o que o balcão precisa. Só a tela de Movimentações pede, porque é ela
+     * que faz a saída de regularização.
+     */
+    comSaldoPreso?: boolean;
   } = {},
 ): Record<string, unknown>[] {
   ensureCoreSchema();
@@ -1997,6 +2135,40 @@ export function searchProducts(
     Quem decide é a tela. A busca não mente sobre o que existe.
   */
   const pecaNaBuscaPorTexto = options.includeParts ? '1 = 1' : `p.kind <> 'part'`;
+
+  /*
+    O MODELO COM SALDO PRESO, SÓ PARA QUEM VAI REGULARIZÁ-LO (P00-prod-05).
+
+    O modelo de grade fica FORA da busca — quem sai da prateleira é o tamanho, e
+    é isso que o balcão precisa ver. Só que a tela de Movimentações escolhe o
+    produto por esta mesma busca, e o servidor passou a permitir a SAÍDA que
+    tira o saldo preso de um modelo herdado de banco antigo. Sem esta porta, a
+    permissão existiria e nenhuma tela chegaria nela: o gestor veria a
+    mercadoria na posição de estoque e não teria como selecioná-la.
+
+    Só o modelo que TEM saldo entra, e só quando a tela pede — a busca do balcão
+    não manda o interruptor e continua sem ver modelo nenhum. A linha vem
+    marcada com `saldo_preso` para a tela poder dizer o que é aquilo, em vez de
+    oferecer um "produto" que a venda recusaria.
+
+    O kit que desmembra está no mesmo caso e pela mesma razão: o saldo dele
+    conta a mesma mercadoria duas vezes, e a saída é o que faz a posição voltar
+    a dizer a verdade.
+  */
+  const TEM_GRADE = 'EXISTS (SELECT 1 FROM core_products f WHERE f.parent_id = p.id)';
+  const KIT_VIRTUAL = 'p.is_kit = 1 AND p.kit_explode_on_sale = 1';
+  const SALDO_PRESO = `(${TEM_GRADE} OR (${KIT_VIRTUAL}))
+      AND EXISTS (SELECT 1 FROM core_stock preso
+                   WHERE preso.company_id = p.company_id AND preso.product_id = p.id
+                     AND preso.quantity > 0)`;
+  const modeloDeGrade = options.comSaldoPreso
+    ? `AND (NOT ${TEM_GRADE} OR (${SALDO_PRESO}))`
+    : `AND NOT ${TEM_GRADE}`;
+  // Coluna só quando a tela pede: a busca do balcão não paga subconsulta por
+  // uma marca que ela não usa.
+  const marcaDoSaldoPreso = options.comSaldoPreso
+    ? `, CASE WHEN ${SALDO_PRESO} THEN 1 ELSE 0 END AS saldo_preso`
+    : '';
 
   const linhas = getConnection()
     .prepare(
@@ -2036,43 +2208,41 @@ export function searchProducts(
       `SELECT p.*, COALESCE(s.quantity, 0) AS stock_quantity,
               w.name AS workshop_name,
               ${MINIATURA_DO_BALCAO},
-              CASE WHEN p.barcode = ? OR upper(p.internal_code) = upper(?)
-                     OR EXISTS (SELECT 1 FROM core_product_barcodes b3
-                                 WHERE b3.product_id = p.id AND b3.barcode = ?)
-                   THEN 1 ELSE 0 END AS matched_exact
+              CASE WHEN ${CASOU_POR_CODIGO} THEN 1 ELSE 0 END AS matched_exact
+              ${marcaDoSaldoPreso}
          FROM core_products p
          LEFT JOIN core_stock s ON s.product_id = p.id AND s.company_id = p.company_id
          LEFT JOIN core_workshops w ON w.id = p.workshop_id AND w.company_id = p.company_id
         WHERE p.company_id = ? AND p.active = 1
           AND ${modeloAtivo('p')}
-          AND NOT EXISTS (SELECT 1 FROM core_products f WHERE f.parent_id = p.id)
+          ${modeloDeGrade}
           ${semKits}
           AND (
-                p.barcode = ? OR upper(p.internal_code) = upper(?) OR p.sku = ?
-                OR EXISTS (SELECT 1 FROM core_product_barcodes b
-                            WHERE b.product_id = p.id AND b.barcode = ?)
+                ${CASOU_POR_CODIGO}
                 OR (${pecaNaBuscaPorTexto}
                     AND (p.name LIKE ? OR p.internal_code LIKE ?))
               )
         ORDER BY
-          CASE WHEN p.barcode = ? OR upper(p.internal_code) = upper(?)
-                 OR EXISTS (SELECT 1 FROM core_product_barcodes b2
-                             WHERE b2.product_id = p.id AND b2.barcode = ?)
-               THEN 0 ELSE 1 END,
+          CASE WHEN ${CASOU_POR_CODIGO} THEN 0 ELSE 1 END,
           p.name
         LIMIT ?`,
     )
     .all(
+      // matched_exact
+      term,
       term,
       term,
       term,
       companyId,
+      // WHERE: os quatro códigos, depois os dois LIKE do texto
       term,
       term,
       term,
       term,
       like,
       like,
+      // ORDER BY
+      term,
       term,
       term,
       term,

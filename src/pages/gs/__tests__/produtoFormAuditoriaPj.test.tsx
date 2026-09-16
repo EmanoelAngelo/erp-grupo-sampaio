@@ -453,6 +453,33 @@ describe('preço abaixo do piso pede confirmação (A-produto-17)', () => {
     expect(puts()).toHaveLength(0);
   });
 
+  /*
+    P00-prod-03: a tara tinha o MESMO defeito do piso, no campo ao lado, e
+    ninguém o tinha olhado. `Number('doze')` é NaN, e NaN viaja no JSON como
+    `null` — que o servidor lê como "limpe a tara". Digitar texto no campo
+    APAGAVA a embalagem declarada, com "Produto atualizado." na tela, e a
+    balança voltava a cobrar do cliente o peso da bandeja.
+  */
+  it('tara que não é número é recusada ANTES de gravar — e não apaga a tara gravada', async () => {
+    produto = { ...produtoPadrao(), weighable: 1, plu_code: '105', tare_grams: 12 };
+    await montar();
+    abrir('Preços');
+    fireEvent.change(screen.getByLabelText(/Tara/), { target: { value: 'doze' } });
+    salvar();
+    expect(await screen.findByText(/Tara inválida/)).toBeTruthy();
+    await esperar(50);
+    expect(puts()).toHaveLength(0);
+  });
+
+  it('a tara em gramas inteiras vai como número; "12 g" também', async () => {
+    produto = { ...produtoPadrao(), weighable: 1, plu_code: '105', tare_grams: null };
+    await montar();
+    abrir('Preços');
+    fireEvent.change(screen.getByLabelText(/Tara/), { target: { value: '12 g' } });
+    salvar();
+    expect((await corpoDoPut()).tareGrams).toBe(12);
+  });
+
   it('corrigir só a descrição de um produto que JÁ estava abaixo não pergunta nada', async () => {
     produto = { ...produtoPadrao(), min_price_cents: 5000 };
     await montar();

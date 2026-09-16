@@ -160,7 +160,18 @@ function LancamentoManual({ aoLancar }: { aoLancar: () => void }) {
       return;
     }
     try {
-      setResultados(await coreApi.searchProducts(termo.trim()));
+      /*
+        O MODELO COM SALDO PRESO ENTRA NESTA BUSCA, E SÓ NESTA (P00-prod-05).
+
+        O modelo de grade fica fora da busca de produto porque quem sai da
+        prateleira é o tamanho. Mas o banco antigo tem modelos com mercadoria
+        presa — de antes de a geração da grade recusar isso —, e o servidor
+        passou a permitir a SAÍDA que regulariza esse saldo. Esta tela é a que
+        faz essa saída: sem o interruptor, a permissão existiria e nenhuma tela
+        chegaria nela, e o gestor veria a mercadoria na posição de estoque sem
+        conseguir sequer selecioná-la.
+      */
+      setResultados(await coreApi.searchProducts(termo.trim(), { comSaldoPreso: true }));
     } catch {
       // Busca que falha não derruba o formulário; o erro real apareceria no
       // envio, com a mensagem do servidor.
@@ -377,9 +388,25 @@ function LancamentoManual({ aoLancar }: { aoLancar: () => void }) {
                     }}
                   >
                     {r.name} · {r.internal_code}
+                    {r.saldo_preso === 1 && ' · saldo preso no modelo'}
                   </Button>
                 ))}
               </div>
+            )}
+            {/*
+              O QUE É AQUELA LINHA, dita antes de a pessoa digitar a quantidade.
+
+              Sem esta frase, o modelo apareceria na lista como um produto
+              qualquer e o gestor tentaria uma ENTRADA — que o servidor recusa,
+              com razão. A tela diz o gesto certo no momento em que ele é
+              possível: dar saída e relançar em cada tamanho.
+            */}
+            {produto?.saldo_preso === 1 && (
+              <p className="mt-2 text-[length:var(--gs-text-xs)] text-[var(--gs-warning)]">
+                Este é um modelo de grade com saldo preso: o balcão não vende esse saldo e a
+                contagem não o alcança. A única coisa a fazer com ele é dar SAÍDA (ou ajuste
+                negativo), com motivo, e lançar a entrada em cada tamanho.
+              </p>
             )}
           </div>
 

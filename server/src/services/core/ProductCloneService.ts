@@ -77,7 +77,22 @@ export function cloneProduct(
   }
 
   const texto = (v: unknown) => (v == null ? undefined : String(v));
-  const numero = (v: unknown) => (v == null ? undefined : Number(v));
+  /*
+    O QUE NÃO É NÚMERO NO ORIGINAL NÃO É HERDADO (P00-prod-03).
+
+    Mesma doutrina do fornecedor em texto, logo abaixo: um cadastro antigo pode
+    ter lixo numa coluna numérica — a tara e os pisos percentuais entraram sem
+    alfândega nenhuma até esta rodada, e "abc" ficou gravado como texto. Copiar
+    esse valor faria o cadastro NOVO ser recusado por um dado que nunca
+    funcionou no original, e o gestor levaria "a tara é o peso da embalagem em
+    gramas" ao clicar em Duplicar, num campo que ele nem abriu. O clone nasce
+    com o campo em branco, que é a verdade sobre o que aquele valor valia.
+  */
+  const numero = (v: unknown) => {
+    if (v == null) return undefined;
+    const n = Number(v);
+    return Number.isFinite(n) ? n : undefined;
+  };
 
   /*
     O FORNECEDOR SÓ VAI SE FOR UM CADASTRO DE VERDADE (A-produto-10).

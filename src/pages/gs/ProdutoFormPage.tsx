@@ -285,6 +285,25 @@ function percentualDigitado(valor: string): number | null {
 }
 
 /**
+ * Tara digitada, em GRAMAS INTEIRAS; vazio é nulo = "sem embalagem a descontar".
+ *
+ * O DEFEITO é o mesmo do piso, no campo ao lado (P00-prod-03): o Salvar mandava
+ * `Number(f.tareGrams)`, e `Number('doze')` é NaN — que o JSON manda como
+ * `null`, e nulo é o pedido explícito de LIMPAR a tara. Quem digitasse texto (ou
+ * "12 g", ou "12,5") apagava a tara gravada com "Produto atualizado." na tela, e
+ * a balança voltava a cobrar o peso da bandeja do cliente. Devolve NaN no
+ * ilegível, e o Salvar recusa antes de gravar.
+ *
+ * Gramas INTEIRAS porque é o que a balança recebe: "12,5 g" é erro de digitação,
+ * e o servidor o recusa com a mesma régua (`CORE_INVALID_TARE`).
+ */
+function taraDigitada(valor: string): number | null {
+  const texto = valor.trim().replace(/\s/g, '').replace(/g$/i, '');
+  if (!texto) return null;
+  return /^\d+$/.test(texto) ? Number(texto) : Number.NaN;
+}
+
+/**
  * O CORPO DO SALVAR, montado de um formulário qualquer — o da tela ou o que foi
  * LIDO do banco. É a mesma função para os dois de propósito: é comparando um
  * com o outro que o Salvar descobre o que a pessoa mudou (A-produto-07).
@@ -336,7 +355,7 @@ function montarCorpo(f: Form): Record<string, unknown> {
     // String vazia limpa o PLU no servidor — é como se tira um produto da
     // balança sem apagar o cadastro.
     pluCode: f.pluCode.trim(),
-    tareGrams: f.tareGrams.trim() ? Number(f.tareGrams) : null,
+    tareGrams: taraDigitada(f.tareGrams),
     serialized: f.serialized,
     kitExplodeOnSale: f.kitExplodeOnSale,
     kitCostFromComponents: f.kitCostFromComponents,
@@ -1050,6 +1069,19 @@ export default function ProdutoFormPage() {
     ].find((m): m is string => Boolean(m));
     if (pisoIlegivel) {
       setError(pisoIlegivel);
+      setSecao('precos');
+      return;
+    }
+    /*
+      TARA ILEGÍVEL NÃO VIRA "SEM TARA" (P00-prod-03) — o mesmo defeito do piso,
+      no campo ao lado. NaN viaja como `null`, e nulo LIMPA a tara: digitar
+      "doze" (ou "12,5") apagava a embalagem declarada em silêncio, e a balança
+      voltava a cobrar o peso da bandeja do cliente.
+    */
+    if (Number.isNaN(taraDigitada(form.tareGrams))) {
+      setError('Tara inválida: digite o peso da embalagem em gramas inteiras, como 12.');
+      // A tara mora ao lado do PLU, na aba de Preços — é lá que a pessoa tem
+      // de voltar, e não na de Estoque.
       setSecao('precos');
       return;
     }

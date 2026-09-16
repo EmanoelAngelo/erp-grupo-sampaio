@@ -1293,6 +1293,15 @@ coreRouter.get('/products/search', (req: AuthedRequest, res, next) => {
     const items = searchProducts(companyId, term, 30, {
       excludeKits: req.query.excludeKits === '1',
       includeParts: req.query.includeParts === '1',
+      /*
+        `?comSaldoPreso=1` é a tela de Movimentações pedindo TAMBÉM o modelo de
+        grade (ou o kit que desmembra) que ficou com saldo preso num banco
+        antigo — ver `SALDO_PRESO` em `searchProducts`. Sem ele, nada muda: o
+        balcão continua sem ver modelo nenhum, e é o balcão que não pode vê-lo.
+        A linha volta marcada com `saldo_preso`, para a tela dizer o que é
+        aquilo em vez de oferecer um "produto" que a venda recusaria.
+      */
+      comSaldoPreso: req.query.comSaldoPreso === '1',
     });
     res.json({
       items,
