@@ -587,11 +587,21 @@ export function fraseDasPendencias(p: PendenciasEletronicas): string {
     ...(p.vendasOffline ?? []).map(
       (v) => `venda guardada sem servidor e recusada, de ${emReais(v.receivedCents)} (relance ou descarte em Vendas guardadas)`,
     ),
+    /*
+      A devolução em duas etapas que ainda não pagou o cliente (auditoria do
+      PDV): dinheiro que a loja DEVE, e que continua na gaveta enquanto o
+      reembolso for em espécie. Ver `devolucoesAguardandoReembolsoDoTurno`.
+    */
+    ...(p.devolucoesAguardandoReembolso ?? []).map(
+      (d) =>
+        `devolução #${d.number} da venda #${d.saleNumber ?? '?'} com ${emReais(d.pendenteCents)} `
+        + 'ainda não devolvidos ao cliente (registre o reembolso em Vendas › Devoluções)',
+    ),
   ];
   return (
-    `Este turno tem ${p.quantidade} pendência(s) eletrônica(s), somando ${emReais(p.totalCents)}: `
-    + `${partes.join('; ')}. Resolva em Vendas › Conferência de maquininha, ou feche declarando que está `
-    + 'ciente, com o motivo — a pendência continua na fila do gestor.'
+    `Este turno tem ${p.quantidade} pendência(s), somando ${emReais(p.totalCents)}: `
+    + `${partes.join('; ')}. Resolva em Vendas › Conferência de maquininha ou em Vendas › Devoluções, `
+    + 'ou feche declarando que está ciente, com o motivo — a pendência continua na fila do gestor.'
   );
 }
 

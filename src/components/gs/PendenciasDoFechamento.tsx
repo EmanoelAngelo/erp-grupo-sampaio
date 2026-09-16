@@ -10,6 +10,13 @@
  * ciente, com o motivo — e é esta peça que diz O QUÊ, pelo nome e pelo valor,
  * e colhe a declaração. As três telas que fecham gaveta (o diálogo do PDV, a
  * tela de Caixa e as gavetas abertas da operação) usam a mesma.
+ *
+ * Duas pendências que não são de maquininha entraram depois, pelo mesmo
+ * argumento — dinheiro do turno que fica indefinido se ninguém disser: a venda
+ * guardada sem servidor e recusada (GAP-PRD-045), cujo dinheiro está NA gaveta
+ * sem venda; e a devolução em duas etapas cujo reembolso ainda não foi
+ * registrado (auditoria do PDV), que é dinheiro que a loja DEVE — e que, em
+ * espécie, também está na gaveta sem ser dela.
  */
 import { formatCents } from '@/components/gs/format';
 import type { PendenciasEletronicas, TipoDePendenciaEletronica } from '@/lib/api/core';
@@ -48,6 +55,7 @@ export function PendenciasDoFechamento({
     >
       <strong className="text-[var(--gs-warning)]">
         {(pendencias.vendasOffline?.length ?? 0) > 0
+          || (pendencias.devolucoesAguardandoReembolso?.length ?? 0) > 0
           ? 'Pendências deste turno'
           : 'Dinheiro eletrônico ainda indefinido neste turno'}{' '}
         — {pendencias.quantidade} pendência(s), {formatCents(pendencias.totalCents)}
@@ -71,11 +79,23 @@ export function PendenciasDoFechamento({
             {v.errorMessage ? ` (${v.errorMessage})` : ''}. Relance ou descarte em Regularizar.
           </li>
         ))}
+        {/*
+          Auditoria do PDV: a mercadoria voltou e o dinheiro do cliente ainda
+          não saiu. Em espécie, esse dinheiro está NA gaveta e não é da loja.
+        */}
+        {(pendencias.devolucoesAguardandoReembolso ?? []).map((d) => (
+          <li key={d.id}>
+            Devolução #{d.number} da venda #{d.saleNumber ?? '?'} — {formatCents(d.pendenteCents)} ainda
+            não devolvidos ao cliente
+            {d.reembolsadoCents > 0 ? ` (de ${formatCents(d.devolvivelCents)}, já voltaram ${formatCents(d.reembolsadoCents)})` : ''}
+            . Registre o reembolso em Vendas › Devoluções.
+          </li>
+        ))}
       </ul>
       <span className="text-[var(--gs-text-soft)]">
         Cartão e PIX não estão na gaveta: a contagem continua sendo só do dinheiro. Estas pendências
-        são do gerente, em Vendas › Conferência de maquininha — fechar agora não as resolve, só registra
-        que você fechou sabendo delas.
+        são do gerente, em Vendas › Conferência de maquininha e em Vendas › Devoluções — fechar agora
+        não as resolve, só registra que você fechou sabendo delas.
       </span>
       <label className="flex items-center gap-2 font-semibold">
         <input

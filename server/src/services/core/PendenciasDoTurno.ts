@@ -35,6 +35,15 @@
  * A cobrança que o gestor já tratou (conciliou, amarrou a uma venda ou
  * registrou a tratativa) deixa de ser pendência. Recusada, cancelada e
  * estornada nunca foram.
+ *
+ * Duas pendências que NÃO são de maquininha entraram depois, pelo mesmo
+ * argumento — dinheiro do turno que fica indefinido se ninguém disser:
+ *
+ *   venda guardada recusada     o dinheiro está NA gaveta e a venda não existe
+ *                               (GAP-PRD-045, `vendasOfflinePendentesDaGaveta`);
+ *   devolução sem reembolso     a mercadoria voltou e o cliente ainda não
+ *                               recebeu (auditoria do PDV,
+ *                               `devolucoesAguardandoReembolsoDoTurno`).
  */
 import { findRows } from '../../db/database.js';
 import { getConnection } from '../../db/sqlite.js';
@@ -64,6 +73,25 @@ export interface PagamentoPendenteDoTurno {
   amountCents: number;
 }
 
+/**
+ * Devolução em DUAS ETAPAS registrada neste turno cujo reembolso ainda não foi
+ * registrado — auditoria do PDV, P0 da Preço Justo. Ver
+ * `devolucoesAguardandoReembolsoDoTurno`.
+ */
+export interface DevolucaoAguardandoReembolso {
+  id: string;
+  number: number;
+  saleId: string;
+  saleNumber: number | null;
+  /** O que a devolução apurou como devolvível. */
+  devolvivelCents: number;
+  /** O que já voltou ao cliente, em uma ou mais parcelas. */
+  reembolsadoCents: number;
+  /** O que a loja ainda deve a esta pessoa. */
+  pendenteCents: number;
+  createdAt: string;
+}
+
 export interface PendenciasEletronicas {
   cobrancas: CobrancaPendenteDoTurno[];
   pagamentosPendentes: PagamentoPendenteDoTurno[];
@@ -74,6 +102,12 @@ export interface PendenciasEletronicas {
    * que ninguém explica.
    */
   vendasOffline: VendaOfflinePendenteDoTurno[];
+  /**
+   * Devolução em duas etapas deste turno com reembolso pendente ou parcial —
+   * dinheiro que a loja DEVE, e que ainda está na gaveta quando o reembolso
+   * for em espécie.
+   */
+  devolucoesAguardandoReembolso: DevolucaoAguardandoReembolso[];
   quantidade: number;
   totalCents: number;
 }
@@ -161,16 +195,107 @@ export function pendenciasEletronicasDoTurno(companyId: string, turno: TurnoLido
   ).map((p) => ({ ...p, saleNumber: p.saleNumber ?? null, amountCents: Number(p.amountCents) }));
 
   const vendasOffline = vendasOfflinePendentesDaGaveta(companyId, turno.id);
+  const devolucoesAguardandoReembolso = devolucoesAguardandoReembolsoDoTurno(companyId, turno);
 
   const totalCents =
     cobrancas.reduce((s, c) => s + c.amountInCents, 0)
     + pagamentosPendentes.reduce((s, p) => s + p.amountCents, 0)
-    + vendasOffline.reduce((s, v) => s + v.receivedCents, 0);
+    + vendasOffline.reduce((s, v) => s + v.receivedCents, 0)
+    + devolucoesAguardandoReembolso.reduce((s, d) => s + d.pendenteCents, 0);
   return {
     cobrancas,
     pagamentosPendentes,
     vendasOffline,
-    quantidade: cobrancas.length + pagamentosPendentes.length + vendasOffline.length,
+    devolucoesAguardandoReembolso,
+    quantidade:
+      cobrancas.length
+      + pagamentosPendentes.length
+      + vendasOffline.length
+      + devolucoesAguardandoReembolso.length,
     totalCents,
   };
+}
+
+/**
+ * ============================================================================
+ * A DEVOLUÇÃO EM DUAS ETAPAS QUE AINDA NÃO PAGOU O CLIENTE
+ * ============================================================================
+ *
+ * O DEFEITO (auditoria do PDV, P0 da Preço Justo): a Preço Justo é a operação
+ * onde a devolução em duas etapas está LIGADA por padrão
+ * (`ativarDevolucaoEmDuasEtapasNaPrecoJusto`). Nela o registro da devolução
+ * trata só a MERCADORIA — a peça volta à prateleira na hora — e o dinheiro é
+ * registrado depois, quando de fato voltar ao cliente. Entre uma coisa e a
+ * outra a loja DEVE aquele valor.
+ *
+ * O fechamento do turno não enxergava isso. A gaveta fechava com diferença
+ * ZERO e o histórico dizia "conferido": e estava certo na aritmética, porque o
+ * dinheiro do reembolso em espécie continua DENTRO da gaveta — só que ele não
+ * é da loja. O operador ia embora sem saber que devia R$ X a alguém, o turno
+ * seguinte contava aquele dinheiro como seu, e a devolução ficava esperando
+ * num lugar que o balcão não abre (Vendas › Devoluções, da gestão).
+ *
+ * É exatamente a espécie de coisa que o GAP-PRD-081 decidiu não deixar passar
+ * calada, e a regra aqui é a MESMA das outras três: não trava para sempre —
+ * quem paga o cliente muitas vezes é a gestão, e o operador não pode ficar
+ * preso no balcão por isso —, trava até ser DITA. A primeira tentativa volta
+ * 409 com o valor e a venda; fechar exige declarar ciência com o motivo, e o
+ * que ficou pendente vai para o turno e para a auditoria.
+ *
+ * ## De quem é a devolução
+ *
+ * `core_sale_returns.cash_session_id` NÃO serve: ele é a gaveta de onde o
+ * dinheiro SAIU e nasce nulo de propósito (GAP-PRD-161) — na devolução em duas
+ * etapas ele continua nulo justamente porque nada saiu ainda. A amarra é a
+ * mesma que este arquivo já usa para a cobrança sem carimbo: a JANELA do turno
+ * (registrada depois da abertura e, se já fechou, antes do fechamento). Na
+ * Preço Justo a janela é exata, porque a operação tem uma gaveta aberta por vez
+ * (`CORE_CASH_ALREADY_OPEN`).
+ *
+ * A devolução do fluxo IMEDIATO nunca entra: nele o registro já dá o dinheiro
+ * por devolvido, e `refund_flow` é nulo. As outras cinco operações do grupo
+ * seguem nesse fluxo e não veem diferença nenhuma.
+ */
+export function devolucoesAguardandoReembolsoDoTurno(
+  companyId: string,
+  turno: TurnoLido,
+): DevolucaoAguardandoReembolso[] {
+  const linhas = getConnection()
+    .prepare(
+      `SELECT r.id AS id, r.number AS number, r.sale_id AS saleId, s.number AS saleNumber,
+              r.total_cents AS devolvivelCents, r.created_at AS createdAt,
+              (SELECT COALESCE(SUM(f.amount_cents), 0) FROM core_sale_return_refunds f
+                WHERE f.return_id = r.id) AS reembolsadoCents
+         FROM core_sale_returns r
+         JOIN core_sales s ON s.id = r.sale_id
+        WHERE r.company_id = ? AND r.refund_flow = 'duas_etapas'
+          AND r.created_at >= ?
+          AND (? IS NULL OR r.created_at <= ?)
+        ORDER BY r.number`,
+    )
+    .all(companyId, turno.opened_at, turno.closed_at, turno.closed_at) as unknown as {
+    id: string;
+    number: number;
+    saleId: string;
+    saleNumber: number | null;
+    devolvivelCents: number;
+    createdAt: string;
+    reembolsadoCents: number;
+  }[];
+  return linhas
+    .map((l) => {
+      const devolvivelCents = Number(l.devolvivelCents ?? 0);
+      const reembolsadoCents = Number(l.reembolsadoCents ?? 0);
+      return {
+        id: String(l.id),
+        number: Number(l.number),
+        saleId: String(l.saleId),
+        saleNumber: l.saleNumber ?? null,
+        devolvivelCents,
+        reembolsadoCents,
+        pendenteCents: Math.max(0, devolvivelCents - reembolsadoCents),
+        createdAt: String(l.createdAt),
+      };
+    })
+    .filter((d) => d.pendenteCents > 0);
 }
