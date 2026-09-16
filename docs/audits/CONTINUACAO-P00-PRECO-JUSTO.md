@@ -125,11 +125,20 @@ de cada commit, que traz o defeito medido, o conserto e a mordida.
 3. **E2E da Preço Justo** — o roteiro foi atualizado para a nova regra do
    fechamento (10.9 cobra a recusa 409 nomeando a devolução; 10.10 fecha com
    ciência declarada e confere a diferença), mas **ainda não foi executado
-   depois dos merges desta rodada**. O roteiro vive fora do repositório, em
-   `%TEMP%/claude/C--Users-User-Desktop-Grupo-Sampaio/d394c4ce-.../scratchpad/e2e/e2e-preco-justo.mjs`,
-   com o disparador `scratchpad/rodar-e2e-pj.cjs`. **Copiá-lo para
-   `scripts/e2e/` é um passo pendente** — enquanto ele estiver só no temporário,
-   a entrega não é reproduzível por outra pessoa.
+   depois dos merges desta rodada**.
+
+   **Caminho definitivo: `scripts/e2e/e2e-preco-justo.mjs`** (commit `1be4ffd`).
+   Ele saiu do diretório temporário e entrou no repositório sem uma linha
+   alterada — mesmo conteúdo byte a byte e mesmo blob (`63e2e35`) do arquivo que
+   rodou. São 13 seções e 90 conferências contra a pilha descartável.
+
+   **O disparador ainda não entrou**: `rodar-e2e-pj.cjs` segue no temporário da
+   sessão (`%TEMP%/claude/C--Users-User-Desktop-Grupo-Sampaio/d394c4ce-.../scratchpad/`).
+   É ele que sobe a pilha descartável (API 19592, tela 19602, banco próprio,
+   senhas aleatórias por variável de ambiente e varredura de segredos) chamando
+   `scripts/stack-descartavel.mjs`. Sem ele, o roteiro roda apontando para uma
+   pilha já de pé, pela variável `E2E_API_PORT`. **Levá-lo para `scripts/e2e/`
+   também, e pendurar um `npm run e2e:pj`, continua pendente.**
 
 ---
 
@@ -248,6 +257,15 @@ cd "C:/Users/User/Desktop/devora-p0" && npx vitest run
 cd "C:/Users/User/Desktop/devora-p0" && npm run type-check && npm run lint && npm run build
 ```
 
+O E2E, com a pilha descartável já de pé (o roteiro agora mora no repositório):
+
+```bash
+cd "C:/Users/User/Desktop/devora-p0" && E2E_API_PORT=19592 node scripts/e2e/e2e-preco-justo.mjs
+```
+
+Para subir a pilha descartável junto, enquanto o disparador não entra no
+repositório:
+
 ```bash
 node "C:/Users/User/AppData/Local/Temp/claude/C--Users-User-Desktop-Grupo-Sampaio/d394c4ce-5e77-4722-a903-6cca223a6de3/scratchpad/rodar-e2e-pj.cjs"
 ```
@@ -273,8 +291,8 @@ cd "C:/Users/User/Desktop/devora-p0" && node scripts/rbac/gerar-artefatos.mjs &&
    vazio (média), parâmetro morto (baixa) — cada uma com teste e mordida.
 4. Rodar os portões completos: type-check, lint, build, suíte do servidor,
    suíte da tela (inclusive sob o detector de corrida) e E2E.
-5. Copiar o roteiro E2E para `scripts/e2e/` e pendurar um `npm run e2e:pj`, para
-   a entrega ser reproduzível fora desta sessão.
+5. Levar o disparador (`rodar-e2e-pj.cjs`) para `scripts/e2e/` e pendurar um
+   `npm run e2e:pj`. O roteiro em si já está no repositório (`1be4ffd`).
 6. Finalizar o §11 do relatório P0 com os números finais e commitar.
 7. Só então, com o dono de acordo: `git push`, e nunca antes.
 
