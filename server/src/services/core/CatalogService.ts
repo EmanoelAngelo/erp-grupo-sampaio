@@ -371,6 +371,75 @@ function estoqueMinimo(valor: unknown): number | undefined {
 }
 
 /**
+ * A TARA DA EMBALAGEM, EM GRAMAS, CONFERIDA ANTES DE SER GRAVADA (P00-prod-03).
+ *
+ * O DEFEITO: a tara era o único campo do cadastro que não passava por alfândega
+ * nenhuma — `input.tareGrams ?? null` na criação, `input.tareGrams ?? null` na
+ * edição. Duas entradas passavam, e as duas estragam o peso no balcão:
+ *
+ *   - TEXTO. `tareGrams: "abc"` ficava gravado como a palavra "abc" numa coluna
+ *     INTEGER (o SQLite guarda o que lhe derem), e a exportação da balança
+ *     escreve `String(tare_grams ?? 0)` direto no arquivo: a balança recebia
+ *     "abc" como tara;
+ *   - NEGATIVO. Tara é o que se DESCONTA do peso bruto. Com -50 a balança
+ *     SOMARIA 50 gramas a cada pesagem — o cliente pagando pela embalagem que
+ *     o campo existe justamente para não cobrar.
+ *
+ * Zero é legítimo e significa "sem embalagem a descontar", igual a vazio.
+ * Inteiro porque a balança trabalha em gramas cheias: "12,5 g" é erro de
+ * digitação, e é aqui que ele para.
+ *
+ * Devolve `undefined` para ausente (a edição preserva) e `null` para vazio (a
+ * edição limpa) — a mesma convenção dos códigos fiscais.
+ */
+function taraEmGramas(valor: unknown): number | null | undefined {
+  if (valor === undefined) return undefined;
+  if (valor === null || valor === '') return null;
+  const numero = Number(valor);
+  if (!Number.isInteger(numero) || numero < 0) {
+    throw new ApiError(
+      'CORE_INVALID_TARE',
+      'A tara é o peso da embalagem em GRAMAS inteiras, zero ou mais (ex.: 12 para a bandeja). '
+        + 'Ela é descontada do peso na balança — um valor negativo somaria peso em vez de descontar.',
+      400,
+    );
+  }
+  return numero;
+}
+
+/**
+ * O PISO PERCENTUAL — MARKUP OU MARGEM MÍNIMA — CONFERIDO NAS DUAS PORTAS
+ * (P00-prod-03).
+ *
+ * O DEFEITO tinha duas metades:
+ *
+ *   - a CRIAÇÃO não conferia nada. Só o PUT chamava `percentualEditado`, e o
+ *     POST gravava o que viesse: `minMarkupPercent: "abc"` ficava na coluna. E
+ *     "abc" não estoura em lugar nenhum — `pisoDoPreco` descarta o que não é
+ *     finito e `avaliarPreco` compara número com texto (sempre falso). O
+ *     resultado é o pior: o gestor configura o piso, a tela diz "Produto
+ *     criado", e a venda abaixo do mínimo passa em silêncio para sempre;
+ *   - NEGATIVO passava nas duas. Piso abaixo de zero não é piso: -300% de
+ *     margem autoriza qualquer preço, e é indistinguível de um campo em branco
+ *     para quem lê o cadastro depois.
+ *
+ * Vazio (e nulo) continua sendo o pedido legítimo de TIRAR o piso.
+ */
+function percentualDoPiso(valor: unknown, rotulo: string): number | null {
+  if (valor === null || valor === '' || valor === undefined) return null;
+  const numero = Number(valor);
+  if (!Number.isFinite(numero) || numero < 0) {
+    throw new ApiError(
+      'CORE_PRICE_FLOOR_INVALID',
+      `${rotulo} deve ser um número maior ou igual a zero (ex.: 30 para 30%). `
+        + 'Deixe em branco para o produto não ter esse piso.',
+      400,
+    );
+  }
+  return numero;
+}
+
+/**
  * O código interno como a loja o lê: sem espaços e em MAIÚSCULAS (A-produto-M04).
  *
  * O UNIQUE do banco é sensível a caixa: "pj-0105" e "PJ-0105" conviviam como
@@ -678,6 +747,15 @@ export function createProduct(
   exigirCentavosNaoNegativos(input.priceCents, input.costCents, input.minPriceCents);
   const embalagem = fatorDeEmbalagem(input.packFactor);
   const minimoDeEstoque = estoqueMinimo(input.minStock) ?? 0;
+  /*
+    A TARA E OS PISOS PERCENTUAIS PASSAM PELA MESMA ALFÂNDEGA DO RESTO
+    (P00-prod-03). Eram os três campos que a criação gravava CRUS: texto na
+    coluna de gramas, e um piso que "existe" no cadastro e não vale em venda
+    nenhuma. Antes da transação, como o peso e o dinheiro.
+  */
+  const tara = taraEmGramas(input.tareGrams) ?? null;
+  const markupMinimo = percentualDoPiso(input.minMarkupPercent, 'O markup mínimo');
+  const margemMinima = percentualDoPiso(input.minMarginPercent, 'A margem mínima');
   // A classificação fiscal é conferida antes de abrir a transação, como as
   // medidas: NCM de 6 dígitos não chega a gravar metade do produto.
   const fiscal = {
@@ -868,12 +946,12 @@ export function createProduct(
       textoOuNulo(input.reference),
       String(input.storageLocation ?? '').trim() || null,
       input.minPriceCents ?? 0,
-      input.minMarkupPercent ?? null,
-      input.minMarginPercent ?? null,
+      markupMinimo,
+      margemMinima,
       input.openPrice ? 1 : 0,
       input.weighable ? 1 : 0,
       String(input.pluCode ?? '').trim() || null,
-      input.tareGrams ?? null,
+      tara,
       input.serialized ? 1 : 0,
       // Ausente = controla, que é o que todo produto significou até esta
       // rodada. Só o `false` explícito cria o serviço de balcão.
@@ -1174,12 +1252,7 @@ function exigirQueNinguemMudouOMesmoCampo(
 /** Percentual do piso: ausente preserva, vazio limpa, texto é recusado. */
 function percentualEditado(valor: unknown, atual: unknown, rotulo: string): unknown {
   if (valor === undefined) return atual;
-  if (valor === null || valor === '') return null;
-  const numero = Number(valor);
-  if (!Number.isFinite(numero)) {
-    throw new ApiError('CORE_PRICE_FLOOR_INVALID', `${rotulo} deve ser um número (ex.: 30 para 30%).`, 400);
-  }
-  return numero;
+  return percentualDoPiso(valor, rotulo);
 }
 
 export function updateProduct(
@@ -1538,7 +1611,14 @@ function atualizarProduto(
     // haveria como TIRAR um produto da balança sem apagar o cadastro.
     plu_code:
       input.pluCode === undefined ? current.plu_code : String(input.pluCode).trim() || null,
-    tare_grams: input.tareGrams === undefined ? current.tare_grams : (input.tareGrams ?? null),
+    /*
+      Ausente preserva; vazio (ou nulo) limpa — e o valor passa pela mesma
+      alfândega da criação (P00-prod-03). Antes era `input.tareGrams ?? null`
+      dos dois lados: "abc" e -50 entravam pela edição exatamente como entravam
+      pelo cadastro.
+    */
+    tare_grams:
+      input.tareGrams === undefined ? current.tare_grams : taraEmGramas(input.tareGrams),
     // Ausente preserva; só o booleano explícito muda de lado. Ver a recusa de
     // saldo logo acima: desligar com estoque não chega até aqui.
     stock_control: controlaEstoque ? 1 : 0,
