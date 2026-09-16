@@ -380,6 +380,14 @@ describe('o menu esconde de quem o guarda devolveria', () => {
       '/sistema/fiscal/fechamento',
       '/sistema/fiscal/inutilizacoes',
       /*
+        OPERAÇÕES FISCAIS (P0 fiscal) — a sexta do Fiscal, e pelo mesmo motivo
+        das cinco acima: `GET /core/fiscal/operacoes` e
+        `GET /core/fiscal/pendencias-contabeis` são `fiscal.view`, que o
+        estoquista e o atendente não têm. Sem `profiles`, o item nasceria na
+        frente deles apontando para 403 — a porta que bate na cara.
+      */
+      '/sistema/fiscal/operacoes',
+      /*
         AS CINCO TELAS DA LOJA ONLINE.
 
         As quatro primeiras (administração, entrega, e-mails e conciliação
