@@ -4915,6 +4915,22 @@ export const coreApi = {
     apiRequest<FiscalSaleStatus | null>(`/core/fiscal/sales/${saleId}/status`),
 
   /**
+   * A NF-e (modelo 55) DE UMA VENDA DE BALCÃO (P0 fiscal).
+   *
+   * `createNfeForSale` existia inteiro no servidor e nenhum caminho o chamava
+   * fora dos testes: a NF-e do sistema só saía de pedido online, e o cliente
+   * que compra no balcão com CNPJ e pede a nota ficava sem caminho.
+   *
+   * O destinatário vai no corpo porque a loja não o tem: a NF-e exige endereço
+   * com o código IBGE do município, e o balcão vende com o CPF e pronto.
+   */
+  emitirNfeDaVenda: (saleId: string, recipient: DestinatarioDaDevolucao) =>
+    apiRequest<EmissaoDaNotaDeDevolucao>(`/core/fiscal/sales/${encodeURIComponent(saleId)}/nfe`, {
+      method: 'POST',
+      body: { recipient },
+    }).then((r) => exigirCampos(r, 'document')),
+
+  /**
    * Dá para emitir a nota DESTA venda? Perguntado antes de mostrar o botão.
    *
    * Não é o mesmo que o checklist da operação: pendência de catálogo (produto

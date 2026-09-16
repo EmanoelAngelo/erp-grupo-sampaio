@@ -181,6 +181,16 @@ function servidor() {
   });
 }
 
+/**
+ * A tela pergunta pela CAPABILITY (`useCan`), que é o que o servidor cobra:
+ * ler é `fiscal.view`, gravar é `fiscal.policy.manage`. O gerente de loja tem
+ * a primeira e não a segunda.
+ */
+const CAPS: Record<string, string[]> = {
+  gestor: ['fiscal.view', 'fiscal.policy.manage'],
+  gerente_loja: ['fiscal.view'],
+};
+
 function entrar(profileCode: string) {
   setSession(
     {
@@ -192,6 +202,14 @@ function entrar(profileCode: string) {
       companies: [
         { id: 'loja', slug: 'preco-justo', tradeName: 'Preço Justo', kind: 'retail', profileCode },
       ],
+      access: {
+        modelo: { code: profileCode, name: profileCode, personalizado: false },
+        capabilities: CAPS[profileCode] ?? [],
+        terminais: 'todos',
+        bancadas: 'todas',
+        casa: '/sistema',
+        carimbo: `c-${profileCode}`,
+      },
     } as never,
     'LOGIN',
     'teste das operações fiscais',

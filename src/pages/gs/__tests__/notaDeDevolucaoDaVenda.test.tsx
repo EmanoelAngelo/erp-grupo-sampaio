@@ -148,6 +148,15 @@ function servidor() {
   );
 }
 
+/**
+ * A tela pergunta pela CAPABILITY (`useCan`), que é o que a rota cobra:
+ * `fiscal.manage`. O caixa do balcão não a tem.
+ */
+const CAPS: Record<string, string[]> = {
+  gerente_loja: ['fiscal.manage', 'fiscal.view', 'sales.view'],
+  operador_caixa_loja: ['fiscal.sale.emit', 'sales.view'],
+};
+
 function entrar(profileCode: string) {
   setSession(
     {
@@ -159,6 +168,14 @@ function entrar(profileCode: string) {
       companies: [
         { id: 'preco-justo', slug: 'preco-justo', tradeName: 'Preço Justo', kind: 'retail', profileCode },
       ],
+      access: {
+        modelo: { code: profileCode, name: profileCode, personalizado: false },
+        capabilities: CAPS[profileCode] ?? [],
+        terminais: 'todos',
+        bancadas: 'todas',
+        casa: '/sistema',
+        carimbo: `c-${profileCode}`,
+      },
     } as never,
     'LOGIN',
     'teste da NF-e de devolução da venda',

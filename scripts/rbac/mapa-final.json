@@ -15,7 +15,7 @@
   "K": "contador"
  },
  "totais": {
-  "pontos": 1270,
+  "pontos": 1271,
   "por_fatia": {
    "core-1": 58,
    "core-2": 90,
@@ -23,7 +23,7 @@
    "core-4": 73,
    "core-5": 112,
    "core-6": 73,
-   "core-7": 156,
+   "core-7": 157,
    "outros-roteadores": 190,
    "servicos": 124,
    "tela-rotas-menu": 237,
@@ -32,7 +32,7 @@
   "por_tipo": {
    "servico": 170,
    "atalho-admin": 98,
-   "rota": 622,
+   "rota": 623,
    "publica": 100,
    "tela-rota": 109,
    "tela-menu": 105,
@@ -40,7 +40,7 @@
   },
   "por_categoria": {
    "servico-ator": 172,
-   "guarda": 611,
+   "guarda": 612,
    "escopo-caixa": 3,
    "liberador": 1,
    "escopo-bancada": 39,
@@ -59,24 +59,24 @@
    "constante-de-ambiente": 10,
    "tela-botao": 62
   },
-  "rotas_unicas": 696,
-  "rotas_guardadas": 610,
+  "rotas_unicas": 697,
+  "rotas_guardadas": 611,
   "rotas_publicas": 86,
   "rotas_guardadas_por_guarda": {
-   "cap": 534,
+   "cap": 535,
    "qualquer": 70,
    "todas": 2,
    "soAutenticado": 4
   },
   "veredito": {
-   "igual": 1188,
+   "igual": 1189,
    "muda": 58,
    "n/a": 10,
    "igual pelo passo 86": 1,
    "igual (regra)": 4
   },
   "rotas_veredito": {
-   "igual": 694,
+   "igual": 695,
    "muda": 2
   },
   "mudancas_nao_listadas": 0,
@@ -56748,6 +56748,48 @@
    "categoria": "tela-menu",
    "guarda_hoje": "menu \"Fiscal > Operações fiscais\" → /sistema/fiscal/operacoes: environments ['gestao'], profiles QUEM_GERENCIA_A_OPERACAO (filtrado em AppShell.tsx)",
    "nota": "Mesma lista da rota (gsRoutes.tsx). Dia 1: igual (mesmo conjunto de perfis que as vizinhas do Fiscal)."
+  },
+  {
+   "id": "p0fiscal#nfe-da-venda",
+   "fatia": "core-7",
+   "arquivo": "server/src/routes/v1/core.ts",
+   "linha": null,
+   "linha_rota": null,
+   "tipo": "rota",
+   "categoria": "guarda",
+   "metodo": "POST",
+   "caminho": "/core/fiscal/sales/:saleId/nfe",
+   "tela": "/sistema/vendas",
+   "guarda_hoje": "requireCapability(req, 'fiscal.manage')",
+   "perfis_hoje": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina"
+   ],
+   "capability_fatia": "fiscal.manage",
+   "capability_tsv": "fiscal.manage",
+   "capability_final": "fiscal.manage",
+   "guarda_nova": "requireCapability('fiscal.manage')",
+   "regra_final": null,
+   "escopo": "empresa",
+   "alcance_dia1": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina"
+   ],
+   "comparado_entre": "os 11 modelos",
+   "veredito": "igual",
+   "ganha": [],
+   "perde": [],
+   "mudanca": null,
+   "mudanca_associada": null,
+   "conflito": null,
+   "duplicado_de": null,
+   "divergencia_tsv": false,
+   "rotas_servidor": null,
+   "nota": "Rota nova da P0 fiscal: a NF-e (modelo 55) de uma venda de BALCÃO. createNfeForSale existia inteiro e nenhum caminho o chamava fora dos testes — a NF-e do sistema só saía de pedido online. fiscal.manage, e não fiscal.sale.emit: o cupom é gesto do caixa, a NF-e com destinatário completo é da gerência, a mesma régua das NF-e de devolução. FECHADA ao contador, que não emite nota."
   }
  ]
 }

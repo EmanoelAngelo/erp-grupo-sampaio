@@ -5,7 +5,7 @@
  "mudancas_permitidas": {
   "D1": "O legado operador_caixa (0 vínculos) passa a poder POST /core/print/jobs e POST /core/print/jobs/:id/reprint (conflitos.md, C1)."
  },
- "total": 721,
+ "total": 722,
  "rotas": {
   "DELETE /core/acquirers/rates/:id": {
    "arquivo": "core.ts",
@@ -6160,6 +6160,19 @@
     "operador_caixa_oficina"
    ],
    "capability": "fiscal.sale.emit",
+   "mudanca": null
+  },
+  "POST /core/fiscal/sales/:saleId/nfe": {
+   "arquivo": "core.ts",
+   "linha": null,
+   "guarda_hoje": "requireCapability(req, 'fiscal.manage')",
+   "perfis": [
+    "admin_geral",
+    "gestor",
+    "gerente_loja",
+    "gerente_oficina"
+   ],
+   "capability": "fiscal.manage",
    "mudanca": null
   },
   "POST /core/fiscal/sales/:saleId/nfse": {

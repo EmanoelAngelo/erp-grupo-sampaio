@@ -379,3 +379,68 @@ describe('a NF-e de devolução de COMPRA pela rota, com o destinatário do cada
     expect(r.body.error.message).toMatch(/código IBGE do município/);
   });
 });
+
+/**
+ * A NF-e (MODELO 55) DE UMA VENDA DE BALCÃO (P0 fiscal).
+ *
+ * O defeito: `createNfeForSale` existia inteiro — série do cadastro,
+ * destinatário validado, município conferido na tabela do IBGE e a trava de
+ * "um documento vivo por venda" — e NENHUM caminho o chamava fora dos testes.
+ * A NF-e do sistema só saía de pedido online, e o cliente que compra no balcão
+ * com CNPJ e pede nota ficava sem caminho.
+ */
+describe('a NF-e da venda de balcão pela rota', () => {
+  const ROTA = (saleId: string) => `/api/v1/core/fiscal/sales/${saleId}/nfe`;
+
+  it('sai autorizada com tpNF 1 e o destinatário do corpo; sem destinatário é 400', async () => {
+    const v = venda();
+    const gerente = await login('GERPJ7', 'gerente_loja');
+
+    const semDestinatario = await request(app).post(ROTA(v.saleId)).set(gerente).send({ developmentMode: true });
+    expect(semDestinatario.status).toBe(400);
+    expect(semDestinatario.body.error.code).toBe('CORE_FISCAL_SALE_NFE_RECIPIENT_REQUIRED');
+
+    const ok = await request(app)
+      .post(ROTA(v.saleId))
+      .set(gerente)
+      .send({ recipient: CONSUMIDOR_RS, developmentMode: true });
+
+    expect(ok.status).toBe(200);
+    expect(ok.body.document.model).toBe('55');
+    expect(ok.body.document.status).toBe('AUTHORIZED');
+    const xml = String(
+      (getConnection().prepare('SELECT xml_original FROM core_fiscal_documents WHERE id = ?').get(ok.body.document.id) as {
+        xml_original: string;
+      }).xml_original,
+    );
+    expect(xml).toContain('<mod>55</mod>');
+    expect(xml).toContain('<tpNF>1</tpNF>');
+    expect(xml).toContain('<finNFe>1</finNFe>');
+    expect(xml).toContain('<cMun>4314407</cMun>');
+  });
+
+  it('venda que já tem NFC-e viva é recusada: dois documentos seriam a mesma mercadoria duas vezes', async () => {
+    const v = venda();
+    await emitNfceForSale({ companyId: empresa, saleId: v.saleId, developmentMode: true });
+    const gerente = await login('GERPJ8', 'gerente_loja');
+
+    const r = await request(app)
+      .post(ROTA(v.saleId))
+      .set(gerente)
+      .send({ recipient: CONSUMIDOR_RS, developmentMode: true });
+
+    expect(r.status).toBe(409);
+    expect(r.body.error.code).toBe('CORE_FISCAL_SALE_ALREADY_DOCUMENTED');
+    expect(r.body.error.message).toMatch(/cancele o outro primeiro/i);
+  });
+
+  it('o caixa não alcança: a NF-e com destinatário completo é da gerência', async () => {
+    const v = venda();
+    const caixa = await login('CAIXAPJ7', 'operador_caixa_loja');
+    const r = await request(app)
+      .post(ROTA(v.saleId))
+      .set(caixa)
+      .send({ recipient: CONSUMIDOR_RS, developmentMode: true });
+    expect(r.status).toBe(403);
+  });
+});

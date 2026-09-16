@@ -37,7 +37,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { AppShell } from '@/components/gs/AppShell';
 import { Badge, Button, Card, EmptyState, Field, Input, PageHeader } from '@/components/gs/ui';
-import { useHasProfile } from '@/hooks/useSession';
+import { useCan } from '@/hooks/useCan';
 import { ApiRequestError } from '@/lib/api/client';
 import { coreApi, type GrupoTributario } from '@/lib/api/core';
 import {
@@ -103,17 +103,20 @@ export default function FiscalOperacoesPage() {
   const [erro, setErro] = useState<string | null>(null);
   const [aviso, setAviso] = useState<string | null>(null);
   /*
-    LER É DA GERÊNCIA; GRAVAR É DO DONO DO GRUPO.
+    LER É DA GERÊNCIA; GRAVAR É DE QUEM TEM `fiscal.policy.manage`.
 
     `GET /core/fiscal/operacoes` e `GET /core/fiscal/pendencias-contabeis` são
     `fiscal.view` (admin_geral, gestor, gerente_loja e gerente_oficina); o
-    `PUT` é `fiscal.policy.manage`, que só os dois primeiros têm — é a mesma
-    régua da política de contingência, porque é o que libera a devolução em
-    produção. Oferecer o botão de gravar ao gerente seria a porta que bate na
-    cara: ele clicaria e levaria 403. `useHasProfile()` sem argumento é o
-    espelho exato de `requireProfile(req)` sem perfil extra.
+    `PUT` é `fiscal.policy.manage`, que hoje só os dois primeiros têm — é a
+    mesma régua da política de contingência, porque é o que libera a devolução
+    em produção. Oferecer o botão de gravar a quem não a tem seria a porta que
+    bate na cara: ele clicaria e levaria 403.
+
+    Pela CAPABILITY, e não pelo código do perfil: é a pergunta que o servidor
+    faz (`requireCapability`), e é a única que continua certa quando o acesso
+    de alguém é personalizado na tela de Usuários.
   */
-  const podeGravar = useHasProfile();
+  const podeGravar = useCan('fiscal.policy.manage');
 
   const carregar = useCallback(async () => {
     setErro(null);

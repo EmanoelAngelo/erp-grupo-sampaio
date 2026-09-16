@@ -44,9 +44,14 @@ import { AppShell } from '@/components/gs/AppShell';
 import { AutorizacaoGerenteDialog } from '@/components/gs/PagamentoDialog';
 import { Badge, Button, Card, EmptyState, Field, Input, PageHeader } from '@/components/gs/ui';
 import { TitulosDoDocumento } from '@/components/gs/TitulosDoDocumento';
-import { CidadeComSugestoes } from '@/components/gs/CidadeComSugestoes';
-import { UFS } from '@/lib/api/municipios';
+import { FormularioDoDestinatario } from '@/components/gs/DestinatarioDaNota';
+import {
+  destinatarioCompleto,
+  destinatarioParaEnvio,
+  rascunhoDoDestinatario,
+} from '@/lib/destinatarioDaNota';
 import { useHasProfile, useSession } from '@/hooks/useSession';
+import { useCan } from '@/hooks/useCan';
 import { ApiRequestError, envelope } from '@/lib/api/client';
 import { caixaDesteComputador } from '@/lib/api/terminais';
 import { fraseDosEstornosNaMaquininha } from '@/lib/api/maquininhas';
@@ -1913,52 +1918,20 @@ function NotaDeDevolucaoDaVenda({
   const [erro, setErro] = useState<string | null>(null);
   const [pendencias, setPendencias] = useState<string[]>([]);
   const [emitindo, setEmitindo] = useState(false);
-  const [form, setForm] = useState({
-    name: devolucao.destinatarioSugerido?.name ?? '',
-    document: devolucao.destinatarioSugerido?.document ?? '',
-    street: '',
-    number: '',
-    complement: '',
-    district: '',
-    cityName: '',
-    cityIbge: '',
-    uf: '',
-    zip: '',
-  });
+  const [form, setForm] = useState(() => rascunhoDoDestinatario(devolucao.destinatarioSugerido));
 
   // A ficha relida traz a nota: o estado local segue o servidor, nunca o tempo.
   useEffect(() => {
     setNota(devolucao.notaDeDevolucao ?? null);
   }, [devolucao.notaDeDevolucao]);
 
-  const set = (chave: keyof typeof form) => (valor: string) =>
-    setForm((atual) => ({ ...atual, [chave]: valor }));
-
-  const documentoOk = form.document.replace(/\D/g, '').length === 11
-    || form.document.replace(/\D/g, '').length === 14;
-  const completo = Boolean(
-    form.name.trim() && documentoOk && form.street.trim() && form.number.trim()
-    && form.district.trim() && form.cityName.trim() && /^\d{7}$/.test(form.cityIbge) && form.uf,
-  );
+  const completo = destinatarioCompleto(form);
 
   async function emitir() {
     setEmitindo(true);
     setErro(null);
     try {
-      const r = await coreApi.emitirNfeDeDevolucaoDeVenda(devolucao.id, {
-        document: form.document.replace(/\D/g, ''),
-        name: form.name.trim(),
-        // Consumidor que devolveu mercadoria não é contribuinte de ICMS.
-        ieIndicator: '9',
-        street: form.street.trim(),
-        number: form.number.trim(),
-        complement: form.complement.trim() || null,
-        district: form.district.trim(),
-        cityName: form.cityName.trim(),
-        cityIbge: form.cityIbge,
-        uf: form.uf,
-        zip: form.zip.replace(/\D/g, '') || null,
-      });
+      const r = await coreApi.emitirNfeDeDevolucaoDeVenda(devolucao.id, destinatarioParaEnvio(form));
       setNota({
         documentId: r.document.id,
         model: r.document.model,
@@ -2019,55 +1992,7 @@ function NotaDeDevolucaoDaVenda({
         A nota de entrada leva o endereço de quem devolveu, com o código IBGE do município. O nome e
         o documento vêm da nota da venda; o endereço quem informa é o cliente, agora.
       </p>
-      <div className="grid gap-3 md:grid-cols-3">
-        <Field label="Nome do cliente" required>
-          {(p) => <Input {...p} value={form.name} onChange={(e) => set('name')(e.target.value)} />}
-        </Field>
-        <Field label="CPF ou CNPJ" required error={form.document && !documentoOk ? 'CPF tem 11 dígitos; CNPJ, 14.' : undefined}>
-          {(p) => <Input {...p} value={form.document} onChange={(e) => set('document')(e.target.value)} />}
-        </Field>
-        <Field label="CEP">
-          {(p) => <Input {...p} value={form.zip} onChange={(e) => set('zip')(e.target.value)} />}
-        </Field>
-        <Field label="Logradouro" required>
-          {(p) => <Input {...p} value={form.street} onChange={(e) => set('street')(e.target.value)} />}
-        </Field>
-        <Field label="Número" required>
-          {(p) => <Input {...p} value={form.number} onChange={(e) => set('number')(e.target.value)} />}
-        </Field>
-        <Field label="Complemento">
-          {(p) => <Input {...p} value={form.complement} onChange={(e) => set('complement')(e.target.value)} />}
-        </Field>
-        <Field label="Bairro" required>
-          {(p) => <Input {...p} value={form.district} onChange={(e) => set('district')(e.target.value)} />}
-        </Field>
-        <Field label="UF" required>
-          {(p) => (
-            <select
-              {...p}
-              value={form.uf}
-              onChange={(e) => setForm((a) => ({ ...a, uf: e.target.value, cityName: '', cityIbge: '' }))}
-              className="w-full rounded-[var(--gs-radius)] border border-[var(--gs-border)] bg-[var(--gs-surface)] px-3 py-2"
-            >
-              <option value="">—</option>
-              {UFS.map((uf) => (
-                <option key={uf} value={uf}>{uf}</option>
-              ))}
-            </select>
-          )}
-        </Field>
-        <Field label="Município" required hint="Escolha na lista: o código IBGE vem junto.">
-          {(p) => (
-            <CidadeComSugestoes
-              {...p}
-              uf={form.uf}
-              valor={form.cityName}
-              onDigitar={(nome) => setForm((a) => ({ ...a, cityName: nome, cityIbge: '' }))}
-              onEscolher={(m) => setForm((a) => ({ ...a, cityName: m.nome, cityIbge: m.codigo, uf: m.uf }))}
-            />
-          )}
-        </Field>
-      </div>
+      <FormularioDoDestinatario valor={form} onMudar={setForm} />
       {erro && (
         <p role="alert" className="m-0 mt-2 text-[length:var(--gs-text-sm)] text-[var(--gs-danger)]">{erro}</p>
       )}
@@ -2289,11 +2214,13 @@ function PainelDoReembolso({
   const reembolso = devolucao.reembolso;
   const pendente = reembolso?.pendenteCents ?? 0;
   /*
-    QUEM EMITE A NOTA DE DEVOLUÇÃO: a mesma lista de `fiscal.manage`, que é o
-    que a rota cobra (admin_geral, gestor e os dois gerentes). Oferecer o botão
-    ao caixa seria a porta que bate na cara — ele clicaria e levaria 403.
+    QUEM EMITE A NOTA DE DEVOLUÇÃO: `fiscal.manage`, que é o que a rota cobra.
+    Oferecer o botão a quem não a tem seria a porta que bate na cara — o caixa
+    clicaria e levaria 403. Pela CAPABILITY, e não pelo código do perfil: é a
+    pergunta que o servidor faz, e a única que continua certa quando o acesso
+    de alguém é personalizado na tela de Usuários.
   */
-  const emiteNota = useHasProfile('gerente_loja', 'gerente_oficina');
+  const emiteNota = useCan('fiscal.manage');
   const [meio, setMeio] = useState<MeioDoReembolso>(reembolso?.sugestao?.[0]?.method ?? 'dinheiro');
   const [valor, setValor] = useState(centavosNoCampo(reembolso?.sugestao?.[0]?.cents ?? pendente));
   const [referencia, setReferencia] = useState('');
