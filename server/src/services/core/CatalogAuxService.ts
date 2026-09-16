@@ -1633,6 +1633,31 @@ export function setCustomValues(
 ): ValorPersonalizado[] {
   ensureCoreSchema();
   const db = getConnection();
+
+  /*
+    O PRODUTO É DA MESMA OPERAÇÃO (P00-prod-04).
+
+    O DEFEITO: `entityId` vinha da URL e ia direto para o INSERT. As definições
+    eram conferidas pela empresa da sessão, mas a ENTIDADE não: bastava a outra
+    loja ter um campo com o mesmo código ("VOLTAGEM" é o exemplo do próprio
+    cadastro) para ela gravar valores presos ao id de um produto que não é dela
+    — e lê-los de volta, porque `listCustomValues` procura pelos campos DELA. É
+    o mesmo buraco de `addProductBarcode`, na mesa ao lado.
+
+    A conferência vale para a entidade 'product', que é a única que existe hoje.
+    A entidade nova que vier declara a própria porta em vez de herdar uma regra
+    que não a descreve — e é por isso que a condição nomeia o caso em vez de
+    procurar numa tabela qualquer.
+  */
+  if (entity === 'product') {
+    const dono = db
+      .prepare('SELECT id FROM core_products WHERE id = ? AND company_id = ?')
+      .get(entityId, companyId) as { id?: string } | undefined;
+    if (!dono?.id) {
+      throw new ApiError('CORE_PRODUCT_NOT_FOUND', 'Produto não encontrado.', 404);
+    }
+  }
+
   const definicoes = db
     .prepare(
       `SELECT id, code, kind, options FROM core_custom_fields

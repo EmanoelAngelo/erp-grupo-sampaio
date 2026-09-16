@@ -130,6 +130,45 @@ describe('o código adicional só entra em produto da própria operação (P00-p
     expect(proprio.body.barcodes).toEqual(['7890000000017']);
   });
 
+  /*
+    P00-prod-04: o mesmo buraco, na mesa ao lado. `PUT
+    /products/:id/custom-fields` conferia as DEFINIÇÕES pela empresa da sessão e
+    não conferia a ENTIDADE: bastava a outra loja ter um campo com o mesmo
+    código para gravar valores presos ao id de um produto que não é dela — e
+    lê-los de volta, porque a leitura procura pelos campos DELA.
+  */
+  it('o campo personalizado também não entra em produto de outra operação', async () => {
+    const arroz = await criar({ name: 'Arroz Tipo 1 5kg', priceCents: 2590 });
+    // As duas lojas têm um campo com o MESMO código.
+    for (const empresa of [PJ, GRINGA]) {
+      await request(app)
+        .post('/api/v1/core/catalog/custom-fields')
+        .set(auth('gerente_loja', empresa))
+        .send({ code: 'VOLTAGEM', label: 'Voltagem', kind: 'text', entity: 'product' })
+        .expect(201);
+    }
+
+    const invasao = await request(app)
+      .put(`/api/v1/core/products/${arroz.id}/custom-fields`)
+      .set(auth('gerente_loja', GRINGA))
+      .send({ values: { VOLTAGEM: '220' } });
+    expect(invasao.status, JSON.stringify(invasao.body)).toBe(404);
+    expect(invasao.body.error.code).toBe('CORE_PRODUCT_NOT_FOUND');
+
+    const gravados = getConnection()
+      .prepare('SELECT COUNT(*) AS n FROM core_custom_field_values')
+      .get() as { n: number };
+    expect(gravados.n).toBe(0);
+
+    // E a dona continua gravando o campo dela normalmente.
+    const propria = await request(app)
+      .put(`/api/v1/core/products/${arroz.id}/custom-fields`)
+      .set(auth('gerente_loja', PJ))
+      .send({ values: { VOLTAGEM: '127' } });
+    expect(propria.status, JSON.stringify(propria.body)).toBe(200);
+    expect(propria.body.values).toHaveLength(1);
+  });
+
   it('linha herdada de outra empresa não faz o balcão da Preço Justo atender ao bipe', async () => {
     const arroz = await criar({ name: 'Arroz Tipo 1 5kg', priceCents: 2590 });
     // O estado que o banco antigo já tem: a linha existe, com a empresa ERRADA.
