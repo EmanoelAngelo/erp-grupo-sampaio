@@ -40,7 +40,8 @@ import { emReais } from './Money.js';
 import { marcarCobrancasAEstornar } from './EstornoNaMaquininha.js';
 import { listKitComponents, produtoControlaEstoque } from './CatalogAuxService.js';
 import { fluxoDaDevolucao } from './SalePolicyService.js';
-import { fiscalStatusForSale } from './FiscalPipelineService.js';
+import { situacaoFiscalDaVenda } from './FiscalPipelineService.js';
+import { MODEL_NFE } from './FiscalKeyService.js';
 import {
   destinatarioSugeridoDaDevolucaoDeVenda,
   notaDeDevolucaoDoRegistro,
@@ -1487,7 +1488,13 @@ export function getSaleReturn(companyId: string, returnId: string): Record<strin
       meiosDaVenda,
       sugestao: resumo.fluxo === 'duas_etapas' ? sugestaoDeReembolso(meiosDaVenda, resumo.pendenteCents) : [],
     },
-    fiscal: estadoFiscalDaVenda(companyId, saleId),
+    /*
+      COM o registro DESTA devolução: a NF-e de devolução já autorizada é o que
+      encerra a regularização. Sem o `returnId`, o selo dizia "PENDENTE DE
+      REGULARIZAÇÃO" — mandando emitir a nota — logo acima do bloco que
+      mostrava a nota já emitida.
+    */
+    fiscal: estadoFiscalDaVenda(companyId, saleId, returnId),
     // A NF-e de devolução DESTE registro, quando já existe (P0 fiscal).
     notaDeDevolucao: notaDeDevolucaoDoRegistro(companyId, 'devolucao_venda', returnId),
     /*
@@ -1708,72 +1715,132 @@ export function sugestaoDeReembolso(
 }
 
 export interface EstadoFiscalDaDevolucao {
-  estado: 'nao_fiscal' | 'pendente_regularizacao' | 'nfce_pendente' | 'nfce_cancelada' | 'nfce_rejeitada';
+  /*
+    OS NOMES DIZIAM `nfce_*` E A VENDA PODE TER NF-e (P0 fiscal).
+
+    Com a NF-e de balcão (modelo 55) existindo, o estado passou a descrever
+    também a nota — e `nfce_cancelada` para uma NF-e 55 cancelada seria a
+    mesma mentira que este conserto veio apagar. `devolucao_documentada` é
+    novo: a devolução que JÁ tem a NF-e de devolução dela autorizada não tem
+    mais nada a regularizar, e a ficha dizia o contrário logo acima do bloco
+    que mostrava a nota emitida.
+  */
+  estado:
+    | 'nao_fiscal'
+    | 'pendente_regularizacao'
+    | 'devolucao_documentada'
+    | 'nota_pendente'
+    | 'nota_cancelada'
+    | 'nota_rejeitada';
   rotulo: string;
   detalhe: string;
-  /** O status do documento da venda, como o fiscal o grava — nulo sem NFC-e. */
+  /** O status do documento da venda, como o fiscal o grava — nulo sem nota. */
   documentoStatus: string | null;
+  /** '65' (cupom) ou '55' (nota) — qual documento respondeu. Nulo sem nota. */
+  documentoModelo: string | null;
+}
+
+/** Como a frase chama o documento da venda: é cupom ou é nota. */
+function nomeDoModelo(model: string): string {
+  return model === MODEL_NFE ? 'NF-e (modelo 55)' : 'NFC-e';
 }
 
 /**
  * O FISCAL É UM TERCEIRO ESTADO, separado da mercadoria e do dinheiro.
  *
- * O DEVORA não emite nota de devolução nem cancela a NFC-e por causa de uma
- * devolução — e esta função não finge que faz. Ela diz, pelo documento da
- * venda, o que a devolução deixa em aberto no fiscal.
+ * O DEVORA não cancela a nota da venda por causa de uma devolução — e esta
+ * função não finge que faz. Ela diz, pelo documento da venda, o que a
+ * devolução deixa em aberto no fiscal.
+ *
+ * O DEFEITO: ela perguntava por `fiscalStatusForSale`, que enxerga SÓ o cupom
+ * (modelo 65). Uma venda documentada pela NF-e de balcão respondia "não
+ * fiscal" — "não há documento fiscal a regularizar" — e a ficha da devolução
+ * escondia o gesto de emitir a NF-e de devolução, que a rota fazia sem
+ * reclamar. Beco sem saída: o servidor sabia emitir e a tela negava.
+ *
+ * `returnId` é o registro DESTA devolução, quando quem pergunta o tem: com a
+ * NF-e de devolução já autorizada não há regularização pendente, e o selo
+ * precisa dizer isso em vez de mandar emitir a nota que já saiu.
  */
-export function estadoFiscalDaVenda(companyId: string, saleId: string): EstadoFiscalDaDevolucao {
-  const nota = fiscalStatusForSale(companyId, saleId);
+export function estadoFiscalDaVenda(
+  companyId: string,
+  saleId: string,
+  returnId?: string,
+): EstadoFiscalDaDevolucao {
+  const nota = situacaoFiscalDaVenda(companyId, saleId);
   if (!nota) {
     return {
       estado: 'nao_fiscal',
       rotulo: 'NÃO FISCAL',
       detalhe: 'A venda saiu com comprovante não fiscal: não há documento fiscal a regularizar.',
       documentoStatus: null,
+      documentoModelo: null,
     };
   }
   const status = String(nota.document.status);
+  const modelo = String(nota.document.model);
+  const nome = nomeDoModelo(modelo);
   if (status === 'AUTHORIZED') {
+    const daDevolucao = returnId
+      ? notaDeDevolucaoDoRegistro(companyId, 'devolucao_venda', returnId)
+      : null;
+    if (daDevolucao && daDevolucao.status === 'AUTHORIZED') {
+      return {
+        estado: 'devolucao_documentada',
+        rotulo: 'DEVOLUÇÃO DOCUMENTADA',
+        detalhe:
+          `A NF-e de devolução nº ${daDevolucao.number} (série ${daDevolucao.serie}) desta devolução está `
+          + `AUTORIZADA e referencia a ${nome} da venda: o fiscal desta devolução está regularizado. A `
+          + `${nome} da venda não é cancelada por uma devolução.`,
+        documentoStatus: status,
+        documentoModelo: modelo,
+      };
+    }
     return {
       estado: 'pendente_regularizacao',
       rotulo: 'PENDENTE DE REGULARIZAÇÃO',
       /*
         A frase dizia que o DEVORA não emite a nota de devolução — e agora emite
         (P0 fiscal, `FiscalDevolucao`): NF-e de entrada, finalidade 4,
-        referenciando a NFC-e, com CFOP e tributação da operação que o contador
-        confirma. Cancelar a NFC-e por uma devolução continua fora de questão.
+        referenciando a nota da venda, com CFOP e tributação da operação que o
+        contador confirma. Cancelar a nota por uma devolução continua fora de
+        questão.
       */
       detalhe:
-        'A venda tem NFC-e autorizada. A devolução é regularizada com a NF-e de devolução (nota de '
-        + 'entrada, finalidade 4, referenciando a NFC-e), emitida pela devolução com a operação fiscal '
-        + 'confirmada pelo contador. A NFC-e não é cancelada por uma devolução. Estoque e reembolso '
+        `A venda tem ${nome} autorizada. A devolução é regularizada com a NF-e de devolução (nota de `
+        + `entrada, finalidade 4, referenciando a ${nome}), emitida pela devolução com a operação fiscal `
+        + `confirmada pelo contador. A ${nome} não é cancelada por uma devolução. Estoque e reembolso `
         + 'seguem à parte.',
       documentoStatus: status,
+      documentoModelo: modelo,
     };
   }
   if (status === 'CANCELLED') {
     return {
-      estado: 'nfce_cancelada',
-      rotulo: 'NFC-E CANCELADA',
-      detalhe: 'A NFC-e desta venda foi cancelada: não há o que regularizar pela devolução.',
+      estado: 'nota_cancelada',
+      rotulo: `${modelo === MODEL_NFE ? 'NF-E' : 'NFC-E'} CANCELADA`,
+      detalhe: `A ${nome} desta venda foi cancelada: não há o que regularizar pela devolução.`,
       documentoStatus: status,
+      documentoModelo: modelo,
     };
   }
   if (status === 'REJECTED' || status === 'ERROR') {
     return {
-      estado: 'nfce_rejeitada',
-      rotulo: 'NFC-E REJEITADA',
-      detalhe: 'A NFC-e desta venda não foi autorizada. Acompanhe em Fiscal; a devolução não mexe nela.',
+      estado: 'nota_rejeitada',
+      rotulo: `${modelo === MODEL_NFE ? 'NF-E' : 'NFC-E'} REJEITADA`,
+      detalhe: `A ${nome} desta venda não foi autorizada. Acompanhe em Fiscal; a devolução não mexe nela.`,
       documentoStatus: status,
+      documentoModelo: modelo,
     };
   }
   return {
-    estado: 'nfce_pendente',
-    rotulo: 'NFC-E PENDENTE',
+    estado: 'nota_pendente',
+    rotulo: `${modelo === MODEL_NFE ? 'NF-E' : 'NFC-E'} PENDENTE`,
     detalhe:
-      'A NFC-e desta venda ainda não foi autorizada (' + nota.statusLabel + '). Quando for, a devolução '
+      `A ${nome} desta venda ainda não foi autorizada (` + nota.statusLabel + '). Quando for, a devolução '
       + 'precisará ser regularizada com o contador.',
     documentoStatus: status,
+    documentoModelo: modelo,
   };
 }
 

@@ -29,6 +29,8 @@ import { motivosDaTributacaoDaVenda } from './ProntidaoTributaria.js';
 import {
   createNfceForSale,
   createNfeForSale,
+  documentoQueDocumentaAVenda,
+  documentosDaVenda,
   getDocument,
   getDocumentBySale,
   outroDocumentoVivoDaVenda,
@@ -572,15 +574,63 @@ export interface FilaDaNota {
   errorMessage: string | null;
 }
 
-/** Situação fiscal de uma venda, para o PDV consultar sem recarregar a tela. */
+/** Situação de um documento: o estado, a fila e a contingência juntos. */
+export type SituacaoDoDocumento = PipelineResult & {
+  queue: FilaDaNota | null;
+  contingencia: ContingenciaDaNota | null;
+};
+
+/**
+ * Situação fiscal de uma venda, para o PDV consultar sem recarregar a tela.
+ *
+ * SÓ O CUPOM (modelo 65), de propósito: quem pergunta é o painel do balcão, e
+ * o que ele faz com a resposta é imprimir o DANFCE e acompanhar a fila da
+ * NFC-e. Responder aqui com a NF-e (modelo 55) de uma venda faturada mandaria
+ * o caixa imprimir DANFCE de uma nota que não tem esse papel.
+ *
+ * Quem precisa da venda INTEIRA — a ficha da venda e a da devolução — pergunta
+ * por `situacaoFiscalDaVenda` ou `documentosFiscaisDaVenda`, que olham os dois
+ * modelos.
+ */
 export function fiscalStatusForSale(
   companyId: string,
   saleId: string,
-): (PipelineResult & { queue: FilaDaNota | null; contingencia: ContingenciaDaNota | null }) | null {
+): SituacaoDoDocumento | null {
   ensureCoreSchema();
   const doc = getDocumentBySale(companyId, saleId, MODEL_NFCE);
-  if (!doc) return null;
+  return doc ? situacaoDoDocumento(doc) : null;
+}
 
+/**
+ * A situação fiscal da venda em QUALQUER dos dois modelos (P0 fiscal).
+ *
+ * O DEFEITO que ela conserta: `estadoFiscalDaVenda` perguntava por
+ * `fiscalStatusForSale`, que enxerga só o cupom. Uma venda documentada pela
+ * NF-e de balcão respondia "não fiscal" — e a ficha da devolução dizia, em
+ * letras, que não havia documento a regularizar para uma venda com nota
+ * AUTORIZADA, enquanto a rota de devolução emitia a NF-e sem reclamar.
+ */
+export function situacaoFiscalDaVenda(
+  companyId: string,
+  saleId: string,
+): SituacaoDoDocumento | null {
+  ensureCoreSchema();
+  const doc = documentoQueDocumentaAVenda(companyId, saleId);
+  return doc ? situacaoDoDocumento(doc) : null;
+}
+
+/**
+ * TODOS os documentos fiscais desta venda — o cupom e a nota, na ordem em que
+ * a loja os emite. É o que a ficha da venda mostra para não voltar a oferecer
+ * uma emissão que já aconteceu.
+ */
+export function documentosFiscaisDaVenda(companyId: string, saleId: string): SituacaoDoDocumento[] {
+  ensureCoreSchema();
+  return documentosDaVenda(companyId, saleId).map((d) => situacaoDoDocumento(d));
+}
+
+function situacaoDoDocumento(doc: FiscalDocument): SituacaoDoDocumento {
+  const companyId = doc.companyId;
   const item = getConnection()
     .prepare(
       'SELECT attempts, next_attempt_at, status, error_message FROM core_fiscal_queue WHERE document_id = ? LIMIT 1',

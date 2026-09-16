@@ -180,6 +180,47 @@ export function outroDocumentoVivoDaVenda(
   return outro && !ESTADOS_QUE_NAO_DOCUMENTAM.has(outro.status) ? outro : null;
 }
 
+/**
+ * OS DOCUMENTOS FISCAIS DESTA VENDA, NOS DOIS MODELOS (P0 fiscal).
+ *
+ * O DEFEITO: quem perguntava "esta venda tem nota?" perguntava por
+ * `getDocumentBySale(..., MODEL_NFCE)` — só o cupom. Com a NF-e de balcão
+ * (modelo 55) existindo, a mesma pergunta passou a responder NÃO para uma
+ * venda documentada: a ficha da venda oferecia emitir de novo, e a ficha da
+ * devolução dizia "não há documento fiscal a regularizar" para uma venda com
+ * NF-e AUTORIZADA — enquanto a rota de devolução emitia a nota sem reclamar.
+ * A pergunta é por VENDA, e a resposta tem de olhar os dois modelos.
+ *
+ * Ordem: o cupom primeiro, a nota depois — é a ordem em que a loja os emite.
+ */
+export function documentosDaVenda(companyId: string, saleId: string): FiscalDocument[] {
+  return [
+    getDocumentBySale(companyId, saleId, MODEL_NFCE),
+    getDocumentBySale(companyId, saleId, MODEL_NFE),
+  ].filter((d): d is FiscalDocument => Boolean(d));
+}
+
+/**
+ * O documento que DOCUMENTA esta venda hoje — em qualquer dos dois modelos.
+ *
+ * Autorizado primeiro (é o que vale para o fisco); na falta dele, o que ainda
+ * pode vir a valer (do rascunho à contingência); e só então o que já não
+ * documenta nada (cancelado, rejeitado), porque a ficha precisa dizer "a nota
+ * desta venda foi cancelada" em vez de "esta venda não teve nota".
+ */
+export function documentoQueDocumentaAVenda(
+  companyId: string,
+  saleId: string,
+): FiscalDocument | null {
+  const docs = documentosDaVenda(companyId, saleId);
+  return (
+    docs.find((d) => d.status === 'AUTHORIZED')
+    ?? docs.find((d) => !ESTADOS_QUE_NAO_DOCUMENTAM.has(d.status))
+    ?? docs[0]
+    ?? null
+  );
+}
+
 function recusarSeOutroModeloDocumentaAVenda(companyId: string, saleId: string, model: string): void {
   const outro = outroDocumentoVivoDaVenda(companyId, saleId, model);
   if (!outro) return;

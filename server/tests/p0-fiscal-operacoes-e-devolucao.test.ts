@@ -22,8 +22,13 @@ import { ensureCoreSchema } from '../src/db/schema.js';
 import { upsertCompany } from '../src/services/auth/IdentityService.js';
 import { updateFiscalConfig } from '../src/services/core/FiscalConfigService.js';
 import { buildAccessKey, setSeriesNextNumber } from '../src/services/core/FiscalKeyService.js';
-import { createNfceForSale, getDocument, listDocumentEvents } from '../src/services/core/FiscalDocumentService.js';
-import { emitNfceForSale } from '../src/services/core/FiscalPipelineService.js';
+import {
+  createNfceForSale,
+  createNfeForSale,
+  getDocument,
+  listDocumentEvents,
+} from '../src/services/core/FiscalDocumentService.js';
+import { emitNfceForSale, emitNfeForSale } from '../src/services/core/FiscalPipelineService.js';
 import { requestCancel } from '../src/services/core/FiscalEventsService.js';
 import {
   exigirOperacaoConfirmadaEmProducao,
@@ -36,7 +41,7 @@ import {
   emitirNfeDeDevolucao,
 } from '../src/services/core/FiscalDevolucao.js';
 import { reemitirRejeitada } from '../src/services/core/FiscalReemissao.js';
-import { getSaleReturn } from '../src/services/core/SaleReturnService.js';
+import { getSaleReturn, vendaParaDevolucao } from '../src/services/core/SaleReturnService.js';
 import { destinatarioSugeridoDaDevolucaoDeVenda } from '../src/services/core/SituacaoFiscalDaDevolucao.js';
 import { getDevolucao } from '../src/services/core/SupplierReturnService.js';
 import { renderDanfe } from '../src/services/core/DanfeRenderer.js';
@@ -504,6 +509,96 @@ describe('NF-e de devolução de VENDA — entrada, finNFe 4, NFref da NFC-e', (
     expect(xml).toContain('<finNFe>4</finNFe>');
     expect(xml).toContain('<CFOP>1202</CFOP>');
     expect(proximoNumero('55')).toBe(2);
+  });
+});
+
+/**
+ * O SELO FISCAL DA DEVOLUÇÃO ENXERGA OS DOIS MODELOS (P0 fiscal — resíduo).
+ *
+ * O DEFEITO: `estadoFiscalDaVenda` perguntava por `fiscalStatusForSale`, que
+ * lê SÓ o cupom (modelo 65). A venda documentada pela NF-e de balcão — a
+ * feature que esta mesma frente acrescentou — respondia `nao_fiscal`, com a
+ * frase "não há documento fiscal a regularizar", e a ficha da devolução
+ * escondia o gesto de emitir a NF-e de devolução. A rota, medida no mesmo
+ * caso, emitia a nota sem reclamar: o servidor sabia e a tela negava.
+ *
+ * E depois de emitida a nota da devolução, o selo continuava dizendo
+ * "PENDENTE DE REGULARIZAÇÃO" — mandando emitir — logo acima do bloco que
+ * mostrava a nota já autorizada.
+ */
+describe('o selo fiscal da venda enxerga os DOIS modelos', () => {
+  it('venda documentada pela NF-e de balcão: PENDENTE DE REGULARIZAÇÃO, nomeando a NF-e (não "não fiscal")', async () => {
+    const v = venda();
+    const nota = await emitNfeForSale({
+      companyId: empresa,
+      saleId: v.saleId,
+      recipient: CONSUMIDOR_RS,
+      developmentMode: true,
+    });
+    expect(nota.document.status).toBe('AUTHORIZED');
+    const returnId = devolucaoDeVenda(v);
+
+    const ficha = getSaleReturn(empresa, returnId) as unknown as {
+      fiscal: { estado: string; rotulo: string; detalhe: string; documentoModelo: string | null };
+    };
+    expect(ficha.fiscal).toMatchObject({
+      estado: 'pendente_regularizacao',
+      rotulo: 'PENDENTE DE REGULARIZAÇÃO',
+      documentoModelo: '55',
+    });
+    expect(ficha.fiscal.detalhe).toContain('NF-e (modelo 55)');
+    // A venda ANTES de escolher os itens diz o mesmo — é a mesma pergunta.
+    expect((vendaParaDevolucao(empresa, v.saleId).fiscal as { estado: string }).estado).toBe(
+      'pendente_regularizacao',
+    );
+  });
+
+  it('a NF-e de devolução autorizada encerra a regularização: DEVOLUÇÃO DOCUMENTADA', async () => {
+    const v = venda();
+    await emitNfeForSale({
+      companyId: empresa,
+      saleId: v.saleId,
+      recipient: CONSUMIDOR_RS,
+      developmentMode: true,
+    });
+    const returnId = devolucaoDeVenda(v);
+    const r = await emitirNfeDeDevolucao({
+      companyId: empresa,
+      operacao: 'devolucao_venda',
+      returnId,
+      recipient: CONSUMIDOR_RS,
+      developmentMode: true,
+    });
+    expect(r.document.status).toBe('AUTHORIZED');
+
+    const ficha = getSaleReturn(empresa, returnId) as unknown as {
+      fiscal: { estado: string; rotulo: string; detalhe: string };
+    };
+    expect(ficha.fiscal).toMatchObject({
+      estado: 'devolucao_documentada',
+      rotulo: 'DEVOLUÇÃO DOCUMENTADA',
+    });
+    expect(ficha.fiscal.detalhe).toContain(`nº ${r.document.number}`);
+
+    /*
+      A pergunta SEM o registro (a venda antes de escolher os itens) continua
+      olhando só a venda: ali não há devolução de que falar, e a nota da venda
+      segue autorizada.
+    */
+    expect((vendaParaDevolucao(empresa, v.saleId).fiscal as { estado: string }).estado).toBe(
+      'pendente_regularizacao',
+    );
+  });
+
+  it('NF-e da venda ainda não autorizada: NF-E PENDENTE — e o gesto da devolução não se oferece', () => {
+    const v = venda();
+    createNfeForSale({ companyId: empresa, saleId: v.saleId, recipient: CONSUMIDOR_RS });
+    const returnId = devolucaoDeVenda(v);
+    expect(getSaleReturn(empresa, returnId).fiscal).toMatchObject({
+      estado: 'nota_pendente',
+      rotulo: 'NF-E PENDENTE',
+      documentoModelo: '55',
+    });
   });
 });
 

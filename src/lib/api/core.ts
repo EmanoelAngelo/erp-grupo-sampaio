@@ -1255,10 +1255,25 @@ export interface MeioDaVendaParaReembolso {
 }
 
 export interface EstadoFiscalDaDevolucao {
-  estado: 'nao_fiscal' | 'pendente_regularizacao' | 'nfce_pendente' | 'nfce_cancelada' | 'nfce_rejeitada';
+  /*
+    OS NOMES DIZIAM `nfce_*` E A VENDA PODE TER NF-e (P0 fiscal). O estado
+    descreve o documento da venda em QUALQUER dos dois modelos — chamar de
+    `nfce_cancelada` uma NF-e 55 cancelada seria a mentira que este conserto
+    veio apagar. `devolucao_documentada` é novo: a devolução cuja NF-e de
+    devolução já está autorizada não tem o que regularizar.
+  */
+  estado:
+    | 'nao_fiscal'
+    | 'pendente_regularizacao'
+    | 'devolucao_documentada'
+    | 'nota_pendente'
+    | 'nota_cancelada'
+    | 'nota_rejeitada';
   rotulo: string;
   detalhe: string;
   documentoStatus: string | null;
+  /** '65' (cupom) ou '55' (nota) — qual documento respondeu. Nulo sem nota. */
+  documentoModelo: string | null;
 }
 
 export interface SaleReturn {
