@@ -132,13 +132,22 @@ de cada commit, que traz o defeito medido, o conserto e a mordida.
    alterada — mesmo conteúdo byte a byte e mesmo blob (`63e2e35`) do arquivo que
    rodou. São 13 seções e 90 conferências contra a pilha descartável.
 
-   **O disparador ainda não entrou**: `rodar-e2e-pj.cjs` segue no temporário da
-   sessão (`%TEMP%/claude/C--Users-User-Desktop-Grupo-Sampaio/d394c4ce-.../scratchpad/`).
-   É ele que sobe a pilha descartável (API 19592, tela 19602, banco próprio,
-   senhas aleatórias por variável de ambiente e varredura de segredos) chamando
-   `scripts/stack-descartavel.mjs`. Sem ele, o roteiro roda apontando para uma
-   pilha já de pé, pela variável `E2E_API_PORT`. **Levá-lo para `scripts/e2e/`
-   também, e pendurar um `npm run e2e:pj`, continua pendente.**
+   **O disparador também entrou: `scripts/e2e/rodar-e2e-pj.cjs`** (commit
+   `5af802e`), igualmente sem uma linha alterada — mesmo blob (`c43f11d`). É ele
+   que sobe a pilha descartável (API 19592, tela 19602, banco novo em pasta
+   temporária, bootstrap com os logins padrão, senhas aleatórias só pelo
+   ambiente dos filhos), espera o `/health`, roda o roteiro, derruba tudo e
+   resume. Uso: `node scripts/e2e/rodar-e2e-pj.cjs <repo> <saida.txt>`.
+
+   ⚠️ **Um ajuste de uma linha ficou pendente, de propósito.** O disparador
+   procura o roteiro em `path.join(__dirname, 'e2e', 'e2e-preco-justo.mjs')` —
+   verdade no temporário, onde o roteiro morava numa subpasta `e2e/`, e falso
+   aqui, onde os dois são irmãos em `scripts/e2e/`. Como está, ele procuraria
+   `scripts/e2e/e2e/e2e-preco-justo.mjs` e não acharia. Preservar primeiro e
+   corrigir depois foi escolha deliberada: o que está no Git é exatamente o que
+   produziu os 88 PASS, e a correção aparece como mudança, não escondida numa
+   cópia. **Na retomada, trocar essa linha (e a `cwd` logo abaixo dela) antes de
+   chamar o disparador de dentro do repositório.**
 
 ---
 
@@ -263,11 +272,11 @@ O E2E, com a pilha descartável já de pé (o roteiro agora mora no repositório
 cd "C:/Users/User/Desktop/devora-p0" && E2E_API_PORT=19592 node scripts/e2e/e2e-preco-justo.mjs
 ```
 
-Para subir a pilha descartável junto, enquanto o disparador não entra no
-repositório:
+Para subir a pilha descartável junto — **depois de corrigir a linha do caminho
+do roteiro descrita no §5**:
 
 ```bash
-node "C:/Users/User/AppData/Local/Temp/claude/C--Users-User-Desktop-Grupo-Sampaio/d394c4ce-5e77-4722-a903-6cca223a6de3/scratchpad/rodar-e2e-pj.cjs"
+cd "C:/Users/User/Desktop/devora-p0" && node scripts/e2e/rodar-e2e-pj.cjs "C:/Users/User/Desktop/devora-p0" "C:/Users/User/Desktop/devora-p0/e2e-pj.txt"
 ```
 
 Se o RBAC reclamar depois de um merge (a frente fiscal mexeu no mapa):
@@ -291,8 +300,9 @@ cd "C:/Users/User/Desktop/devora-p0" && node scripts/rbac/gerar-artefatos.mjs &&
    vazio (média), parâmetro morto (baixa) — cada uma com teste e mordida.
 4. Rodar os portões completos: type-check, lint, build, suíte do servidor,
    suíte da tela (inclusive sob o detector de corrida) e E2E.
-5. Levar o disparador (`rodar-e2e-pj.cjs`) para `scripts/e2e/` e pendurar um
-   `npm run e2e:pj`. O roteiro em si já está no repositório (`1be4ffd`).
+5. Corrigir no disparador a linha que procura o roteiro numa subpasta `e2e/`
+   (§5) e pendurar um `npm run e2e:pj`. Os dois arquivos do E2E já estão no
+   repositório: roteiro em `1be4ffd`, disparador em `5af802e`.
 6. Finalizar o §11 do relatório P0 com os números finais e commitar.
 7. Só então, com o dono de acordo: `git push`, e nunca antes.
 
