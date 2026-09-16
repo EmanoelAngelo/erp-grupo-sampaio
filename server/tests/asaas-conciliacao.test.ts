@@ -716,3 +716,73 @@ describe('a cobrança EM ABERTO do título não rouba o lançamento do documento
     expect([r.providerCents, r.financeCents, r.differenceCents]).toEqual([60000, 30000, 30000]);
   });
 });
+
+/*
+  ============================================================================
+  O RECORTE DE DATA É CONFERIDO
+  ============================================================================
+
+  Esta tela existe para achar dinheiro faltando, e a frase que ela imprime
+  quando não há linha nenhuma — "não houve o que conferir" — foi escrita de
+  propósito para NÃO dar garantia. Com o recorte vindo cru da query string,
+  três jeitos de errar a data produziam exatamente essa frase (ou um 500 sem
+  explicação) sobre um período que ninguém pediu:
+
+    - pontas trocadas: o BETWEEN não casa nada e o relatório volta vazio;
+    - data impossível (2026-99-99): `Date.UTC` a empurra para 2034, e a janela
+      vira um pedaço de futuro;
+    - texto que não é data: TypeError lá dentro, "erro interno" na tela.
+
+  Recusa com motivo é a única resposta honesta às três.
+*/
+describe('o recorte de data é conferido antes de valer como período', () => {
+  /** O código e o status do `ApiError` que a chamada deveria lançar. */
+  function recusa(entrada: { from?: string; to?: string }): { code: string; status: number } {
+    try {
+      reconcileAsaas({ companyId: gringa, ...entrada });
+    } catch (err) {
+      const e = err as { code?: string; status?: number };
+      return { code: String(e.code), status: Number(e.status) };
+    }
+    throw new Error('a chamada deveria ter sido recusada');
+  }
+
+  it('pontas trocadas não viram "não houve o que conferir"', () => {
+    intent('ped-recorte-1', 15000);
+    lancamento('ped-recorte-1', 15000);
+
+    expect(recusa({ from: '2026-09-16', to: '2026-09-01' })).toEqual({
+      code: 'CORE_RECONCILIATION_RANGE_INVALID',
+      status: 400,
+    });
+  });
+
+  it('data que não existe no calendário é recusada, não empurrada para o futuro', () => {
+    expect(recusa({ from: '2026-99-99' })).toEqual({
+      code: 'CORE_RECONCILIATION_DATE_INVALID',
+      status: 400,
+    });
+    expect(recusa({ to: '2026-02-31' })).toEqual({
+      code: 'CORE_RECONCILIATION_DATE_INVALID',
+      status: 400,
+    });
+  });
+
+  it('texto que não é data é 400 com o formato, e não 500 "erro interno"', () => {
+    expect(recusa({ from: 'ontem' })).toEqual({
+      code: 'CORE_RECONCILIATION_DATE_INVALID',
+      status: 400,
+    });
+  });
+
+  it('e o recorte legítimo continua conciliando', () => {
+    intent('ped-recorte-2', 15000);
+    lancamento('ped-recorte-2', 15000);
+
+    const hoje = AGORA.slice(0, 10);
+    const r = reconcileAsaas({ companyId: gringa, from: hoje, to: hoje });
+
+    expect(r.rows).toHaveLength(0);
+    expect(r.matched).toBe(1);
+  });
+});
