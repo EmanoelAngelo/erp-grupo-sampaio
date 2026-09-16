@@ -13,7 +13,7 @@ produção foram tocados. Este arquivo é o que basta para retomar sem reler nad
 | | |
 | --- | --- |
 | **Branch** | `audit/preco-justo-p0` |
-| **HEAD** | `5180621`. O último commit de CÓDIGO é `fba4f7d` (*fix(caixa): o papel e a tela do fechamento diziam que o dinheiro estava na gaveta sem saber*); os dois acima dele são este arquivo e o §12 do relatório. |
+| **HEAD** | o topo de `audit/preco-justo-p0` — os commits de documentação deste checkpoint. O último commit de CÓDIGO é `fba4f7d` (*fix(caixa): o papel e a tela do fechamento diziam que o dinheiro estava na gaveta sem saber*); os dois acima dele são este arquivo e o §12 do relatório. |
 | **Base** | `8a8affd` (*fix(seguranca): a API escuta só em 127.0.0.1 por padrão*), na branch `finalization/grupo-sampaio-enterprise` |
 | **Commits acumulados sobre a base** | 107 |
 | **Árvore de trabalho** | `C:/Users/User/Desktop/devora-p0` — **limpa** |
