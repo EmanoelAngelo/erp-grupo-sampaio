@@ -45,6 +45,16 @@ export interface Product {
    */
   tracks_batches?: number;
   /**
+   * 1 = este é um MODELO DE GRADE (ou um kit que desmembra) com saldo PRESO.
+   *
+   * Só vem quando a busca foi pedida com `comSaldoPreso` — a tela de
+   * Movimentações. É a linha que o balcão nunca vê: o que está ali não se
+   * vende (a venda recusa o modelo), não se conta e não se corrige por
+   * variante. A única coisa a fazer com ela é dar SAÍDA, com motivo, e lançar
+   * a entrada em cada tamanho.
+   */
+  saldo_preso?: number;
+  /**
    * 1 = o preço do cadastro é SUGESTÃO, não teto. Mão de obra, serviço, o que
    * se combina no balcão.
    *
@@ -3957,12 +3967,20 @@ export const coreApi = {
    */
   searchProducts: (
     term: string,
-    options: { excludeKits?: boolean; includeParts?: boolean } = {},
+    options: { excludeKits?: boolean; includeParts?: boolean; comSaldoPreso?: boolean } = {},
   ) =>
     apiRequest<{ items: Product[] }>(
       `/core/products/search?q=${encodeURIComponent(term)}`
         + (options.excludeKits ? '&excludeKits=1' : '')
-        + (options.includeParts ? '&includeParts=1' : ''),
+        + (options.includeParts ? '&includeParts=1' : '')
+        /*
+          `comSaldoPreso` é a tela de Movimentações pedindo TAMBÉM o modelo de
+          grade que ficou com saldo preso num banco antigo. O servidor passou a
+          permitir a SAÍDA que tira esse saldo; sem este interruptor a permissão
+          existiria e nenhuma tela chegaria nela, porque o modelo está fora da
+          busca por definição. O balcão não manda, e continua sem ver modelo.
+        */
+        + (options.comSaldoPreso ? '&comSaldoPreso=1' : ''),
     ).then(envelope('items')),
 
   createProduct: (input: Record<string, unknown>) =>

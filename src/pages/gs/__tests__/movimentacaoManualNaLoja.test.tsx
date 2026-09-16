@@ -111,6 +111,24 @@ const PRODUTOS = [
   { id: 'p-1', name: 'Parafuso M6', internal_code: 'PAR-01', barcode: null, price_cents: 100 },
 ];
 
+/**
+ * O MODELO DE GRADE COM SALDO PRESO (P00-prod-05).
+ *
+ * Só vem quando a busca é pedida com `comSaldoPreso` — é a linha que o balcão
+ * nunca vê, e que só esta tela precisa alcançar para dar a saída que regulariza.
+ */
+const MODELO_PRESO = [
+  {
+    id: 'p-modelo',
+    name: 'Camiseta Polo',
+    internal_code: 'PJ-9001',
+    barcode: null,
+    price_cents: 3990,
+    stock_quantity: 10,
+    saldo_preso: 1,
+  },
+];
+
 /** Corpos enviados ao POST /core/stock/movements, na ordem. */
 let postsDeMovimento: Record<string, unknown>[] = [];
 /** Quantos POSTs devem FALHAR antes de o servidor voltar a responder. */
@@ -129,7 +147,10 @@ function servidor() {
 
     if (alvo.includes('/core/stock/movement-kinds')) return json({ items: [] });
     if (alvo.includes('/core/stock/locations')) return json({ locations: LOCAIS });
-    if (alvo.includes('/core/products/search')) return json({ items: PRODUTOS });
+    if (alvo.includes('/core/products/search')) {
+      // O modelo preso só sai quando a tela PEDE — é o mesmo corte do servidor.
+      return json({ items: alvo.includes('comSaldoPreso=1') ? [...PRODUTOS, ...MODELO_PRESO] : PRODUTOS });
+    }
     if (alvo.includes('/core/stock/movements') && init?.method === 'POST') {
       postsDeMovimento.push(JSON.parse(String(init.body)) as Record<string, unknown>);
       if (recusasDeChave > 0) {
@@ -426,5 +447,48 @@ describe('o custo unitário mora na LINHA do histórico (GAP-V14)', () => {
     renderizar();
     await screen.findByText('NF 123');
     expect(screen.queryByText(/Custo unitário das entradas/)).toBeNull();
+  });
+});
+
+/**
+ * P00-prod-05: o modelo de grade com SALDO PRESO chega a esta tela.
+ *
+ * O modelo está fora da busca de produto por definição — quem sai da prateleira
+ * é o tamanho. Mas o banco antigo tem modelos com mercadoria presa, e o servidor
+ * passou a permitir a SAÍDA que a regulariza. Sem o interruptor `comSaldoPreso`
+ * nesta busca, a permissão existiria e nenhuma tela chegaria nela: o gestor
+ * veria a mercadoria na posição de estoque sem conseguir sequer selecioná-la.
+ *
+ * Como falha: tire o `{ comSaldoPreso: true }` da chamada e o primeiro caso fica
+ * vermelho; tire a frase de aviso e o segundo cai.
+ */
+describe('o saldo preso no modelo de grade chega a esta tela (P00-prod-05)', () => {
+  async function procurarCamiseta() {
+    entrar('gerente_loja');
+    renderizar();
+    await screen.findByText('NF 123');
+    fireEvent.click(screen.getByRole('button', { name: 'Lançar movimento' }));
+    fireEvent.change(await screen.findByPlaceholderText('Nome, código ou barras'), {
+      target: { value: 'Camiseta' },
+    });
+  }
+
+  it('a busca pede o modelo preso ao servidor', async () => {
+    await procurarCamiseta();
+    await waitFor(() => {
+      const chamadas = (fetch as unknown as { mock: { calls: unknown[][] } }).mock.calls.map((c) =>
+        String(c[0]),
+      );
+      expect(
+        chamadas.some((u) => u.includes('/core/products/search') && u.includes('comSaldoPreso=1')),
+      ).toBe(true);
+    });
+  });
+
+  it('a linha marcada explica o que é e qual é o gesto', async () => {
+    await procurarCamiseta();
+    fireEvent.click(await screen.findByRole('button', { name: /Camiseta Polo/ }));
+    expect(await screen.findByText(/modelo de grade com saldo preso/i)).toBeTruthy();
+    expect(screen.getByText(/entrada em cada tamanho/i)).toBeTruthy();
   });
 });

@@ -166,6 +166,40 @@ describe('o saldo preso no modelo de grade (P00-prod-05)', () => {
     expect(getBalance(PJ, modeloId)).toBe(3);
   });
 
+  it('a tela de Movimentações ACHA o modelo preso; o balcão continua sem vê-lo', async () => {
+    const { modeloId } = modeloComSaldoEGrade(10);
+
+    const balcao = await request(app)
+      .get('/api/v1/core/products/search')
+      .query({ q: 'Camiseta' })
+      .set(auth('operador_caixa_loja'));
+    expect(balcao.status).toBe(200);
+    expect((balcao.body.items as Record<string, unknown>[]).map((i) => i.id)).not.toContain(modeloId);
+
+    const movimentacoes = await request(app)
+      .get('/api/v1/core/products/search')
+      .query({ q: 'Camiseta', comSaldoPreso: '1' })
+      .set(auth('gerente_loja'));
+    expect(movimentacoes.status).toBe(200);
+    const achado = (movimentacoes.body.items as Record<string, unknown>[]).find(
+      (i) => i.id === modeloId,
+    );
+    expect(achado, 'o modelo preso tem de aparecer para quem vai regularizá-lo').toBeTruthy();
+    expect(Number(achado?.saldo_preso)).toBe(1);
+  });
+
+  it('modelo de grade SEM saldo preso continua fora da busca, com o interruptor ligado', async () => {
+    const { modeloId, varianteId } = modeloComSaldoEGrade(0);
+    const r = await request(app)
+      .get('/api/v1/core/products/search')
+      .query({ q: 'Camiseta', comSaldoPreso: '1' })
+      .set(auth('gerente_loja'));
+    const ids = (r.body.items as Record<string, unknown>[]).map((i) => i.id);
+    expect(ids).not.toContain(modeloId);
+    // A variante, essa sim, aparece — como sempre apareceu.
+    expect(ids).toContain(varianteId);
+  });
+
   it('a entrada no TAMANHO continua entrando normalmente', async () => {
     const { modeloId, varianteId } = modeloComSaldoEGrade(10);
     const r = await mover({

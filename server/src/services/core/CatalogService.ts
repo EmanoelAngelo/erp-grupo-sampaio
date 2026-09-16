@@ -2099,6 +2099,13 @@ export function searchProducts(
      * código: essa acha peça de qualquer jeito, ligada ou desligada.
      */
     includeParts?: boolean;
+    /**
+     * Trazer TAMBÉM o modelo de grade (e o kit que desmembra) que ficou com
+     * SALDO PRESO — ver o comentário de `SALDO_PRESO` abaixo. Padrão: não, que
+     * é o que o balcão precisa. Só a tela de Movimentações pede, porque é ela
+     * que faz a saída de regularização.
+     */
+    comSaldoPreso?: boolean;
   } = {},
 ): Record<string, unknown>[] {
   ensureCoreSchema();
@@ -2128,6 +2135,40 @@ export function searchProducts(
     Quem decide é a tela. A busca não mente sobre o que existe.
   */
   const pecaNaBuscaPorTexto = options.includeParts ? '1 = 1' : `p.kind <> 'part'`;
+
+  /*
+    O MODELO COM SALDO PRESO, SÓ PARA QUEM VAI REGULARIZÁ-LO (P00-prod-05).
+
+    O modelo de grade fica FORA da busca — quem sai da prateleira é o tamanho, e
+    é isso que o balcão precisa ver. Só que a tela de Movimentações escolhe o
+    produto por esta mesma busca, e o servidor passou a permitir a SAÍDA que
+    tira o saldo preso de um modelo herdado de banco antigo. Sem esta porta, a
+    permissão existiria e nenhuma tela chegaria nela: o gestor veria a
+    mercadoria na posição de estoque e não teria como selecioná-la.
+
+    Só o modelo que TEM saldo entra, e só quando a tela pede — a busca do balcão
+    não manda o interruptor e continua sem ver modelo nenhum. A linha vem
+    marcada com `saldo_preso` para a tela poder dizer o que é aquilo, em vez de
+    oferecer um "produto" que a venda recusaria.
+
+    O kit que desmembra está no mesmo caso e pela mesma razão: o saldo dele
+    conta a mesma mercadoria duas vezes, e a saída é o que faz a posição voltar
+    a dizer a verdade.
+  */
+  const TEM_GRADE = 'EXISTS (SELECT 1 FROM core_products f WHERE f.parent_id = p.id)';
+  const KIT_VIRTUAL = 'p.is_kit = 1 AND p.kit_explode_on_sale = 1';
+  const SALDO_PRESO = `(${TEM_GRADE} OR (${KIT_VIRTUAL}))
+      AND EXISTS (SELECT 1 FROM core_stock preso
+                   WHERE preso.company_id = p.company_id AND preso.product_id = p.id
+                     AND preso.quantity > 0)`;
+  const modeloDeGrade = options.comSaldoPreso
+    ? `AND (NOT ${TEM_GRADE} OR (${SALDO_PRESO}))`
+    : `AND NOT ${TEM_GRADE}`;
+  // Coluna só quando a tela pede: a busca do balcão não paga subconsulta por
+  // uma marca que ela não usa.
+  const marcaDoSaldoPreso = options.comSaldoPreso
+    ? `, CASE WHEN ${SALDO_PRESO} THEN 1 ELSE 0 END AS saldo_preso`
+    : '';
 
   const linhas = getConnection()
     .prepare(
@@ -2168,12 +2209,13 @@ export function searchProducts(
               w.name AS workshop_name,
               ${MINIATURA_DO_BALCAO},
               CASE WHEN ${CASOU_POR_CODIGO} THEN 1 ELSE 0 END AS matched_exact
+              ${marcaDoSaldoPreso}
          FROM core_products p
          LEFT JOIN core_stock s ON s.product_id = p.id AND s.company_id = p.company_id
          LEFT JOIN core_workshops w ON w.id = p.workshop_id AND w.company_id = p.company_id
         WHERE p.company_id = ? AND p.active = 1
           AND ${modeloAtivo('p')}
-          AND NOT EXISTS (SELECT 1 FROM core_products f WHERE f.parent_id = p.id)
+          ${modeloDeGrade}
           ${semKits}
           AND (
                 ${CASOU_POR_CODIGO}
