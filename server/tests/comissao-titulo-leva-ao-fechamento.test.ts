@@ -38,6 +38,7 @@ import {
   setTier,
 } from '../src/services/core/CommissionService.js';
 import { loginForTest } from './helpers/auth.js';
+import { linkUserToCompany } from '../src/services/auth/IdentityService.js';
 
 const app = createApp();
 
@@ -66,6 +67,17 @@ beforeEach(async () => {
        VALUES (?, ?, 'Joana Vendedora', 'x', 1, ?, ?)`,
     )
     .run(vendedor, `v-${vendedor}`, agora, agora);
+  /*
+    A vendedora é EMPREGADA da operação — o vínculo faltava aqui.
+
+    Este arranjo inseria a linha em core_users e parava: um usuário sem
+    vínculo nenhum, que no sistema de verdade não existe (quem vende entrou
+    por Usuários e Acesso, com vínculo). A conferência nova de
+    setMemberGroup — comissionar quem NÃO é da operação é travessia de
+    empresa — encosta exatamente nessa lacuna do arranjo, e não no que este
+    arquivo mede.
+  */
+  linkUserToCompany(vendedor, companyId, 'atendente', false);
   const grupo = createGroup(companyId, 'Balcão');
   setTier(companyId, grupo.id, 0, 1_000); // 10%
   setMemberGroup(companyId, vendedor, grupo.id);
