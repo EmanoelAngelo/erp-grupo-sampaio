@@ -735,6 +735,138 @@ function normalizarPagamentos(pagamentos: SalePaymentInput[] | undefined | null)
 }
 
 /**
+ * ============================================================================
+ * A FORMA DO PEDIDO — a venda recusa o que não é venda, em vez de estourar 500
+ * ============================================================================
+ *
+ * ## O DEFEITO (auditoria do PDV, P0 da Preço Justo)
+ *
+ * `createSale` recebia o corpo HTTP com os tipos que a interface PROMETE e o
+ * usava cru: `productId`, `customerId`, `cashSessionId`, `sellerId`, `note` e
+ * `unitIds` iam direto para o `prepare(...).get()` e para o INSERT. O tipo é
+ * uma promessa do compilador sobre quem chama de dentro; quem chama de fora é
+ * `req.body`, e ali `{ items: [{ quantity: 1 }] }` é um objeto legítimo de
+ * JSON. O resultado, medido contra banco de teste na ROTA MAIS USADA DO
+ * SISTEMA:
+ *
+ *   items: [null] .............. TypeError "Cannot read properties of null"
+ *   item sem productId ......... "Provided value cannot be bound to SQLite parameter 1."
+ *   productId/customerId/
+ *   cashSessionId/sellerId
+ *   como objeto ................ "Unknown named parameter 'id'"
+ *   unitIds como objeto ........ "unidadesDaLinha is not iterable"
+ *   note como objeto ........... "Provided value cannot be bound to SQLite parameter 16."
+ *
+ * e todos saíam como 500 `API_UNAVAILABLE` — "Erro interno." no balcão. É o
+ * pior desfecho possível nesta rota: o operador não fica sabendo o que houve
+ * NEM se a venda entrou, e a única saída é tentar de novo com o cliente na
+ * frente, arriscando a segunda venda (a chave de idempotência salva o reenvio
+ * IGUAL; a tentativa corrigida é outro pedido).
+ *
+ * Não é caso hipotético: o carrinho do PDV monta a linha a partir do resultado
+ * da busca, a fila offline guarda o corpo que o navegador montou meses atrás
+ * (e o relança tal e qual), e a pré-venda/OS/consignação montam a mesma
+ * entrada por caminhos diferentes. Qualquer um deles perdendo um campo pelo
+ * caminho produzia "Erro interno." em vez de dizer QUAL linha está incompleta.
+ *
+ * ## Onde mora o guarda, e por quê
+ *
+ * No SERVIÇO, e não na rota — a mesma razão do guarda do terminal algumas
+ * linhas abaixo: é aqui que todo chamador passa, inclusive os que ainda não
+ * existem. E ANTES da transação, junto das outras conferências de forma, para
+ * que nada seja escrito e a numeração da venda não seja consumida.
+ *
+ * ## O que é aceito
+ *
+ * Identificador é TEXTO, e NÚMERO também passa pela conferência — de
+ * propósito, e sem nada ser reescrito: o valor segue cru para a consulta, onde
+ * `WHERE id = 7` não acha produto nenhum e continua saindo
+ * `CORE_PRODUCT_NOT_FOUND`, exatamente como antes deste guarda. Trocar esse
+ * 404 por um 400 novo seria mexer numa resposta que já estava certa. O que
+ * passa a ser recusado com nome é só o que nunca foi identificador — objeto,
+ * lista, booleano, texto vazio, ausente —, que é o que o node:sqlite não sabe
+ * ligar a um parâmetro.
+ */
+function textoDoPedido(valor: unknown): string | null {
+  if (typeof valor === 'string') return valor.trim() || null;
+  if (typeof valor === 'number' && Number.isFinite(valor)) return String(valor);
+  return null;
+}
+
+/**
+ * O campo do cabeçalho tem forma de texto?
+ *
+ * Ausente e nulo passam (são "não informado"), e TEXTO VAZIO também: observação
+ * em branco é o caso comum do balcão, e recusá-la seria trocar um defeito por
+ * outro. O que não passa é o que nunca foi texto — objeto, lista, booleano.
+ */
+function forma(valor: unknown): boolean {
+  if (valor === undefined || valor === null || typeof valor === 'string') return true;
+  return typeof valor === 'number' && Number.isFinite(valor);
+}
+
+function conferirFormaDoPedido(input: CreateSaleInput): void {
+  if (!Array.isArray(input.items)) {
+    throw new ApiError(
+      'CORE_SALE_ITEMS_INVALID',
+      'Os itens da venda precisam vir como uma lista. Recarregue o PDV e monte o carrinho de novo.',
+      400,
+    );
+  }
+  input.items.forEach((bruto, n) => {
+    // Por `unknown`: o tipo promete uma linha inteira, e quem chega é `req.body`.
+    const item = bruto as unknown as Record<string, unknown> | null | undefined;
+    if (item === null || item === undefined || typeof item !== 'object' || Array.isArray(item)) {
+      throw new ApiError(
+        'CORE_SALE_ITEM_INVALID',
+        `A linha ${n + 1} do carrinho veio vazia. Recarregue o PDV e monte o carrinho de novo.`,
+        400,
+        { index: n },
+      );
+    }
+    if (textoDoPedido(item.productId) === null) {
+      throw new ApiError(
+        'CORE_SALE_ITEM_PRODUCT_REQUIRED',
+        `A linha ${n + 1} do carrinho não diz QUAL produto está sendo vendido. `
+          + 'Tire a linha, bipe o produto de novo e finalize.',
+        400,
+        { index: n },
+      );
+    }
+    if (item.unitIds !== undefined && item.unitIds !== null && !Array.isArray(item.unitIds)) {
+      throw new ApiError(
+        'CORE_SALE_ITEM_UNITS_INVALID',
+        `A linha ${n + 1} do carrinho informa as peças (chassi/número de série) num formato que `
+          + 'não é uma lista. Escolha as peças de novo na linha e finalize.',
+        400,
+        { index: n },
+      );
+    }
+  });
+  // Os identificadores e o texto livre do cabeçalho — cada um é gravado ou
+  // consultado cru mais abaixo, e cada um derrubava a venda com 500.
+  const cabecalho: [string, unknown, string][] = [
+    ['customerId', input.customerId, 'o cliente da venda'],
+    ['sellerId', input.sellerId, 'o vendedor da venda'],
+    ['terminalId', input.terminalId, 'o caixa da venda'],
+    ['cashSessionId', input.cashSessionId, 'a gaveta da venda'],
+    ['note', input.note, 'a observação da venda'],
+    ['origin', input.origin, 'a origem da venda'],
+  ];
+  for (const [campo, valor, oQue] of cabecalho) {
+    if (!forma(valor)) {
+      throw new ApiError(
+        'CORE_SALE_FIELD_INVALID',
+        `O campo "${campo}" (${oQue}) veio num formato que o sistema não entende. `
+          + 'Recarregue o PDV e finalize de novo.',
+        400,
+        { field: campo },
+      );
+    }
+  }
+}
+
+/**
  * Unidades que fracionam quando a empresa ainda não tem o próprio cadastro de
  * unidades — as mesmas do padrão de `CatalogAuxService` com casas decimais.
  */
@@ -873,6 +1005,13 @@ export function createSale(entrada: CreateSaleInput): {
   alcada: TrilhaDaAlcada | null;
 } {
   ensureCoreSchema();
+  /*
+    A FORMA DO PEDIDO ANTES DE QUALQUER LEITURA (ver `conferirFormaDoPedido`).
+    É a primeira linha porque o que ela recusa derrubava a rota com 500 antes
+    mesmo de a venda ser conferida: linha sem produto, identificador que é
+    objeto, observação que não é texto.
+  */
+  conferirFormaDoPedido(entrada);
   /*
     O PIX DO BALCÃO É CONFERIDO ANTES DE TUDO (GAP-PRD-077). A linha que chega
     com `paymentIntentId` sai daqui com o status que a COBRANÇA tem — é esse

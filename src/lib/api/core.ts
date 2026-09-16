@@ -2386,6 +2386,22 @@ export interface PendenciasEletronicas {
     queuedAt: string | null;
     errorMessage: string | null;
   }[];
+  /**
+   * Devolução em duas etapas registrada neste turno cujo reembolso ainda não
+   * foi registrado (auditoria do PDV): dinheiro que a loja DEVE ao cliente e
+   * que continua na gaveta enquanto o reembolso for em espécie. Opcional:
+   * servidor anterior a esta versão não manda.
+   */
+  devolucoesAguardandoReembolso?: {
+    id: string;
+    number: number;
+    saleId: string;
+    saleNumber: number | null;
+    devolvivelCents: number;
+    reembolsadoCents: number;
+    pendenteCents: number;
+    createdAt: string;
+  }[];
   quantidade: number;
   totalCents: number;
 }

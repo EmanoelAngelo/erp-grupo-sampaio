@@ -380,6 +380,66 @@ describe('GAP-PRD-081 — o turno só fecha com as pendências ditas e declarada
     });
   });
 
+  /*
+    A DEVOLUÇÃO EM DUAS ETAPAS QUE AINDA NÃO PAGOU O CLIENTE (auditoria do PDV).
+
+    O DEFEITO: na Preço Justo a devolução trata a MERCADORIA na hora e o
+    dinheiro depois. Entre uma coisa e outra a loja deve aquele valor — e em
+    espécie ele continua DENTRO da gaveta, sem ser da loja. O fechamento passava
+    calado: diferença zero, "conferido", e o operador ia embora sem saber. O
+    servidor passou a devolvê-la junto das outras pendências do turno; aqui se
+    prova que o bloco do fechamento a ESCREVE, com a venda e o valor que falta.
+  */
+  it('a devolução sem reembolso aparece no bloco, com a venda e o que falta devolver', async () => {
+    caixa({
+      resumoComPendencias: false,
+      fechar: () =>
+        recusa(409, 'CORE_CASH_CLOSE_ELECTRONIC_PENDING', 'Este turno tem 1 pendência(s).', {
+          pendencias: {
+            cobrancas: [],
+            pagamentosPendentes: [],
+            vendasOffline: [],
+            devolucoesAguardandoReembolso: [
+              {
+                id: 'dev-1',
+                number: 7,
+                saleId: 'v-9',
+                saleNumber: 9,
+                devolvivelCents: 5000,
+                reembolsadoCents: 2000,
+                pendenteCents: 3000,
+                createdAt: '2026-09-11T12:00:00.000Z',
+              },
+            ],
+            quantidade: 1,
+            totalCents: 3000,
+          },
+        }),
+    });
+    const confirmar = await pedirFechamento();
+    fireEvent.click(confirmar);
+    const bloco = await screen.findByTestId('pendencias-do-fechamento');
+    // O título deixa de falar só em "dinheiro eletrônico": esta não é.
+    expect(bloco.textContent).toMatch(/Pendências deste turno/);
+    expect(bloco.textContent).toMatch(/Devolução #7 da venda #9/);
+    expect(bloco.textContent).toMatch(/R\$\s?30,00 ainda\s*não devolvidos ao cliente/);
+    // O parcial diz o que já voltou, senão o operador não sabe o que conferir.
+    expect(bloco.textContent).toMatch(/já voltaram/);
+    expect(bloco.textContent).toMatch(/Vendas › Devoluções/);
+
+    // E ela também só passa com ciência e motivo, como as outras.
+    fireEvent.click(within(bloco).getByLabelText(/Estou ciente/));
+    fireEvent.change(within(bloco).getByLabelText('Motivo para fechar com pendências'), {
+      target: { value: 'o gerente faz o PIX amanhã cedo' },
+    });
+    fireEvent.click(confirmar);
+    await waitFor(() => expect(chamou('/close')).toHaveLength(2));
+    expect(chamou('/close')[1].body).toMatchObject({
+      pendenciasCiente: true,
+      pendenciasMotivo: 'o gerente faz o PIX amanhã cedo',
+    });
+  });
+
   it('sem pendência no resumo, a recusa do servidor traz a lista e pede a ciência', async () => {
     caixa({
       resumoComPendencias: false,
