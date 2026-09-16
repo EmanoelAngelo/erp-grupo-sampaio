@@ -47,6 +47,40 @@
  * tela que estoura leva a casca dela junto. Promete o que decide entre "o
  * sistema caiu" e "esta tela falhou": a pessoa lê o que aconteceu e sai dali
  * clicando, com o resto do sistema respondendo.
+ *
+ * ============================================================================
+ * O AVISO PROMETIA O QUE ESTE ARQUIVO NÃO ENTREGA
+ * ============================================================================
+ *
+ * ## O defeito
+ *
+ * A frase na tela dizia "o caixa, o menu e as outras telas seguem abrindo", e
+ * duas dessas três coisas não eram verdade:
+ *
+ *  - O MENU não segue. Está escrito seis linhas acima, no que este arquivo NÃO
+ *    promete — o aviso contradizia o próprio código.
+ *  - O CAIXA não segue quando o caixa é a tela que estourou. `aoInicio` vai
+ *    para `homeOf(perfil)`, e a casa do `operador_caixa_loja` é `/pdv`: com o
+ *    PDV quebrado, "Ir para o início" limpa o erro, redesenha a MESMA tela,
+ *    ela estoura de novo e o aviso volta. E "Voltar" é `navigate(-1)`, que num
+ *    PDV aberto direto (o balcão liga o computador no endereço do PDV) não tem
+ *    para onde ir: a porta existe e não abre.
+ *
+ * Aviso que promete a mais é pior que aviso que promete de menos: quem lê para
+ * de procurar saída.
+ *
+ * ## A regra
+ *
+ * A tela só oferece a porta que ABRE. "Voltar" aparece quando há página
+ * anterior nesta sessão de navegação; "Ir para o início" aparece quando a casa
+ * do perfil é OUTRA tela. Quando nenhuma das duas serve — o caso do caixa com
+ * o PDV quebrado —, o aviso diz isso com todas as letras e oferece a única
+ * saída que sobra, recarregar, avisando que ela pode repetir o estouro.
+ *
+ * E o aviso deixa RASTRO: um código que a pessoa lê ao telefone, no mesmo
+ * formato do da fronteira geral (`err-<base36>`). Sem ele, quem atende o
+ * chamado não tem o que pedir — `componentDidCatch` só escreve no console em
+ * desenvolvimento, de propósito.
  */
 import { Component, createElement, type ErrorInfo, type ReactNode } from 'react';
 
@@ -58,17 +92,32 @@ interface Props {
   aoInicio: () => void;
   /** Volta uma página no histórico. */
   aoVoltar: () => void;
+  /** Recarrega o endereço atual. A última saída, quando não há outra. */
+  aoRecarregar: () => void;
+  /**
+   * Há página anterior NESTA sessão de navegação? Falso no endereço em que o
+   * navegador abriu — é o caso do balcão que liga o computador direto no PDV.
+   */
+  podeVoltar: boolean;
+  /**
+   * "Ir para o início" leva para FORA desta tela? Falso quando a casa do
+   * perfil É a tela que estourou. Função, e não valor: a sessão é lida só
+   * quando há erro a desenhar, para não amarrar o roteador ao login.
+   */
+  inicioLevaEmbora: () => boolean;
 }
 
 interface State {
   erro: Error | null;
+  /** O código que a pessoa repete ao telefone. Vazio enquanto não há erro. */
+  idDoRelato: string;
 }
 
 export class FronteiraDaTela extends Component<Props, State> {
-  state: State = { erro: null };
+  state: State = { erro: null, idDoRelato: '' };
 
   static getDerivedStateFromError(erro: Error): State {
-    return { erro };
+    return { erro, idDoRelato: `err-${Date.now().toString(36)}` };
   }
 
   componentDidCatch(erro: Error, info: ErrorInfo): void {
@@ -85,12 +134,24 @@ export class FronteiraDaTela extends Component<Props, State> {
   componentDidUpdate(anterior: Props): void {
     // Navegou: a tela seguinte merece começar limpa.
     if (this.state.erro && anterior.chave !== this.props.chave) {
-      this.setState({ erro: null });
+      this.setState({ erro: null, idDoRelato: '' });
     }
   }
 
   render(): ReactNode {
     if (!this.state.erro) return this.props.children;
+
+    // Só entra na lista a porta que abre: oferecer a que não abre é o defeito
+    // que esta fronteira tinha na frase.
+    const saidas: { rotulo: string; acao: () => void }[] = [];
+    if (this.props.podeVoltar) saidas.push({ rotulo: 'Voltar', acao: this.props.aoVoltar });
+    if (this.props.inicioLevaEmbora()) {
+      saidas.push({ rotulo: 'Ir para o início', acao: this.props.aoInicio });
+    }
+    const semSaida = saidas.length === 0;
+    if (semSaida) {
+      saidas.push({ rotulo: 'Recarregar esta tela', acao: this.props.aoRecarregar });
+    }
 
     return (
       <div
@@ -100,26 +161,31 @@ export class FronteiraDaTela extends Component<Props, State> {
       >
         <h1 className="m-0 text-[length:var(--gs-text-lg)] font-semibold">Esta tela falhou.</h1>
         <p className="m-0 text-[length:var(--gs-text-sm)] text-[var(--gs-muted)]">
-          O resto do sistema continua funcionando — o caixa, o menu e as outras telas seguem
-          abrindo. Volte e tente de novo; se repetir, avise a gestão e diga por qual caminho
-          chegou aqui.
+          {semSaida
+            ? 'Esta é a tela inicial deste acesso e não há página anterior para onde voltar: '
+              + 'daqui, só recarregando. Se o erro voltar ao recarregar, ele é desta tela e não '
+              + 'da rede — avise a gestão com o código abaixo.'
+            : 'As OUTRAS telas do sistema continuam abrindo: use os botões abaixo. O menu não '
+              + 'sobrevive a esta falha — ele é desenhado por dentro de cada tela e caiu junto '
+              + 'com esta. Se repetir, avise a gestão com o código abaixo e diga por qual '
+              + 'caminho chegou aqui.'}
         </p>
         <div className="flex flex-wrap items-center justify-center gap-2">
-          <button
-            type="button"
-            onClick={this.props.aoVoltar}
-            className="rounded-md border border-[var(--gs-border)] px-4 py-2 font-medium"
-          >
-            Voltar
-          </button>
-          <button
-            type="button"
-            onClick={this.props.aoInicio}
-            className="rounded-md border border-[var(--gs-border)] px-4 py-2 font-medium"
-          >
-            Ir para o início
-          </button>
+          {saidas.map((s) => (
+            <button
+              key={s.rotulo}
+              type="button"
+              onClick={s.acao}
+              className="rounded-md border border-[var(--gs-border)] px-4 py-2 font-medium"
+            >
+              {s.rotulo}
+            </button>
+          ))}
         </div>
+        {/* O que o suporte pede ao telefone. Sem isto, o chamado começa do zero. */}
+        <p className="m-0 text-[length:var(--gs-text-xs)] text-[var(--gs-muted)]">
+          Código para o suporte: {this.state.idDoRelato}
+        </p>
       </div>
     );
   }
