@@ -2838,6 +2838,12 @@ export function VendasPage() {
   );
 }
 
+/** O que a ficha sabe dos documentos desta venda: lendo, a leitura, ou a falha. */
+type DocumentosDaVenda =
+  | 'lendo'
+  | 'falhou'
+  | { items: FiscalSaleStatus[]; ufDoEmitente: string | null };
+
 /**
  * ============================================================================
  * A NF-e (MODELO 55) DESTA VENDA — P0 fiscal
@@ -2885,12 +2891,6 @@ export function VendasPage() {
  * O ENDEREÇO É DIGITADO porque a loja não o tem — inventá-lo seria pôr dado
  * falso numa nota fiscal.
  */
-/** O que a ficha sabe dos documentos desta venda: lendo, a leitura, ou a falha. */
-type DocumentosDaVenda =
-  | 'lendo'
-  | 'falhou'
-  | { items: FiscalSaleStatus[]; ufDoEmitente: string | null };
-
 function NotaDaVendaDeBalcao({ venda }: { venda: SaleDetail }) {
   const podeEmitir = useCan('fiscal.manage');
   const [documentos, setDocumentos] = useState<DocumentosDaVenda>('lendo');
