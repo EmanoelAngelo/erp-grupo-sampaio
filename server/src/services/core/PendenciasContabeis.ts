@@ -103,13 +103,35 @@ export function pendenciasContabeis(companyId: string): PendenciaContabil[] {
     }
   }
 
-  // 3. As exceções por produto: CFOP próprio diferente do grupo.
+  /*
+    3. As exceções por produto: CFOP próprio diferente do grupo.
+
+    DEFEITO (auditoria P0 fiscal): o `JOIN` casava o grupo SÓ pelo
+    `tax_profile` do produto. O produto SEM perfil — que é o caso normal da
+    Preço Justo, com um único grupo ativo — nunca casava, e a exceção dele
+    ficava invisível para o contador: o catálogo inteiro podia estar com CFOP
+    próprio divergente do grupo e a lista dizia que não havia exceção nenhuma.
+
+    A regra do grupo que vale para o produto é a da EMISSÃO (`acharGrupo` em
+    TributacaoDoItem: o grupo do perfil, ou o grupo único da operação quando
+    não há perfil), e é a mesma que o item de catálogo do `buildReadiness` já
+    usa. Copiá-la aqui é o que faz as três contagens falarem do mesmo grupo.
+
+    Com DOIS ou mais grupos ativos e produto sem perfil, o subselect devolve
+    NULL e o produto continua de fora — corretamente: ali não há grupo que
+    valha, e essa falta já é FAIL no item da tributação, com o produto nomeado.
+  */
   const excecoes = db
     .prepare(
       `SELECT COUNT(*) AS n
          FROM core_products p
          JOIN core_tax_groups g
-           ON g.company_id = p.company_id AND g.code = UPPER(TRIM(COALESCE(p.tax_profile, '')))
+           ON g.company_id = p.company_id AND g.active = 1
+          AND g.code = COALESCE(
+                NULLIF(UPPER(TRIM(COALESCE(p.tax_profile, ''))), ''),
+                (SELECT CASE WHEN COUNT(*) = 1 THEN MIN(u.code) END
+                   FROM core_tax_groups u
+                  WHERE u.company_id = p.company_id AND u.active = 1))
         WHERE p.company_id = ? AND p.active = 1
           AND TRIM(COALESCE(p.cfop, '')) <> ''
           AND TRIM(p.cfop) <> COALESCE(g.cfop_internal, '')

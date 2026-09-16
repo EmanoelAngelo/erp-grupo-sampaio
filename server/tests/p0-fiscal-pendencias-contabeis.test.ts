@@ -13,6 +13,7 @@ import { upsertTaxGroup } from '../src/services/core/CatalogAuxService.js';
 import { gravarOperacao } from '../src/services/core/FiscalOperacoes.js';
 import { gravarPoliticaDeContingencia } from '../src/services/core/FiscalContingenciaOffline.js';
 import { itemDePendenciasContabeis, pendenciasContabeis } from '../src/services/core/PendenciasContabeis.js';
+import { createProduct } from '../src/services/core/CatalogService.js';
 import { grupoTributarioPadrao } from './helpers/grupoTributario.js';
 
 let empresa: string;
@@ -88,6 +89,43 @@ describe('o que depende do contador aparece — sem valor inventado', () => {
     // A outra operação continua com as dela.
     expect(chaves(outra).some((c) => c.startsWith('operacao:devolucao_venda'))).toBe(true);
     expect(chaves(outra)).toContain('contingencia');
+  });
+
+  /*
+    O PRODUTO SEM PERFIL TAMBÉM TEM GRUPO — e a exceção dele precisa aparecer.
+
+    A contagem das exceções casava o grupo SÓ pelo `tax_profile`. O produto sem
+    perfil — o caso normal da Preço Justo, com um único grupo ativo — nunca
+    casava: o catálogo inteiro podia estar com CFOP próprio divergente e a
+    lista dizia que não havia exceção nenhuma. A regra do grupo que vale para o
+    produto é a da EMISSÃO: o grupo do perfil, ou o grupo único da operação.
+  */
+  it('exceção de CFOP aparece também no produto SEM perfil, pelo grupo único da operação', () => {
+    expect(chaves(empresa)).not.toContain('produtos:cfop-proprio');
+
+    // Sem perfil: vale o grupo único (SIMPLES-102, CFOP 5102/6102).
+    createProduct(empresa, { name: 'Caneta com CFOP próprio', unit: 'UN', priceCents: 500, cfop: '5405' });
+    const excecao = pendenciasContabeis(empresa).find((p) => p.chave === 'produtos:cfop-proprio')!;
+    expect(excecao).toBeTruthy();
+    expect(excecao.descricao).toMatch(/^1 produto\(s\) têm CFOP próprio/);
+
+    // O CFOP igual ao do grupo não é exceção: não há o que confirmar.
+    createProduct(empresa, { name: 'Caneta comum', unit: 'UN', priceCents: 500, cfop: '5102' });
+    expect(
+      pendenciasContabeis(empresa).find((p) => p.chave === 'produtos:cfop-proprio')!.descricao,
+    ).toMatch(/^1 produto\(s\) têm CFOP próprio/);
+
+    // E o produto COM perfil continua contando pelo grupo do perfil dele.
+    createProduct(empresa, {
+      name: 'Caneta do perfil',
+      unit: 'UN',
+      priceCents: 500,
+      cfop: '5405',
+      taxProfile: 'SIMPLES-102',
+    });
+    expect(
+      pendenciasContabeis(empresa).find((p) => p.chave === 'produtos:cfop-proprio')!.descricao,
+    ).toMatch(/^2 produto\(s\) têm CFOP próprio/);
   });
 
   it('o item do checklist informa (PENDING, dono contador) e nunca bloqueia a emissão', () => {
