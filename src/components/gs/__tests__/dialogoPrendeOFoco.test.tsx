@@ -12,7 +12,7 @@
  */
 import { afterEach, describe, expect, it } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { DialogoBase } from '../DialogoBase';
 import { prenderFoco } from '../armadilhaDeFoco';
 import { EstornoOsDialog } from '../EstornoOsDialog';
@@ -115,6 +115,36 @@ describe('DialogoBase', () => {
     expect(screen.queryByRole('dialog', { name: 'Tem certeza?' })).toBeNull();
     expect(screen.getByRole('dialog', { name: 'Cancelar o pedido 41' })).toBeTruthy();
     expect(document.activeElement).toBe(abrirSegundo);
+  });
+
+  it('o diálogo que abre com a resposta do servidor já aparece com o foco dentro', async () => {
+    /*
+      A armadilha ligava num `useEffect`: com o diálogo aberto por uma
+      resposta (fora de evento), o React desenhava o diálogo numa tarefa do
+      agendador e só ligava a armadilha na volta seguinte. Nesse intervalo o
+      diálogo estava na tela com o foco ainda na venda por trás — a tecla
+      seguinte ia para lá. Ligada no commit, o diálogo não aparece sem o foco.
+    */
+    function AbreComAResposta() {
+      const [aberto, setAberto] = useState(false);
+      useEffect(() => {
+        void Promise.resolve().then(() => setAberto(true));
+      }, []);
+      return (
+        <>
+          <button type="button">Botão da venda</button>
+          {aberto && (
+            <DialogoBase titulo="Pedido recusado" onFechar={() => setAberto(false)} focoInicial="[data-foco-inicial]">
+              <input aria-label="Motivo" data-foco-inicial />
+            </DialogoBase>
+          )}
+        </>
+      );
+    }
+    render(<AbreComAResposta />);
+    act(() => screen.getByRole('button', { name: 'Botão da venda' }).focus());
+    await screen.findByRole('dialog', { name: 'Pedido recusado' });
+    expect(document.activeElement).toBe(screen.getByRole('textbox', { name: 'Motivo' }));
   });
 });
 

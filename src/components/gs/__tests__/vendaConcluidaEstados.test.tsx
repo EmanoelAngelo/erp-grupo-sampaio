@@ -11,6 +11,7 @@
  */
 import { describe, expect, it, vi, afterEach } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { useEffect, useState } from 'react';
 import { VendaConcluidaDialog, type VendaConcluida } from '../VendaConcluidaDialog';
 
 function venda(estadoFiscal: VendaConcluida['estadoFiscal']): VendaConcluida {
@@ -104,5 +105,60 @@ describe('imprimindo, o leitor não fica mudo', () => {
     expect(document.activeElement).toBe(document.body);
     fireEvent.keyDown(document.body, { key: '7' });
     expect(digitado).toHaveBeenCalledWith('7');
+  });
+});
+
+describe('a tela nasce pronta para o leitor — foco e ouvinte ligam no commit', () => {
+  /*
+    A TELA APARECE COM A RESPOSTA DO SERVIDOR, FORA DE QUALQUER EVENTO, e o
+    React desenha essa atualização numa tarefa do agendador. O foco no
+    Imprimir, a armadilha de foco e o ouvinte do Esc e do bipe eram ligados em
+    `useEffect` — que roda DEPOIS do commit, numa volta seguinte do agendador.
+    Entre as duas voltas a tela já estava de pé com o foco onde a venda o
+    deixou e sem ouvinte nenhum: o primeiro caractere do próximo código caía na
+    página (não fechava a tela nem chegava ao campo de leitura), e o Esc não
+    começava a próxima venda. A mesma classe do 808c1c9 no PDV.
+
+    O dublê é o PDV em miniatura: a venda chega por uma promessa, como a
+    resposta do POST, e o teste tecla ASSIM que a tela aparece — sem esperar
+    mais nada, que é o que o leitor faz.
+  */
+  function TelaQueChegaDepois({
+    onDigitacao,
+    onNovaVenda,
+  }: {
+    onDigitacao: (tecla: string) => void;
+    onNovaVenda: () => void;
+  }) {
+    const [concluida, setConcluida] = useState<VendaConcluida | null>(null);
+    useEffect(() => {
+      void Promise.resolve().then(() => setConcluida(venda({ tipo: 'nao_fiscal' })));
+    }, []);
+    return concluida ? (
+      <VendaConcluidaDialog
+        venda={concluida}
+        onImprimir={() => undefined}
+        onNovaVenda={onNovaVenda}
+        onDigitacao={onDigitacao}
+      />
+    ) : null;
+  }
+
+  it('o primeiro caractere do bipe, logo que a tela aparece, segue para o campo de leitura', async () => {
+    const digitado = vi.fn();
+    render(<TelaQueChegaDepois onDigitacao={digitado} onNovaVenda={() => undefined} />);
+    await screen.findByRole('dialog', { name: 'Venda concluída' });
+    // Enter imprime: o foco já está no Imprimir no instante em que a tela aparece.
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: /^Imprimir/ }));
+    fireEvent.keyDown(document.activeElement ?? document.body, { key: '7' });
+    expect(digitado).toHaveBeenCalledWith('7');
+  });
+
+  it('o Esc, logo que a tela aparece, já começa a próxima venda', async () => {
+    const novaVenda = vi.fn();
+    render(<TelaQueChegaDepois onDigitacao={() => undefined} onNovaVenda={novaVenda} />);
+    await screen.findByRole('dialog', { name: 'Venda concluída' });
+    fireEvent.keyDown(document.activeElement ?? document.body, { key: 'Escape' });
+    expect(novaVenda).toHaveBeenCalledTimes(1);
   });
 });

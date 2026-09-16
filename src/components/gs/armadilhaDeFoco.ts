@@ -19,7 +19,7 @@
  * DIÁLOGO DENTRO DE DIÁLOGO: só o de cima prende o foco. A pilha é o que impede
  * os dois de brigarem, e `estaNoTopo` deixa o Esc fechar só o de cima.
  */
-import { useEffect, type RefObject } from 'react';
+import { useLayoutEffect, type RefObject } from 'react';
 
 const FOCAVEIS = [
   'a[href]',
@@ -102,12 +102,23 @@ export function instalarArmadilhaDeFoco(raiz: HTMLElement, focoInicial?: string)
   };
 }
 
-/** A armadilha como gancho, para quem tem o painel num `useRef`. */
+/**
+ * A armadilha como gancho, para quem tem o painel num `useRef`.
+ *
+ * LIGA NO COMMIT (useLayoutEffect). Num `useEffect` ela entrava uma volta do
+ * agendador DEPOIS de o diálogo aparecer: o diálogo aberto por uma resposta do
+ * servidor ficava na tela com o foco ainda na venda por trás, e a tecla que
+ * chegasse nesse intervalo — o bipe do leitor — ia para lá. E quem abriu era
+ * lido tarde: se um efeito do próprio diálogo já tivesse posto o foco dentro
+ * dele, "quem abriu" virava um elemento do diálogo, e o foco não voltava a
+ * lugar nenhum ao fechar. O callback ref (`prenderFoco`) já instala no commit;
+ * o gancho passa a fazer o mesmo.
+ */
 export function useArmadilhaDeFoco(
   ref: RefObject<HTMLElement | null>,
   { ativa = true, focoInicial }: OpcoesDaArmadilha = {},
 ): void {
-  useEffect(() => {
+  useLayoutEffect(() => {
     const raiz = ref.current;
     if (!ativa || !raiz) return undefined;
     return instalarArmadilhaDeFoco(raiz, focoInicial);

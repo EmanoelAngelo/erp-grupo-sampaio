@@ -20,7 +20,7 @@
  * mexe em estoque nem em caixa. O foco fica preso aqui enquanto a tela está
  * aberta (useArmadilhaDeFoco), como em todo modal do sistema.
  */
-import { useEffect, useRef } from 'react';
+import { useLayoutEffect, useRef } from 'react';
 import { formatCents, formatQuantity } from '@/components/gs/format';
 import { estaNoTopo, useArmadilhaDeFoco } from '@/components/gs/armadilhaDeFoco';
 
@@ -126,12 +126,25 @@ export function VendaConcluidaDialog({
 
   useArmadilhaDeFoco(painelRef);
 
+  /*
+    O FOCO E O OUVINTE LIGAM NO COMMIT (useLayoutEffect), E NÃO DEPOIS DELE.
+
+    Esta tela aparece com a resposta do servidor — uma atualização fora de
+    evento, que o React desenha numa tarefa do agendador. Com `useEffect`, o
+    foco no Imprimir e o ouvinte do Esc e do bipe só entravam na volta
+    SEGUINTE do agendador: nesse intervalo a tela já estava de pé, com o foco
+    ainda onde a venda o deixou e ninguém escutando. O primeiro caractere do
+    próximo código — o caixa bipa assim que vê a tela — caía na página: não
+    fechava a tela nem chegava ao campo de leitura; e o Esc não começava a
+    próxima venda. É a classe do 808c1c9 no PDV: não existe tela desenhada sem
+    o foco e o ouvinte dela.
+  */
   // Declarado DEPOIS da armadilha: o foco inicial é o botão Imprimir (Enter imprime).
-  useEffect(() => {
+  useLayoutEffect(() => {
     imprimirRef.current?.focus();
   }, []);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       // Esc é "não imprimir, próxima venda" — e não chega aos atalhos do PDV por baixo.
       if (e.key === 'Escape') {
