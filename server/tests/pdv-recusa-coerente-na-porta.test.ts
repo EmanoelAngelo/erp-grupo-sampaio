@@ -225,6 +225,56 @@ describe('o Finalizar recusa o pedido malformado com nome, e não com "Erro inte
     expect(saldo(productId)).toBe(10);
   });
 
+  /*
+    O TEXTO VAZIO E O NÚMERO NO CABEÇALHO (P00-pdv-cab).
+
+    O guarda acima dizia recusar "texto vazio" com nome, e não recusava: só o
+    `productId` da linha o alcançava. Medido pela rota, antes deste caso:
+
+      customerId: "" ... 500 API_UNAVAILABLE ("FOREIGN KEY constraint failed")
+      sellerId: "" ..... 201, com `core_sales.seller_id = ""` gravado —
+                         vendedor fantasma na comissão e no relatório
+      origin: 7 ........ 201, com a origem gravada como "7.0"
+      note: 7 .......... 201, com a observação gravada como "7.0"
+
+    Os dois primeiros são o mesmo furo: o texto vazio é FALSO para o `if` que
+    confere a empresa do cliente e do vendedor, e VERDADEIRO para o `??` que
+    escolhe o padrão — atravessa as duas peneiras.
+  */
+  it('cabeçalho com texto vazio ou número: 400 nomeado, e nada é gravado', async () => {
+    const { caixa, productId, sessao } = await cenario();
+    const base = {
+      items: [{ productId, quantity: 1 }],
+      payments: [{ method: 'dinheiro', amountCents: 5_000 }],
+      cashSessionId: sessao,
+    };
+    const casos: { nome: string; corpo: Record<string, unknown>; campo: string }[] = [
+      { nome: 'customerId vazio', corpo: { ...base, customerId: '' }, campo: 'customerId' },
+      { nome: 'customerId em branco', corpo: { ...base, customerId: '   ' }, campo: 'customerId' },
+      { nome: 'sellerId vazio', corpo: { ...base, sellerId: '' }, campo: 'sellerId' },
+      { nome: 'gaveta vazia', corpo: { ...base, cashSessionId: '' }, campo: 'cashSessionId' },
+      { nome: 'cliente numérico', corpo: { ...base, customerId: 7 }, campo: 'customerId' },
+      { nome: 'vendedor numérico', corpo: { ...base, sellerId: 7 }, campo: 'sellerId' },
+      { nome: 'origem numérica', corpo: { ...base, origin: 7 }, campo: 'origin' },
+      { nome: 'observação numérica', corpo: { ...base, note: 7 }, campo: 'note' },
+    ];
+    for (const caso of casos) {
+      const r = await request(app)
+        .post('/api/v1/core/sales')
+        .set(caixa.auth)
+        .set('Idempotency-Key', `balcao-cabecalho-${caso.campo}-${caso.nome}`)
+        .send(caso.corpo);
+      expect(r.status, `${caso.nome}: ${JSON.stringify(r.body)}`).toBe(400);
+      expect(r.body.error.code, caso.nome).toBe('CORE_SALE_FIELD_INVALID');
+      // A recusa diz QUAL campo: sem isso, "formato que o sistema não entende"
+      // manda o operador procurar em seis lugares.
+      expect(r.body.error.details.field, caso.nome).toBe(caso.campo);
+      expect(r.body.error.message, caso.nome).toContain(caso.campo);
+    }
+    expect(vendasGravadas()).toBe(0);
+    expect(saldo(productId)).toBe(10);
+  });
+
   it('as peças da linha (chassi) fora de uma lista: 400 nomeado, e nada é gravado', async () => {
     const { caixa, productId, sessao } = await cenario();
     const r = await request(app)
@@ -275,6 +325,37 @@ describe('o Finalizar recusa o pedido malformado com nome, e não com "Erro inte
       });
     expect(comObservacao.status, JSON.stringify(comObservacao.body)).toBe(201);
     expect(saldo(productId)).toBe(7);
+  });
+
+  /*
+    A trava do cabeçalho não pode ter sido comprada com uma venda a menos: o
+    vendedor de verdade, a origem de verdade e a observação de verdade passam,
+    e é ISSO que fica gravado (nada de "7.0" nem de vendedor vazio).
+  */
+  it('o cabeçalho preenchido de verdade continua entrando, e é ele que fica gravado', async () => {
+    const { caixa, gerente, productId, sessao } = await cenario();
+    const r = await request(app)
+      .post('/api/v1/core/sales')
+      .set(caixa.auth)
+      .set('Idempotency-Key', 'balcao-cabecalho-bom')
+      .send({
+        items: [{ productId, quantity: 1 }],
+        payments: [{ method: 'dinheiro', amountCents: 5_000 }],
+        cashSessionId: sessao,
+        sellerId: gerente.userId,
+        origin: 'pdv',
+        note: 'cliente leva na sacola',
+      });
+    expect(r.status, JSON.stringify(r.body)).toBe(201);
+    const gravada = getConnection()
+      .prepare('SELECT seller_id, origin, note, customer_id FROM core_sales WHERE id = ?')
+      .get(r.body.id as string) as Record<string, unknown>;
+    expect(gravada).toMatchObject({
+      seller_id: gerente.userId,
+      origin: 'pdv',
+      note: 'cliente leva na sacola',
+      customer_id: null,
+    });
   });
 });
 
