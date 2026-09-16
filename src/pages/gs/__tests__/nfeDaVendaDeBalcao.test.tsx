@@ -115,7 +115,10 @@ function servidor() {
           protocol: 'TEST-31',
         },
         statusLabel: 'Autorizada',
-        pendencias: [],
+        pendencias: [
+          'Venda com NF-e: a natureza da operação ("VENDA DE MERCADORIA") ainda não foi confirmada '
+          + 'pelo contador.',
+        ],
       });
     }
     if (alvo.includes('/core/fiscal/sales/v-301/documentos')) {
@@ -231,6 +234,9 @@ describe('a NF-e da venda de balcão sai pela ficha da venda', () => {
     });
 
     expect(await screen.findByText(/NF-e 31, série 1 — AUTHORIZED/)).toBeTruthy();
+    // O que o contador ainda deve sai junto da nota — a tela tipava
+    // `pendencias` e o servidor nunca as mandava.
+    expect(screen.getByText(/ainda não foi confirmada pelo contador/)).toBeTruthy();
   });
 
   /*

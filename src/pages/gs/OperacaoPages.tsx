@@ -2898,6 +2898,9 @@ function NotaDaVendaDeBalcao({ venda }: { venda: SaleDetail }) {
   // releitura traz o mesmo fato —, mas garante que quem clicou veja o número
   // mesmo se a releitura falhar.
   const [emitida, setEmitida] = useState<EmissaoDaNotaDeDevolucao['document'] | null>(null);
+  // O que o contador ainda deve nesta operação, como o servidor as declara na
+  // emissão — a mesma régua das NF-e de devolução.
+  const [pendencias, setPendencias] = useState<string[]>([]);
   const [form, setForm] = useState(() => rascunhoDoDestinatario(null));
   const [aberto, setAberto] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
@@ -2942,6 +2945,7 @@ function NotaDaVendaDeBalcao({ venda }: { venda: SaleDetail }) {
     try {
       const r = await coreApi.emitirNfeDaVenda(venda.id, destinatarioParaEnvio(form));
       setEmitida(r.document);
+      setPendencias(r.pendencias ?? []);
       /*
         A ficha é RELIDA do servidor: é a leitura que decide o que a seção
         mostra daqui em diante. Foi por confiar na memória da tela — e não na
@@ -2986,6 +2990,12 @@ function NotaDaVendaDeBalcao({ venda }: { venda: SaleDetail }) {
               do cancelamento.
             </p>
           )}
+          {/* O que o contador ainda deve, declarado junto da nota que saiu. */}
+          {pendencias.map((p) => (
+            <p key={p} className="m-0 text-[length:var(--gs-text-sm)] text-[var(--gs-warning)]">
+              {p}
+            </p>
+          ))}
         </>
       ) : cupomVivo ? (
         <p className="m-0 text-[length:var(--gs-text-sm)] text-[var(--gs-muted)]">

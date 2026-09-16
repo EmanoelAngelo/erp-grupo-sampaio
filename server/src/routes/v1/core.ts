@@ -334,7 +334,7 @@ import {
   emissionReadinessForSale,
 } from '../../services/core/FiscalPipelineService.js';
 import { reemitirRejeitada } from '../../services/core/FiscalReemissao.js';
-import { gravarOperacao, listarOperacoes } from '../../services/core/FiscalOperacoes.js';
+import { gravarOperacao, lerOperacao, listarOperacoes } from '../../services/core/FiscalOperacoes.js';
 import { pendenciasContabeis } from '../../services/core/PendenciasContabeis.js';
 import {
   destinatarioDaDevolucaoDeCompra,
@@ -8956,17 +8956,26 @@ coreRouter.post('/fiscal/sales/:saleId/nfe', (req: AuthedRequest, res, next) => 
           400,
         );
       }
-      res.json(
-        await emitNfeForSale({
-          companyId,
-          saleId: String(req.params.saleId),
-          userId,
-          recipient,
-          certificatePassword:
-            typeof req.body?.certificatePassword === 'string' ? req.body.certificatePassword : undefined,
-          developmentMode: desenvolvimentoPedido(req),
-        }),
-      );
+      const resultado = await emitNfeForSale({
+        companyId,
+        saleId: String(req.params.saleId),
+        userId,
+        recipient,
+        certificatePassword:
+          typeof req.body?.certificatePassword === 'string' ? req.body.certificatePassword : undefined,
+        developmentMode: desenvolvimentoPedido(req),
+      });
+      /*
+        O QUE O CONTADOR AINDA DEVE, DECLARADO NA RESPOSTA — como já fazem as
+        NF-e de devolução aqui do lado.
+
+        O DEFEITO: a tela tipava `pendencias` na resposta desta emissão e o
+        servidor nunca as mandava, então a natureza da operação `venda_nfe`
+        ainda não confirmada pelo contador não dizia nada a quem acabou de
+        emitir. A lista existe em Fiscal › Operações fiscais; aqui ela aparece
+        junto do fato que a torna real.
+      */
+      res.json({ ...resultado, pendencias: lerOperacao(companyId, 'venda_nfe').pendencias });
     } catch (err) {
       next(err);
     }

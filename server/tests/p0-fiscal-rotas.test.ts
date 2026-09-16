@@ -475,6 +475,22 @@ describe('a NF-e da venda de balcão pela rota', () => {
     expect(corrigida.body.error.message).toMatch(/cancele a nota/i);
   });
 
+  /*
+    O DEFEITO: a tela tipava `pendencias` na resposta desta emissão e o servidor
+    nunca as mandava — a natureza da operação `venda_nfe` ainda não confirmada
+    pelo contador não dizia nada a quem acabou de emitir a nota.
+  */
+  it('a resposta declara o que o contador ainda deve na operação da venda', async () => {
+    const v = venda();
+    const gerente = await login('GERPJ13', 'gerente_loja');
+    const r = await request(app)
+      .post(ROTA(v.saleId))
+      .set(gerente)
+      .send({ recipient: CONSUMIDOR_RS, developmentMode: true });
+    expect(r.status).toBe(200);
+    expect(r.body.pendencias.join(' ')).toMatch(/não foi confirmada pelo contador/i);
+  });
+
   it('o clique duplo com o MESMO destinatário continua devolvendo a mesma nota — um número só', async () => {
     const v = venda();
     const gerente = await login('GERPJ10', 'gerente_loja');
