@@ -322,6 +322,40 @@ function FichaDaDevolucao({
   const [nota, setNota] = useState('');
   const [erro, setErro] = useState<string | null>(null);
   const [salvando, setSalvando] = useState(false);
+  const [emitindo, setEmitindo] = useState(false);
+  const [emissao, setEmissao] = useState<string | null>(null);
+  const [pendenciasDoContador, setPendenciasDoContador] = useState<string[]>([]);
+
+  /*
+    EMITIR A NF-e DE DEVOLUÇÃO AQUI (P0 fiscal).
+
+    A ficha só sabia REGISTRAR a chave de uma nota emitida em outro lugar — a
+    rota de emissão existia e nenhuma tela a chamava, então a devolução ao
+    fornecedor terminava sempre no emissor do contador. O corpo vai vazio: o
+    destinatário é o fornecedor da nota de entrada, e o servidor o lê do
+    cadastro. Cadastro incompleto vira recusa que NOMEIA o campo que falta.
+
+    A situação fiscal da devolução vira "emitida" sozinha quando a SEFAZ
+    autoriza (aoAutorizarNotaDeDevolucao) — por isso a ficha é relida depois.
+  */
+  async function emitirNfe() {
+    setEmitindo(true);
+    setErro(null);
+    setEmissao(null);
+    try {
+      const r = await devolucoesFornecedorApi.emitirNfe(devolucao.id);
+      setEmissao(
+        `NF-e ${r.document.number}, série ${r.document.serie}: ${r.statusLabel ?? r.document.status}.`
+        + (r.document.accessKey ? ` Chave ${r.document.accessKey}.` : ''),
+      );
+      setPendenciasDoContador(r.pendencias ?? []);
+      aoMudar(await devolucoesFornecedorApi.abrir(devolucao.id));
+    } catch (err) {
+      setErro(mensagemDe(err, 'Falha ao emitir a NF-e de devolução.'));
+    } finally {
+      setEmitindo(false);
+    }
+  }
 
   async function registrarFiscal() {
     setSalvando(true);
@@ -412,6 +446,40 @@ function FichaDaDevolucao({
           {devolucao.fiscalNote ? ` — ${devolucao.fiscalNote}` : ''}
         </p>
       )}
+
+      {gerencia && devolucao.fiscalStatus === 'pendente' && (
+        <div className="mt-2 flex flex-col gap-2">
+          <div>
+            <Button loading={emitindo} onClick={() => void emitirNfe()}>
+              Emitir NF-e de devolução
+            </Button>
+          </div>
+          <p className="m-0 text-[length:var(--gs-text-sm)] text-[var(--gs-muted)]">
+            A nota sai pelo DEVORA, com o destinatário lido do cadastro do fornecedor e a nota de
+            entrada referenciada. Se o fornecedor for quem emite a nota, use o registro abaixo.
+          </p>
+        </div>
+      )}
+
+      {/*
+        O RESULTADO DA EMISSÃO FICA FORA DO BLOCO DA PENDÊNCIA.
+
+        Dentro dele, a confirmação sumia no instante em que a emissão dava
+        certo: a ficha é relida, a situação vira "emitida", o bloco inteiro
+        (que só existe enquanto está "pendente") desaparece — e com ele a frase
+        que dizia o número da nota e a pendência do contador. Quem clicou não
+        via nada acontecer.
+      */}
+      {emissao && (
+        <p role="status" className="mt-2 mb-0 text-[length:var(--gs-text-sm)] text-[var(--gs-success)]">
+          {emissao}
+        </p>
+      )}
+      {pendenciasDoContador.map((p) => (
+        <p key={p} className="mt-1 mb-0 text-[length:var(--gs-text-sm)] text-[var(--gs-warning)]">
+          {p}
+        </p>
+      ))}
 
       {gerencia && devolucao.fiscalStatus === 'pendente' && (
         <div className="grid gap-3 md:grid-cols-3 items-end mt-2">

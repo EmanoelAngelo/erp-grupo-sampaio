@@ -408,6 +408,7 @@ export const CAPABILITY_DA_ROTA: Readonly<Record<string, string>> = {
   "POST /core/fiscal/production-unlock": "fiscal.policy.manage",
   "POST /core/fiscal/queue/drain": "fiscal.manage",
   "POST /core/fiscal/sales/:saleId/emit": "fiscal.sale.emit",
+  "POST /core/fiscal/sales/:saleId/nfe": "fiscal.manage",
   "POST /core/fiscal/sales/:saleId/nfse": "fiscal.sale.emit",
   "POST /core/fiscal/sales/:saleId/nfse/manual": "fiscal.sale.emit",
   "POST /core/fiscal/sefaz/status": "fiscal.config.manage",

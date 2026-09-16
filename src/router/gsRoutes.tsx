@@ -125,6 +125,7 @@ import {
   FiscalPage,
   FiscalDocumentosPage,
   FiscalInutilizacoesPage,
+  FiscalOperacoesPage,
   FechamentoContadorPage,
   IntegracaoAsaasPage,
   SincronizacaoPage,
@@ -290,6 +291,22 @@ export const gsRoutes: RouteObject[] = [
   protectedRoute(
     '/sistema/fiscal/inutilizacoes',
     <FiscalInutilizacoesPage />,
+    ROTA_GESTAO,
+    QUEM_GERENCIA_A_OPERACAO,
+  ),
+  /*
+    OPERAÇÕES FISCAIS — a tela que faltava para três rotas que já existiam.
+
+    `GET /core/fiscal/operacoes` e `GET /core/fiscal/pendencias-contabeis` são
+    `fiscal.view`; `PUT /core/fiscal/operacoes/:operacao` é
+    `fiscal.policy.manage`. As duas capabilities param no mesmo conjunto de
+    perfis de hoje (`QUEM_GERENCIA_A_OPERACAO`), e a lista é a mesma das
+    vizinhas do Fiscal — o menu declara a mesma, e `menu-e-rotas.test.tsx`
+    cobra os dois lados.
+  */
+  protectedRoute(
+    '/sistema/fiscal/operacoes',
+    <FiscalOperacoesPage />,
     ROTA_GESTAO,
     QUEM_GERENCIA_A_OPERACAO,
   ),

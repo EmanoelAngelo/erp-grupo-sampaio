@@ -75,6 +75,7 @@ export const CAPABILITY_DA_TELA: Readonly<Record<string, string>> = {
   "/sistema/fiscal/documentos": "qualquer(fiscal.sale.emit, fiscal.view)",
   "/sistema/fiscal/fechamento": "accounting.closing.view",
   "/sistema/fiscal/inutilizacoes": "fiscal.view",
+  "/sistema/fiscal/operacoes": "fiscal.view",
   "/sistema/integracoes": "integrations.status.view",
   "/sistema/integracoes/asaas": "integrations.asaas.manage",
   "/sistema/integracoes/asaas/conciliacao": "integrations.asaas.reconcile",

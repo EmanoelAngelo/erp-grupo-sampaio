@@ -89,3 +89,52 @@ export function aoAutorizarNotaDeDevolucao(companyId: string, documentId: string
     });
   }
 }
+
+/** Quem a loja já sabe que comprou: o destinatário da nota, ou o cliente da venda. */
+export interface DestinatarioSugerido {
+  name: string;
+  /** CPF ou CNPJ, só dígitos. Vazio quando a venda saiu sem documento do cliente. */
+  document: string;
+}
+
+/**
+ * O DESTINATÁRIO SUGERIDO DA DEVOLUÇÃO DE VENDA (P0 fiscal).
+ *
+ * ## Por que sugerir, e não montar
+ *
+ * A NF-e de devolução de venda é uma nota de ENTRADA cujo destinatário é o
+ * cliente que devolveu — e o leiaute exige o ENDEREÇO dele com código IBGE do
+ * município. Esse endereço a loja não tem: `core_customers` guarda endereço
+ * como texto livre, sem município separado nem IBGE, e a NFC-e do balcão
+ * costuma sair só com o CPF. Montar o destinatário sozinho aqui poria endereço
+ * inventado numa nota fiscal.
+ *
+ * O que a loja TEM é quem comprou: o nome e o CPF/CNPJ que foram para a NFC-e
+ * (ou, na falta deles, o cliente vinculado à venda). Isso a tela usa para
+ * preencher o formulário — o resto quem digita é quem está com o cliente na
+ * frente, uma vez, em vez de o sistema adivinhar.
+ *
+ * Nulo quando não se sabe nem o nome: aí o formulário nasce vazio, e é honesto.
+ */
+export function destinatarioSugeridoDaDevolucaoDeVenda(
+  companyId: string,
+  returnId: string,
+): DestinatarioSugerido | null {
+  ensureCoreSchema();
+  const row = getConnection()
+    .prepare(
+      `SELECT COALESCE(NULLIF(TRIM(d.recipient_name), ''), NULLIF(TRIM(c.name), '')) AS nome,
+              COALESCE(NULLIF(TRIM(d.recipient_document), ''), NULLIF(TRIM(c.document), '')) AS documento
+         FROM core_sale_returns r
+         JOIN core_sales s ON s.id = r.sale_id AND s.company_id = r.company_id
+         LEFT JOIN core_customers c ON c.id = s.customer_id AND c.company_id = r.company_id
+         LEFT JOIN core_fiscal_documents d
+                ON d.sale_id = s.id AND d.company_id = r.company_id AND d.status = 'AUTHORIZED'
+        WHERE r.id = ? AND r.company_id = ?
+        ORDER BY d.created_at DESC LIMIT 1`,
+    )
+    .get(returnId, companyId) as { nome: string | null; documento: string | null } | undefined;
+  const nome = String(row?.nome ?? '').trim();
+  if (!nome) return null;
+  return { name: nome, document: String(row?.documento ?? '').replace(/\D/g, '') };
+}

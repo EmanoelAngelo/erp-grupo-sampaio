@@ -1041,6 +1041,23 @@ const ONDE_SE_RESOLVE: Partial<Record<string, { rotulo: string; para: string }>>
     rotulo: 'Abrir Catálogo › Grupos tributários',
     para: '/sistema/produtos/auxiliares?aba=tributarios',
   },
+  /*
+    O ITEM QUE MANDAVA PARA UM LUGAR QUE NÃO EXISTIA (P0 fiscal).
+
+    `accountant_pending` diz "a lista completa está em Fiscal › Pendências
+    contábeis" e `contingency` diz "em Fiscal › Documentos". A primeira tela
+    não existia no navegador — o servidor tinha a rota
+    (`GET /core/fiscal/pendencias-contabeis`) e ninguém a chamava. Agora as
+    duas têm atalho, e o atalho aponta para onde o texto do item manda.
+  */
+  accountant_pending: {
+    rotulo: 'Abrir Fiscal › Operações fiscais e pendências contábeis',
+    para: '/sistema/fiscal/operacoes',
+  },
+  contingency: {
+    rotulo: 'Decidir a contingência em Fiscal › Documentos',
+    para: '/sistema/fiscal/documentos',
+  },
   product_ncm: { rotulo: 'Classificar na alteração rápida', para: '/sistema/produtos/alteracao-rapida' },
   product_cfop: { rotulo: 'Classificar na alteração rápida', para: '/sistema/produtos/alteracao-rapida' },
   product_origin: {

@@ -44,7 +44,14 @@ import { AppShell } from '@/components/gs/AppShell';
 import { AutorizacaoGerenteDialog } from '@/components/gs/PagamentoDialog';
 import { Badge, Button, Card, EmptyState, Field, Input, PageHeader } from '@/components/gs/ui';
 import { TitulosDoDocumento } from '@/components/gs/TitulosDoDocumento';
+import { FormularioDoDestinatario } from '@/components/gs/DestinatarioDaNota';
+import {
+  destinatarioCompleto,
+  destinatarioParaEnvio,
+  rascunhoDoDestinatario,
+} from '@/lib/destinatarioDaNota';
 import { useHasProfile, useSession } from '@/hooks/useSession';
+import { useCan } from '@/hooks/useCan';
 import { ApiRequestError, envelope } from '@/lib/api/client';
 import { caixaDesteComputador } from '@/lib/api/terminais';
 import { fraseDosEstornosNaMaquininha } from '@/lib/api/maquininhas';
@@ -1874,6 +1881,133 @@ export default function DevolucoesPage() {
   );
 }
 
+/**
+ * ============================================================================
+ * A NF-e DE DEVOLUÇÃO DA VENDA (P0 fiscal)
+ * ============================================================================
+ *
+ * ## O defeito
+ *
+ * `POST /core/fiscal/devolucoes/venda/:returnId/nfe` existia, emitia a NF-e de
+ * entrada com finalidade 4 referenciando a NFC-e — e NENHUMA tela a chamava. A
+ * ficha da devolução dizia, em palavras, que a regularização "é a NF-e de
+ * devolução, emitida pela devolução", e não oferecia gesto nenhum: o caminho
+ * terminava no emissor do contador.
+ *
+ * ## Por que o endereço é digitado
+ *
+ * A nota de ENTRADA leva o endereço do destinatário com o código IBGE do
+ * município, e a loja não tem esse endereço: a NFC-e do balcão sai com o CPF e
+ * pronto, e `core_customers` guarda endereço como texto livre. O que o sistema
+ * SABE — nome e CPF/CNPJ que foram para a nota — já vem preenchido; o resto
+ * digita quem está com o cliente na frente. Inventar endereço seria pôr dado
+ * falso numa nota fiscal.
+ *
+ * O município é escolhido na lista do IBGE (`CidadeComSugestoes`): ninguém
+ * digita o código de 7 dígitos.
+ */
+function NotaDeDevolucaoDaVenda({
+  devolucao,
+  podeEmitir,
+}: {
+  devolucao: SaleReturnDetail;
+  podeEmitir: boolean;
+}) {
+  const [nota, setNota] = useState(devolucao.notaDeDevolucao ?? null);
+  const [aberto, setAberto] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+  const [pendencias, setPendencias] = useState<string[]>([]);
+  const [emitindo, setEmitindo] = useState(false);
+  const [form, setForm] = useState(() => rascunhoDoDestinatario(devolucao.destinatarioSugerido));
+
+  // A ficha relida traz a nota: o estado local segue o servidor, nunca o tempo.
+  useEffect(() => {
+    setNota(devolucao.notaDeDevolucao ?? null);
+  }, [devolucao.notaDeDevolucao]);
+
+  const completo = destinatarioCompleto(form);
+
+  async function emitir() {
+    setEmitindo(true);
+    setErro(null);
+    try {
+      const r = await coreApi.emitirNfeDeDevolucaoDeVenda(devolucao.id, destinatarioParaEnvio(form));
+      setNota({
+        documentId: r.document.id,
+        model: r.document.model,
+        serie: r.document.serie,
+        number: r.document.number,
+        accessKey: r.document.accessKey,
+        status: r.document.status,
+        protocol: r.document.protocol,
+        referencedAccessKey: null,
+      });
+      setPendencias(r.pendencias ?? []);
+      setAberto(false);
+    } catch (err) {
+      setErro(err instanceof ApiRequestError ? err.message : 'Falha ao emitir a NF-e de devolução.');
+    } finally {
+      setEmitindo(false);
+    }
+  }
+
+  if (nota) {
+    return (
+      <div className="mb-3 text-[length:var(--gs-text-sm)]" data-testid="nota-de-devolucao">
+        <p className="m-0 font-semibold">
+          NF-e de devolução {nota.number}, série {nota.serie} — {nota.status}
+          {nota.protocol ? ` · protocolo ${nota.protocol}` : ''}
+        </p>
+        {nota.accessKey && (
+          <p className="m-0 font-mono break-all text-[var(--gs-muted)]">{nota.accessKey}</p>
+        )}
+        {pendencias.map((p) => (
+          <p key={p} className="m-0 text-[var(--gs-warning)]">{p}</p>
+        ))}
+      </div>
+    );
+  }
+
+  // Sem NFC-e autorizada não há nota a referenciar: a emissão nem se oferece.
+  if (!podeEmitir || devolucao.fiscal?.estado !== 'pendente_regularizacao') return null;
+
+  if (!aberto) {
+    return (
+      <div className="mb-3">
+        <Button size="sm" onClick={() => setAberto(true)}>
+          Emitir NF-e de devolução
+        </Button>
+        {erro && (
+          <p role="alert" className="m-0 mt-1 text-[length:var(--gs-text-sm)] text-[var(--gs-danger)]">
+            {erro}
+          </p>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="mb-3 p-3 rounded-[var(--gs-radius)] border border-[var(--gs-border)]">
+      <p className="m-0 mb-2 text-[length:var(--gs-text-sm)] text-[var(--gs-muted)]">
+        A nota de entrada leva o endereço de quem devolveu, com o código IBGE do município. O nome e
+        o documento vêm da nota da venda; o endereço quem informa é o cliente, agora.
+      </p>
+      <FormularioDoDestinatario valor={form} onMudar={setForm} />
+      {erro && (
+        <p role="alert" className="m-0 mt-2 text-[length:var(--gs-text-sm)] text-[var(--gs-danger)]">{erro}</p>
+      )}
+      <div className="mt-3 flex gap-2">
+        <Button size="sm" loading={emitindo} disabled={!completo} onClick={() => void emitir()}>
+          Emitir NF-e de devolução
+        </Button>
+        <Button size="sm" variant="ghost" onClick={() => setAberto(false)}>
+          Cancelar
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 /** Um par rótulo/valor dos blocos da devolução em duas etapas. */
 function Estado({ rotulo, valor, testid }: { rotulo: string; valor: string; testid?: string }) {
   return (
@@ -2079,6 +2213,14 @@ function PainelDoReembolso({
 }) {
   const reembolso = devolucao.reembolso;
   const pendente = reembolso?.pendenteCents ?? 0;
+  /*
+    QUEM EMITE A NOTA DE DEVOLUÇÃO: `fiscal.manage`, que é o que a rota cobra.
+    Oferecer o botão a quem não a tem seria a porta que bate na cara — o caixa
+    clicaria e levaria 403. Pela CAPABILITY, e não pelo código do perfil: é a
+    pergunta que o servidor faz, e a única que continua certa quando o acesso
+    de alguém é personalizado na tela de Usuários.
+  */
+  const emiteNota = useCan('fiscal.manage');
   const [meio, setMeio] = useState<MeioDoReembolso>(reembolso?.sugestao?.[0]?.method ?? 'dinheiro');
   const [valor, setValor] = useState(centavosNoCampo(reembolso?.sugestao?.[0]?.cents ?? pendente));
   const [referencia, setReferencia] = useState('');
@@ -2223,6 +2365,10 @@ function PainelDoReembolso({
         {devolucao.fiscal && (
           <p className="m-0 mb-3 text-[length:var(--gs-text-sm)] text-[var(--gs-muted)]">{devolucao.fiscal.detalhe}</p>
         )}
+
+        {/* A frase acima promete a NF-e de devolução; aqui está o gesto. */}
+        <NotaDeDevolucaoDaVenda devolucao={devolucao} podeEmitir={emiteNota} />
+
 
         {reembolso.registros.length > 0 && (
           <div className="overflow-x-auto mb-3">

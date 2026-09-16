@@ -64,6 +64,8 @@ import {
   // Lançamentos declarava um terceiro, em snake_case, e por isso mostrava
   // "R$ NaN" na coluna do dinheiro.
   type FinanceEntry,
+  type EmissaoDaNotaDeDevolucao,
+  type FiscalSaleStatus,
   type Product,
   type Sale,
   type SaleDetail,
@@ -72,6 +74,13 @@ import {
   type TabelaDePreco,
   type TurnoDeCaixa,
 } from '@/lib/api/core';
+import { useCan } from '@/hooks/useCan';
+import { FormularioDoDestinatario } from '@/components/gs/DestinatarioDaNota';
+import {
+  destinatarioCompleto,
+  destinatarioParaEnvio,
+  rascunhoDoDestinatario,
+} from '@/lib/destinatarioDaNota';
 
 /** Estado de carregamento/erro compartilhado pelas listagens. */
 function useLoader<T>(loader: () => Promise<T>, deps: unknown[]) {
@@ -2721,12 +2730,150 @@ export function VendasPage() {
                 />
               </section>
 
+              <NotaDaVendaDeBalcao venda={ficha} />
+
               <ItensCanceladosDaVenda itens={ficha.removedItems ?? []} />
             </div>
           </div>
         </div>
       )}
     </AppShell>
+  );
+}
+
+/**
+ * ============================================================================
+ * A NF-e (MODELO 55) DESTA VENDA — P0 fiscal
+ * ============================================================================
+ *
+ * ## O defeito
+ *
+ * `createNfeForSale` existia inteiro no servidor — série do cadastro,
+ * destinatário validado, município conferido na tabela do IBGE e a trava de
+ * "um documento vivo por venda" — e NENHUM caminho o chamava fora dos testes.
+ * A NF-e do sistema só saía de PEDIDO ONLINE. O cliente que compra no balcão
+ * com CNPJ e pede a nota ficava sem caminho, embora o próprio domínio escreva
+ * a regra do caso: quem vendeu no balcão e precisa da NF-e cancela o cupom,
+ * dentro do prazo, e só então emite a nota.
+ *
+ * ## O que esta seção mostra, e por quê
+ *
+ * A pergunta ao servidor é a mesma que o PDV faz (`/fiscal/sales/:id/status`),
+ * e a resposta decide o que aparece:
+ *
+ *  - NFC-e viva (qualquer estado que não seja cancelada ou rejeitada): a venda
+ *    JÁ está documentada, e emitir a NF-e documentaria a mesma mercadoria duas
+ *    vezes — faturamento e ICMS em dobro na apuração. A tela diz isso e diz o
+ *    caminho: cancelar o cupom primeiro, dentro do prazo;
+ *  - sem cupom vivo: o formulário do destinatário e o botão.
+ *
+ * O ENDEREÇO É DIGITADO porque a loja não o tem — inventá-lo seria pôr dado
+ * falso numa nota fiscal.
+ */
+function NotaDaVendaDeBalcao({ venda }: { venda: SaleDetail }) {
+  const podeEmitir = useCan('fiscal.manage');
+  const [cupom, setCupom] = useState<FiscalSaleStatus | null | 'lendo'>('lendo');
+  const [nota, setNota] = useState<EmissaoDaNotaDeDevolucao['document'] | null>(null);
+  const [form, setForm] = useState(() => rascunhoDoDestinatario(null));
+  const [aberto, setAberto] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+  const [emitindo, setEmitindo] = useState(false);
+
+  useEffect(() => {
+    let vivo = true;
+    setCupom('lendo');
+    coreApi
+      .getFiscalStatusForSale(venda.id)
+      .then((r) => vivo && setCupom(r))
+      .catch(() => vivo && setCupom(null));
+    return () => {
+      vivo = false;
+    };
+  }, [venda.id]);
+
+  if (!podeEmitir || cupom === 'lendo') return null;
+
+  const cupomVivo = cupom && !['CANCELLED', 'REJECTED'].includes(cupom.document.status)
+    ? cupom.document
+    : null;
+
+  async function emitir() {
+    setEmitindo(true);
+    setErro(null);
+    try {
+      const r = await coreApi.emitirNfeDaVenda(venda.id, destinatarioParaEnvio(form));
+      setNota(r.document);
+      setAberto(false);
+    } catch (err) {
+      setErro(err instanceof ApiRequestError ? err.message : 'Falha ao emitir a NF-e desta venda.');
+    } finally {
+      setEmitindo(false);
+    }
+  }
+
+  return (
+    <section className="flex flex-col gap-2" data-testid="nfe-da-venda">
+      <h3 className="m-0 text-[length:var(--gs-text-base)] font-bold text-[var(--gs-purple-900)]">
+        NF-e desta venda
+      </h3>
+
+      {nota ? (
+        <>
+          <p className="m-0 text-[length:var(--gs-text-sm)] font-semibold">
+            NF-e {nota.number}, série {nota.serie} — {nota.status}
+            {nota.protocol ? ` · protocolo ${nota.protocol}` : ''}
+          </p>
+          {nota.accessKey && (
+            <p className="m-0 font-mono break-all text-[length:var(--gs-text-sm)] text-[var(--gs-muted)]">
+              {nota.accessKey}
+            </p>
+          )}
+        </>
+      ) : cupomVivo ? (
+        <p className="m-0 text-[length:var(--gs-text-sm)] text-[var(--gs-muted)]">
+          Esta venda já tem NFC-e nº {cupomVivo.number} ({cupom?.statusLabel}). Emitir também a NF-e
+          documentaria a mesma mercadoria duas vezes. Para trocar de documento, cancele o cupom em
+          Fiscal › Documentos fiscais — dentro do prazo de cancelamento.
+        </p>
+      ) : !aberto ? (
+        <div>
+          <p className="m-0 mb-2 text-[length:var(--gs-text-sm)] text-[var(--gs-muted)]">
+            Para o cliente que pediu nota com CNPJ. A NF-e leva o endereço do destinatário com o
+            código IBGE do município — a loja não o tem, então ele é informado aqui.
+          </p>
+          <Button size="sm" onClick={() => setAberto(true)}>
+            Emitir NF-e desta venda
+          </Button>
+          {erro && (
+            <p role="alert" className="m-0 mt-1 text-[length:var(--gs-text-sm)] text-[var(--gs-danger)]">
+              {erro}
+            </p>
+          )}
+        </div>
+      ) : (
+        <div className="p-3 rounded-[var(--gs-radius)] border border-[var(--gs-border)]">
+          <FormularioDoDestinatario valor={form} onMudar={setForm} />
+          {erro && (
+            <p role="alert" className="m-0 mt-2 text-[length:var(--gs-text-sm)] text-[var(--gs-danger)]">
+              {erro}
+            </p>
+          )}
+          <div className="mt-3 flex gap-2">
+            <Button
+              size="sm"
+              loading={emitindo}
+              disabled={!destinatarioCompleto(form)}
+              onClick={() => void emitir()}
+            >
+              Emitir NF-e desta venda
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => setAberto(false)}>
+              Cancelar
+            </Button>
+          </div>
+        </div>
+      )}
+    </section>
   );
 }
 

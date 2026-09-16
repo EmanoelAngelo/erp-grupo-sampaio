@@ -684,7 +684,12 @@ describe('a varredura enxerga o roteador inteiro', () => {
     // adesivos livres que a gestão da PJ pode colar na moto, sob a mesma
     // capability de colar e trocar (inventory.units.manage) — FECHADA ao
     // contador, que não administra plaquinha.
-    expect(rotas).toHaveLength(554);
+    // 555 com POST /fiscal/sales/:saleId/nfe (resíduo do P0 fiscal): a NF-e
+    // modelo 55 de uma venda de BALCÃO — `createNfeForSale` existia inteiro e
+    // nenhum caminho o chamava fora dos testes, então a NF-e do sistema só
+    // saía de pedido online. Sob `fiscal.manage` (a mesma régua das NF-e de
+    // devolução) — FECHADA ao contador, que não emite nota.
+    expect(rotas).toHaveLength(555);
   });
 
   it('as portas do contador existem no roteador com esse nome exato', () => {
@@ -741,7 +746,9 @@ describe('o contador é recusado em TODAS as rotas do núcleo, menos nas abertas
     // PJ na moto do estoque): o contador não administra plaquinha.
     // 550 com a lista dos adesivos livres para colar na moto (GET
     // /units/:id/tag/livres): o contador não administra plaquinha.
-    expect(fechadas).toHaveLength(550);
+    // 551 com a NF-e da venda de balcão (POST /fiscal/sales/:saleId/nfe): o
+    // contador não emite nota — ele a recebe no pacote do mês.
+    expect(fechadas).toHaveLength(551);
 
     /*
       O relatório é a lista de quem DIVERGIU, com o status medido e a linha do

@@ -107,6 +107,7 @@ export const FluxoDeCaixaPage = telaSobDemanda('FluxoDeCaixaPage', () => import(
 export const FiscalPage = telaSobDemanda('FiscalPage', () => import('@/pages/gs/FiscalPage'));
 export const FiscalDocumentosPage = telaSobDemanda('FiscalDocumentosPage', () => import('@/pages/gs/FiscalDocumentosPage'));
 export const FiscalInutilizacoesPage = telaSobDemanda('FiscalInutilizacoesPage', () => import('@/pages/gs/FiscalInutilizacoesPage'));
+export const FiscalOperacoesPage = telaSobDemanda('FiscalOperacoesPage', () => import('@/pages/gs/FiscalOperacoesPage'));
 export const FechamentoContadorPage = telaSobDemanda('FechamentoContadorPage', () => import('@/pages/gs/FechamentoContadorPage'));
 export const IntegracaoAsaasPage = telaSobDemanda('IntegracaoAsaasPage', () => import('@/pages/gs/IntegracaoAsaasPage'));
 export const SincronizacaoPage = telaSobDemanda('SincronizacaoPage', () => import('@/pages/gs/SincronizacaoPage'));

@@ -28,12 +28,14 @@ import { completarPeloGrupo } from './TributacaoDoItem.js';
 import { motivosDaTributacaoDaVenda } from './ProntidaoTributaria.js';
 import {
   createNfceForSale,
+  createNfeForSale,
   getDocument,
   getDocumentBySale,
   outroDocumentoVivoDaVenda,
   transition,
   type FiscalDocument,
 } from './FiscalDocumentService.js';
+import type { NfeRecipient, NfeTransport, PresenceIndicator } from './FiscalXmlNfe.js';
 import { validateDocument } from './FiscalDocumentService.js';
 import { enqueue, processNext } from './FiscalQueueService.js';
 import { PERFIL_XMLDSIG, signNfceXml, verifyNfceSignature } from './FiscalSigner.js';
@@ -359,6 +361,64 @@ export async function emitNfceForSale(options: PipelineOptions): Promise<Pipelin
   const { document } = createNfceForSale({
     companyId: options.companyId,
     saleId: options.saleId,
+    userId: options.userId,
+  });
+
+  return advanceDocument(document.id, options, dev);
+}
+
+/**
+ * ============================================================================
+ * A NF-e DE UMA VENDA DE BALCÃO (P0 fiscal)
+ * ============================================================================
+ *
+ * ## O defeito
+ *
+ * `createNfeForSale` existia inteiro — com série do cadastro, validação do
+ * destinatário, município conferido na tabela do IBGE e a trava de "um
+ * documento vivo por venda" — e NENHUM caminho o chamava fora dos testes. A
+ * NF-e do sistema só saía de PEDIDO ONLINE (`OrderInvoiceService`). O cliente
+ * que compra no balcão com CNPJ e pede nota ficava sem caminho, embora o
+ * próprio código diga a regra do caso: "quem vendeu no balcão e precisa da NF-e
+ * cancela o cupom (dentro do prazo) e só então emite a nota".
+ *
+ * ## O que esta função acrescenta ao que já existia
+ *
+ * Nada de fiscal: ela é a MESMA composição de `emitNfceForSale` — montar e
+ * mandar para o pipeline. O destinatário é obrigatório (é a diferença entre os
+ * dois modelos), e o resto — assinatura, fila, transmissão, contingência — é o
+ * caminho único de `advanceDocument`.
+ */
+export async function emitNfeForSale(
+  options: PipelineOptions & {
+    recipient: NfeRecipient;
+    transport?: NfeTransport;
+    presence?: PresenceIndicator;
+    additionalInfo?: string;
+  },
+): Promise<PipelineResult> {
+  ensureCoreSchema();
+
+  const config = getFiscalConfig(options.companyId);
+  const dev = Boolean(options.developmentMode);
+
+  // A mesma trava do cupom: nota de ensaio não sai em produção.
+  if (dev && config.environment === 'production') {
+    throw new ApiError(
+      'CORE_SEFAZ_TEST_PROVIDER_IN_PRODUCTION',
+      'Modo de desenvolvimento não é permitido em produção. Nota emitida assim não existe '
+        + 'para o fisco.',
+      409,
+    );
+  }
+
+  const { document } = createNfeForSale({
+    companyId: options.companyId,
+    saleId: options.saleId,
+    recipient: options.recipient,
+    transport: options.transport,
+    presence: options.presence,
+    additionalInfo: options.additionalInfo,
     userId: options.userId,
   });
 

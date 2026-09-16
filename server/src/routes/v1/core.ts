@@ -331,13 +331,17 @@ import {
 import {
   advanceDocument,
   emitNfceForSale,
+  emitNfeForSale,
   fiscalStatusForSale,
   emissionReadinessForSale,
 } from '../../services/core/FiscalPipelineService.js';
 import { reemitirRejeitada } from '../../services/core/FiscalReemissao.js';
 import { gravarOperacao, listarOperacoes } from '../../services/core/FiscalOperacoes.js';
 import { pendenciasContabeis } from '../../services/core/PendenciasContabeis.js';
-import { emitirNfeDeDevolucao } from '../../services/core/FiscalDevolucao.js';
+import {
+  destinatarioDaDevolucaoDeCompra,
+  emitirNfeDeDevolucao,
+} from '../../services/core/FiscalDevolucao.js';
 import { renderDanfce } from '../../services/core/DanfceRenderer.js';
 import { renderDanfe } from '../../services/core/DanfeRenderer.js';
 import {
@@ -8919,6 +8923,58 @@ coreRouter.post('/fiscal/sales/:saleId/emit', (req: AuthedRequest, res, next) =>
   })();
 });
 
+/**
+ * A NF-e (modelo 55) DE UMA VENDA DE BALCÃO (P0 fiscal).
+ *
+ * O DEFEITO: `createNfeForSale` existia inteiro — série do cadastro,
+ * destinatário validado, município conferido na tabela do IBGE e a trava de
+ * "um documento vivo por venda" — e nenhum caminho o chamava fora dos testes.
+ * A NF-e do sistema só saía de PEDIDO ONLINE. O cliente que compra no balcão
+ * com CNPJ e pede a nota ficava sem caminho, embora o próprio domínio já
+ * escreva a regra do caso: quem vendeu no balcão e precisa da NF-e cancela o
+ * cupom, dentro do prazo, e só então emite a nota — e é o serviço que recusa a
+ * segunda, com o número do documento que já documenta a venda.
+ *
+ * O DESTINATÁRIO É OBRIGATÓRIO e vai no corpo: a NF-e exige endereço com
+ * código IBGE do município, e a loja não o tem para o consumidor do balcão.
+ * Quem digita é quem está com o cliente na frente — inventá-lo seria pôr
+ * endereço errado numa nota fiscal.
+ *
+ * `fiscal.manage` (a gerência), e não `fiscal.sale.emit`: o cupom do balcão é
+ * gesto do caixa; a NF-e com destinatário completo é conversa de gerência, a
+ * mesma régua das NF-e de devolução aqui do lado.
+ */
+coreRouter.post('/fiscal/sales/:saleId/nfe', (req: AuthedRequest, res, next) => {
+  void (async () => {
+    try {
+      requireCapability(req, 'fiscal.manage');
+      const { companyId, userId } = scope(req);
+      const recipient = destinatarioDoCorpo(req.body?.recipient);
+      if (!recipient) {
+        throw new ApiError(
+          'CORE_FISCAL_SALE_NFE_RECIPIENT_REQUIRED',
+          'Informe o destinatário da NF-e: a nota modelo 55 leva nome, CPF/CNPJ e o endereço com o '
+            + 'código IBGE do município.',
+          400,
+        );
+      }
+      res.json(
+        await emitNfeForSale({
+          companyId,
+          saleId: String(req.params.saleId),
+          userId,
+          recipient,
+          certificatePassword:
+            typeof req.body?.certificatePassword === 'string' ? req.body.certificatePassword : undefined,
+          developmentMode: desenvolvimentoPedido(req),
+        }),
+      );
+    } catch (err) {
+      next(err);
+    }
+  })();
+});
+
 // O painel do PDV pergunta ANTES de mostrar o botão. Por venda, e não pela
 // operação: pendência de catálogo não pode esconder o botão de uma venda que
 // está completa, e operação impecável não autoriza venda com item sem NCM.
@@ -9332,7 +9388,30 @@ coreRouter.get('/fiscal/pendencias-contabeis', (req: AuthedRequest, res, next) =
 /** A NF-e de devolução de um registro de devolução — de venda (entrada) ou de compra (saída). */
 async function notaDeDevolucaoPelaRota(req: AuthedRequest, operacao: 'devolucao_venda' | 'devolucao_compra') {
   const { companyId, userId } = scope(req);
-  const recipient = destinatarioDoCorpo(req.body?.recipient);
+  /*
+    O DESTINATÁRIO DA DEVOLUÇÃO DE COMPRA VEM DO CADASTRO (P0 fiscal).
+
+    O defeito: a rota exigia o destinatário no corpo — nome, CNPJ, indicador de
+    IE e o endereço inteiro com código IBGE — nas DUAS devoluções. Nenhuma tela
+    a chamava, e não é coincidência: pedir que a gerência redigite o endereço
+    do fornecedor a cada devolução é pedir que ela erre, e o endereço digitado
+    divergiria do cadastro que a própria NF-e de entrada preencheu.
+
+    Na devolução de COMPRA o dado já está no banco (devolução → nota de entrada
+    → fornecedor), então o corpo sem `recipient` passa a significar "use o
+    cadastro". Corpo COM `recipient` continua valendo: é o caminho de quem
+    precisa corrigir um endereço pontualmente sem mexer no cadastro.
+
+    Na devolução de VENDA nada muda: `core_customers` guarda endereço como
+    texto livre, sem município nem IBGE, e a NF-e de entrada exige os dois —
+    ali o destinatário continua sendo informado, e inventá-lo seria pôr
+    endereço errado numa nota.
+  */
+  const recipient =
+    destinatarioDoCorpo(req.body?.recipient)
+    ?? (operacao === 'devolucao_compra'
+      ? destinatarioDaDevolucaoDeCompra(companyId, String(req.params.returnId))
+      : null);
   if (!recipient) {
     throw new ApiError('CORE_FISCAL_RETURN_RECIPIENT_REQUIRED', 'Informe o destinatário da NF-e de devolução.', 400);
   }
