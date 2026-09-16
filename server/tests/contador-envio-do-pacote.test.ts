@@ -29,7 +29,7 @@
  *   - tirando o anexo do flush, o carteiro dublê recebe mensagem sem zip e o
  *     caso do anexo fica vermelho.
  */
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import request from 'supertest';
 import { randomUUID } from 'node:crypto';
 import { inflateRawSync } from 'node:zlib';
@@ -568,11 +568,24 @@ describe('a fila não engorda o banco operacional', () => {
 
   it('o que ainda NÃO saiu guarda o anexo — pendente não se poda', () => {
     criarDestinatario({ companyId, name: 'A', email: 'a@x.com.br' });
+
+    /*
+      O RELÓGIO FICA PARADO NOS DOIS ENVIOS.
+
+      A deduplicação do anexo é por CONTEÚDO (mesmo sha, uma linha só), e o zip
+      carrega o instante em que foi gerado. Com a máquina ocupada, os dois
+      envios caem em segundos diferentes, os conteúdos deixam de ser iguais e o
+      total de bytes dobra: o caso ficava vermelho na suíte inteira e verde
+      sozinho, medindo o relógio em vez da faxina. Parado o instante, mede-se o
+      que o caso existe para medir.
+    */
+    vi.useFakeTimers({ toFake: ['Date'], now: new Date('2026-08-05T12:00:00.000Z') });
     enviarPacotePorEmail({
       companyId, period: PERIODO, origem: 'manual', idempotencyKey: 'k1', userId: 'g',
     });
     const guardado = bytesDeAnexoNoBanco();
     expect(guardado).toBeGreaterThan(0);
+
 
     // Um segundo envio da MESMA competência dispara a faxina — e ela não pode
     // levar o anexo do primeiro, que continua pendente. Sem credencial a fila
@@ -581,6 +594,8 @@ describe('a fila não engorda o banco operacional', () => {
     enviarPacotePorEmail({
       companyId, period: PERIODO, origem: 'manual', idempotencyKey: 'k2', userId: 'g',
     });
+    vi.useRealTimers();
+
     const fila = filaDeEmail();
     expect(fila).toHaveLength(2);
     // Duas mensagens pendentes do MESMO mês continuam custando UM zip.
