@@ -300,6 +300,18 @@ export function devolucoesAguardandoReembolsoDoTurno(
          JOIN core_sales s ON s.id = r.sale_id
         WHERE r.company_id = ? AND r.refund_flow = 'duas_etapas'
           AND (? IS NULL OR r.created_at <= ?)
+          /*
+            A DEVOLUÇÃO JÁ PAGA NEM SAI DO BANCO. Sem o limite inferior da
+            janela, esta consulta passou a olhar o histórico inteiro da
+            operação; trazer todas as devoluções de anos para descartá-las em
+            JavaScript seria pagar o preço do conserto em toda abertura de
+            resumo. O filter lá embaixo continua sendo a régua — isto aqui só
+            evita carregar o que ele descartaria.
+          */
+          AND r.total_cents > (
+            SELECT COALESCE(SUM(f2.amount_cents), 0) FROM core_sale_return_refunds f2
+             WHERE f2.return_id = r.id
+          )
         ORDER BY r.number`,
     )
     .all(companyId, turno.closed_at, turno.closed_at) as unknown as {
