@@ -146,10 +146,10 @@ async function bipar(campo: HTMLInputElement, codigo: string) {
 async function pagarEmDinheiro(recebido: string) {
   fireEvent.keyDown(document.activeElement ?? document.body, { key: 'F10' });
   // Com a suíte inteira em paralelo o diálogo demora mais que o 1s padrão.
-  const valor = (await screen.findByPlaceholderText(/Vazio =/, {}, { timeout: 4000 })) as HTMLInputElement;
+  const valor = (await screen.findByPlaceholderText(/Vazio =/)) as HTMLInputElement;
   fireEvent.change(valor, { target: { value: recebido } });
   fireEvent.submit(valor.closest('form')!);
-  await waitFor(() => expect(screen.getAllByText(/Dinheiro/).length).toBeGreaterThan(0), { timeout: 4000 });
+  await waitFor(() => expect(screen.getAllByText(/Dinheiro/).length).toBeGreaterThan(0));
   fireEvent.keyDown(document.activeElement ?? document.body, { key: 'F10' });
 }
 
@@ -266,9 +266,7 @@ describe('N, O, P, Q. pagamento em dinheiro, venda concluída, imprimir ou não'
     await pagarEmDinheiro('');
     const dialogo = await screen.findByRole('dialog', { name: 'Venda concluída' });
     expect(within(dialogo).getByTestId('venda-concluida-fiscal').getAttribute('data-estado')).toBe('pendente');
-    await waitFor(() => expect(within(dialogo).getByTestId('venda-concluida-fiscal').getAttribute('data-estado')).toBe('autorizada'), {
-      timeout: 4000,
-    });
+    await waitFor(() => expect(within(dialogo).getByTestId('venda-concluida-fiscal').getAttribute('data-estado')).toBe('autorizada'));
     fireEvent.click(within(dialogo).getByRole('button', { name: /Imprimir/ }));
     await waitFor(() => expect(printDocument).toHaveBeenCalledWith('DANFCE', 'doc-1', expect.anything()));
   });

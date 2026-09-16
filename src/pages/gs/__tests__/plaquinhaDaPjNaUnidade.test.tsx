@@ -136,7 +136,7 @@ async function abrirOProduto() {
     </MemoryRouter>,
   );
   fireEvent.change(screen.getByPlaceholderText('Nome ou código do produto'), { target: { value: 'Hon' } });
-  fireEvent.click(await screen.findByRole('button', { name: 'Honda CG 160' }, { timeout: 2000 }));
+  fireEvent.click(await screen.findByRole('button', { name: 'Honda CG 160' }));
   await screen.findAllByRole('button', { name: 'Identificar' });
 }
 

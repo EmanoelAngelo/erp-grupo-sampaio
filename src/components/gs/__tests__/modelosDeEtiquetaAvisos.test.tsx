@@ -49,7 +49,7 @@ describe('o editor de modelos', () => {
   it('mostra os avisos que a prévia devolve', async () => {
     render(<ModelosDeEtiqueta podeEditar formatosProntos={[]} />);
     fireEvent.click(await screen.findByRole('button', { name: 'Novo modelo' }));
-    await waitFor(() => expect(screen.getByTestId('avisos-do-modelo').textContent).toContain('abaixo do mínimo GS1'), { timeout: 3000 });
+    await waitFor(() => expect(screen.getByTestId('avisos-do-modelo').textContent).toContain('abaixo do mínimo GS1'));
   });
 
   it('a partir de uma folha Carta, o rascunho nasce com o papel Carta (215,9 × 279,4), não A4', async () => {

@@ -294,7 +294,7 @@ async function biparEEsperar(campo: HTMLInputElement, p: { barcode: string; name
 async function pagarPeloDialogo(campo: HTMLInputElement) {
   fireEvent.keyDown(campo, { key: 'F10' });
   await screen.findByRole('dialog', { name: 'Pagamento' });
-  await screen.findByPlaceholderText(/Vazio =/, {}, { timeout: 4000 });
+  await screen.findByPlaceholderText(/Vazio =/);
   fireEvent.keyDown(document.activeElement ?? document.body, { key: 'F10' });
 }
 

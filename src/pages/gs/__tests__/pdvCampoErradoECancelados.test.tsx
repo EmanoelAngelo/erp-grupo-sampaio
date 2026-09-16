@@ -508,7 +508,7 @@ describe('D-18: as teclas de função não vão para o navegador', () => {
     bipar(campo, ARROZ.barcode);
     await waitFor(() => expect(qtdDa(ARROZ.name)).toBeTruthy());
     fireEvent.keyDown(campo, { key: 'F10' });
-    await screen.findByPlaceholderText(/Vazio =/, {}, { timeout: 4000 });
+    await screen.findByPlaceholderText(/Vazio =/);
 
     for (const key of ['F6', 'F1', 'F3']) {
       const ev = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true });

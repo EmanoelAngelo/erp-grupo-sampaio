@@ -265,7 +265,7 @@ describe('D-02: a leitura e o Finalizar', () => {
     bipar(campo, FEIJAO.barcode);
     fireEvent.keyDown(campo, { key: 'F8' });
 
-    await screen.findByRole('dialog', { name: 'Venda concluída' }, { timeout: 3000 });
+    await screen.findByRole('dialog', { name: 'Venda concluída' });
     expect(vendas).toHaveLength(1);
     expect(vendas[0].corpo.items.map((i) => i.productId)).toEqual(['p2']);
     expect(vendas[0].corpo.payments[0].amountCents).toBe(890);

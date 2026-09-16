@@ -213,7 +213,7 @@ async function venderRapido(campo: HTMLInputElement, codigo: string, nome: strin
 }
 
 async function pagarNoDialogo(recebido: string, acrescimo?: string) {
-  const valor = (await screen.findByPlaceholderText(/Vazio =/, {}, { timeout: 4000 })) as HTMLInputElement;
+  const valor = (await screen.findByPlaceholderText(/Vazio =/)) as HTMLInputElement;
   if (acrescimo) {
     fireEvent.change(screen.getByRole('textbox', { name: 'Acréscimo (juros, frete)' }), { target: { value: acrescimo } });
   }
@@ -256,7 +256,7 @@ describe('F-01: a nota que não vai sair', () => {
     const campo = abrirPdv();
     const dialogo = await venderRapido(campo, ARROZ.barcode, ARROZ.name);
     const fiscal = within(dialogo).getByTestId('venda-concluida-fiscal');
-    await waitFor(() => expect(fiscal.getAttribute('data-estado')).toBe('rejeitada'), { timeout: 4000 });
+    await waitFor(() => expect(fiscal.getAttribute('data-estado')).toBe('rejeitada'));
     expect(fiscal.textContent).toContain('REJEITADA');
     expect(fiscal.textContent).toContain('778');
     expect(fiscal.textContent).not.toMatch(/será transmitida/);
@@ -277,7 +277,7 @@ describe('F-01: a nota que não vai sair', () => {
     await venderRapido(campo, ARROZ.barcode, ARROZ.name);
     // O caixa fecha a tela na hora — antes de a SEFAZ responder.
     fireEvent.keyDown(document.activeElement!, { key: 'Escape' });
-    const faixa = await screen.findByTestId('pdv-nota-sem-nota', {}, { timeout: 4000 });
+    const faixa = await screen.findByTestId('pdv-nota-sem-nota');
     expect(faixa.textContent).toContain('REJEITADA');
   });
 
@@ -293,7 +293,7 @@ describe('F-01: a nota que não vai sair', () => {
     const campo = abrirPdv();
     const dialogo = await venderRapido(campo, ARROZ.barcode, ARROZ.name);
     const fiscal = within(dialogo).getByTestId('venda-concluida-fiscal');
-    await waitFor(() => expect(fiscal.getAttribute('data-estado')).toBe('erro'), { timeout: 4000 });
+    await waitFor(() => expect(fiscal.getAttribute('data-estado')).toBe('erro'));
     expect(fiscal.textContent).toContain('Certificado vencido');
   });
 });
@@ -311,7 +311,7 @@ describe('F-02: contingência entrega o DANFCE de contingência', () => {
     const campo = abrirPdv();
     const dialogo = await venderRapido(campo, ARROZ.barcode, ARROZ.name);
     const fiscal = within(dialogo).getByTestId('venda-concluida-fiscal');
-    await waitFor(() => expect(fiscal.getAttribute('data-estado')).toBe('contingencia'), { timeout: 4000 });
+    await waitFor(() => expect(fiscal.getAttribute('data-estado')).toBe('contingencia'));
     expect(fiscal.textContent).not.toMatch(/NÃO fiscal/);
     fireEvent.click(within(dialogo).getByRole('button', { name: /Imprimir/ }));
     await waitFor(() => expect(printDocument).toHaveBeenCalledWith('DANFCE', 'doc-9', { terminalId: 'cx1' }));
