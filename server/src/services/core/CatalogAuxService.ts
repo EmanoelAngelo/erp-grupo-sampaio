@@ -949,9 +949,40 @@ export function addProductBarcode(
   barcode: unknown,
 ): string[] {
   ensureCoreSchema();
+  const db = getConnection();
+
+  /*
+    O PRODUTO É DA MESMA OPERAÇÃO — e esta conferência NÃO EXISTIA (P00-prod-01).
+
+    O DEFEITO: o `productId` vinha da URL e ia direto para o INSERT, junto com
+    o `company_id` de QUEM CHAMOU. A Gringa mandava o id de um produto da Preço
+    Justo e recebia 201: nascia uma linha em `core_product_barcodes` com a
+    empresa de uma loja e a mercadoria de outra. Todas as rotas irmãs do mesmo
+    produto (grade, clone, faixas de preço, kit, foto, PUT) já respondiam 404
+    nesse caso; esta era a porta que faltava.
+
+    As duas consequências, nenhuma delas com tela que a explique:
+
+      - o código ficava QUEIMADO para quem o gravou. `findProductByAnyBarcode`
+        procura pela empresa e acha a linha torta, então o cadastro do MESMO EAN
+        no produto certo passava a ser recusado com "já pertence a outro
+        produto" — sobre um produto que a operação não enxerga em lugar nenhum;
+      - e o balcão da OUTRA loja passava a atender ao bipe daquele código,
+        porque a busca casava o adicional sem olhar a empresa da linha (ver
+        `searchProducts`).
+
+    404, e não 403: para esta operação o produto não existe — é a mesma resposta
+    de um id inventado, e é ela que impede a rota de confirmar que o id é real.
+  */
+  const dono = db
+    .prepare('SELECT id FROM core_products WHERE id = ? AND company_id = ?')
+    .get(productId, companyId) as { id?: string } | undefined;
+  if (!dono?.id) {
+    throw new ApiError('CORE_PRODUCT_NOT_FOUND', 'Produto não encontrado.', 404);
+  }
+
   const code = texto(barcode, 'o código de barras');
   exigirCodigoDeBarrasValido(code);
-  const db = getConnection();
 
   const principal = db
     .prepare('SELECT id FROM core_products WHERE company_id = ? AND barcode = ? AND id <> ?')
@@ -1022,8 +1053,22 @@ export function findProductByAnyBarcode(companyId: string, barcode: string): str
     .prepare('SELECT id FROM core_products WHERE company_id = ? AND barcode = ?')
     .get(companyId, barcode) as { id?: string } | undefined;
   if (principal?.id) return principal.id;
+  /*
+    A JUNÇÃO COM O PRODUTO CONFERE A EMPRESA (P00-prod-01).
+
+    Sem ela, a linha torta que `addProductBarcode` deixava nascer (empresa de
+    uma loja, mercadoria de outra) fazia esta função devolver o id de um produto
+    que a operação não enxerga: o cadastro do MESMO código no produto certo era
+    recusado com "já pertence a outro produto", para sempre e sem tela que
+    explicasse. Com a conferência, a linha herdada de um banco antigo fica
+    inerte — o código volta a estar livre para quem é dono dele.
+  */
   const extra = db
-    .prepare('SELECT product_id FROM core_product_barcodes WHERE company_id = ? AND barcode = ?')
+    .prepare(
+      `SELECT b.product_id FROM core_product_barcodes b
+         JOIN core_products p ON p.id = b.product_id AND p.company_id = b.company_id
+        WHERE b.company_id = ? AND b.barcode = ?`,
+    )
     .get(companyId, barcode) as { product_id?: string } | undefined;
   return extra?.product_id ?? null;
 }

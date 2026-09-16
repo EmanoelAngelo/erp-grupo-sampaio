@@ -412,10 +412,20 @@ export function donoDoCodigoNoBipe(
     )
     .get(companyId, ignorarProductId, codigo, codigo, codigo) as { name: string } | undefined;
   if (direto) return direto.name;
+  /*
+    A JUNÇÃO CONFERE A EMPRESA NOS DOIS LADOS (P00-prod-01).
+
+    `b.company_id` era o único corte, e a linha torta — a que `addProductBarcode`
+    deixava nascer com a empresa de uma loja e a mercadoria de outra — fazia
+    esta recusa sair com o NOME de um produto alheio: "7890000000017 já
+    identifica 'Arroz Tipo 1 5kg'" para quem nunca viu esse produto. Com a
+    empresa conferida no produto também, a linha herdada fica inerte: ela não
+    nomeia ninguém, e o cadastro do código no produto certo passa.
+  */
   const adicional = db
     .prepare(
       `SELECT p.name FROM core_product_barcodes b
-         JOIN core_products p ON p.id = b.product_id
+         JOIN core_products p ON p.id = b.product_id AND p.company_id = b.company_id
         WHERE b.company_id = ? AND b.barcode = ? AND b.product_id IS NOT ?
         LIMIT 1`,
     )
@@ -1914,6 +1924,47 @@ const MINIATURA_DO_BALCAO = `
        THEN 1 ELSE 0 END AS tem_foto`;
 
 /**
+ * "O TERMO É UM CÓDIGO DESTE PRODUTO?" — uma expressão só, usada nos TRÊS
+ * lugares da busca que perguntam isso: `matched_exact`, o filtro e a ordenação.
+ *
+ * Consome quatro parâmetros, todos o termo digitado, nesta ordem: código de
+ * barras principal, código interno, SKU e código adicional.
+ *
+ * ## Por que uma constante, e não três cópias (P00-prod-02)
+ *
+ * Eram três expressões escritas à mão, e elas JÁ TINHAM DIVERGIDO: o SKU
+ * aparecia só no filtro, e ficava de fora da marca e da ordenação. Quem
+ * digitava o SKU no balcão achava o produto e caía na LISTA — a tela só o
+ * mandava para o carrinho por uma comparação própria, que o servidor não
+ * conhecia. Uma expressão só é o que impede a quarta divergência.
+ *
+ * ## O SKU é comparado em QUALQUER CAIXA
+ *
+ * `p.sku = ?` era sensível a caixa, enquanto o CADASTRO recusa um código novo
+ * que colida com o SKU de outro produto com `upper(sku) = upper(?)` — e a
+ * recusa diz, com todas as letras, "o bipe no balcão acha os dois". O bipe não
+ * achava: "sh-200" não trazia o produto de SKU "SH-200", e o desfecho conhecido
+ * de "nenhum produto encontrado" para algo que está na mão da pessoa é
+ * cadastrar o item de novo e rachar o saldo em dois cadastros. Agora a busca
+ * cobra a mesma régua que o cadastro cobra.
+ *
+ * ## A empresa é conferida na linha do código adicional
+ *
+ * `core_product_barcodes` tem `company_id` próprio, e a subconsulta o ignorava:
+ * uma linha gravada com a empresa de uma loja e a mercadoria de outra
+ * (P00-prod-01) fazia ESTE balcão atender ao bipe de um código que nunca foi
+ * dele. A linha existe em banco antigo, então a guarda vale mesmo depois de a
+ * porta que a criava ter sido fechada.
+ */
+const CASOU_POR_CODIGO = `p.barcode = ?
+    OR upper(p.internal_code) = upper(?)
+    OR upper(p.sku) = upper(?)
+    OR EXISTS (SELECT 1 FROM core_product_barcodes codigo_adicional
+                WHERE codigo_adicional.company_id = p.company_id
+                  AND codigo_adicional.product_id = p.id
+                  AND codigo_adicional.barcode = ?)`;
+
+/**
  * A linha da busca como o BALCÃO a recebe.
  *
  * `image_url` SAI da resposta de propósito: é o caminho do original, e o PDV
@@ -2036,10 +2087,7 @@ export function searchProducts(
       `SELECT p.*, COALESCE(s.quantity, 0) AS stock_quantity,
               w.name AS workshop_name,
               ${MINIATURA_DO_BALCAO},
-              CASE WHEN p.barcode = ? OR upper(p.internal_code) = upper(?)
-                     OR EXISTS (SELECT 1 FROM core_product_barcodes b3
-                                 WHERE b3.product_id = p.id AND b3.barcode = ?)
-                   THEN 1 ELSE 0 END AS matched_exact
+              CASE WHEN ${CASOU_POR_CODIGO} THEN 1 ELSE 0 END AS matched_exact
          FROM core_products p
          LEFT JOIN core_stock s ON s.product_id = p.id AND s.company_id = p.company_id
          LEFT JOIN core_workshops w ON w.id = p.workshop_id AND w.company_id = p.company_id
@@ -2048,31 +2096,31 @@ export function searchProducts(
           AND NOT EXISTS (SELECT 1 FROM core_products f WHERE f.parent_id = p.id)
           ${semKits}
           AND (
-                p.barcode = ? OR upper(p.internal_code) = upper(?) OR p.sku = ?
-                OR EXISTS (SELECT 1 FROM core_product_barcodes b
-                            WHERE b.product_id = p.id AND b.barcode = ?)
+                ${CASOU_POR_CODIGO}
                 OR (${pecaNaBuscaPorTexto}
                     AND (p.name LIKE ? OR p.internal_code LIKE ?))
               )
         ORDER BY
-          CASE WHEN p.barcode = ? OR upper(p.internal_code) = upper(?)
-                 OR EXISTS (SELECT 1 FROM core_product_barcodes b2
-                             WHERE b2.product_id = p.id AND b2.barcode = ?)
-               THEN 0 ELSE 1 END,
+          CASE WHEN ${CASOU_POR_CODIGO} THEN 0 ELSE 1 END,
           p.name
         LIMIT ?`,
     )
     .all(
+      // matched_exact
+      term,
       term,
       term,
       term,
       companyId,
+      // WHERE: os quatro códigos, depois os dois LIKE do texto
       term,
       term,
       term,
       term,
       like,
       like,
+      // ORDER BY
+      term,
       term,
       term,
       term,
