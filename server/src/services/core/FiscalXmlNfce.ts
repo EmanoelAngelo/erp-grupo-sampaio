@@ -29,7 +29,13 @@ import {
 } from '../nfce/NfceCscService.js';
 import { UNIDADE_FISCAL } from './UnidadeFiscal.js';
 import { DIGEST_PROVISORIO, qrCodeOffline } from './NfceQrOffline.js';
-import { alcanceDoCfop, impostoXml, totaisDoIcms, tributacaoDoItem } from './TributacaoDoItem.js';
+import {
+  alcanceDoCfop,
+  impostoXml,
+  totaisDoIcms,
+  tributacaoDoItem,
+  type TributacaoDoItem,
+} from './TributacaoDoItem.js';
 import { natOpDaOperacao } from './FiscalOperacoes.js';
 import { momentoFiscal } from './MomentoFiscal.js';
 import { getConnection } from '../../db/sqlite.js';
@@ -607,8 +613,12 @@ function impostoDoItemDaVenda(sale: NfceSale, item: NfceSaleItem, index: number)
  * A função é a MESMA que monta o `<imposto>` do item, chamada uma vez por
  * linha: o total, por construção, soma o que os itens declaram.
  */
-function tributacaoDaLinha(sale: NfceSale, item: NfceSaleItem, index: number) {
-  return tributacaoDoItem({
+function tributacaoDaLinha(
+  sale: NfceSale,
+  item: NfceSaleItem,
+  index: number,
+): TributacaoDoItem {
+  const tributacao = tributacaoDoItem({
     companyId: sale.companyId,
     // Cupom do balcão: o cliente leva a mercadoria na mão, então a
     // operação é sempre interna.
@@ -624,6 +634,29 @@ function tributacaoDaLinha(sale: NfceSale, item: NfceSaleItem, index: number) {
       totalCents: item.totalCents,
     },
   });
+
+  /*
+    NFC-e NÃO TRANSFERE CRÉDITO DO SIMPLES (rejeição 383).
+
+    O grupo fiscal continua sendo a verdade da operação: na NF-e modelo 55,
+    CSOSN 101 leva pCredSN e vCredICMSSN conforme o contador informou. No
+    cupom modelo 65, porém, a venda é ao consumidor final e a regra de
+    validação da SEFAZ não aceita o 101. A operação equivalente, sem permissão
+    de crédito, é o CSOSN 102.
+
+    A adaptação mora neste montador — e não no grupo nem na régua comum — para
+    a NF-e preservar o 101 e somente a NFC-e retirar o crédito.
+  */
+  if (tributacao.csosn === '101') {
+    return {
+      ...tributacao,
+      csosn: '102',
+      pCredSn: null,
+      vCredIcmsSnCents: 0,
+    };
+  }
+
+  return tributacao;
 }
 
 /**
