@@ -7,6 +7,7 @@
  */
 import { beforeEach, describe, expect, it } from 'vitest';
 import { resetDbForTests } from '../src/db/database.js';
+import { getConnection } from '../src/db/sqlite.js';
 import { upsertCompany } from '../src/services/auth/IdentityService.js';
 import { updateFiscalConfig, type FiscalConfig } from '../src/services/core/FiscalConfigService.js';
 import { isValidAccessKey } from '../src/services/core/FiscalKeyService.js';
@@ -143,6 +144,31 @@ describe('estrutura do modelo 55', () => {
     expect(accessKey.slice(20, 22)).toBe('55');
     expect(isValidAccessKey(accessKey)).toBe(true);
     expect(validateAgainstSchema(xml).wellFormed).toBe(true);
+  });
+
+  it('preserva CSOSN 101 e o crédito do Simples na NF-e modelo 55', () => {
+    getConnection()
+      .prepare(
+        `UPDATE core_tax_groups
+         SET csosn = '101', p_cred_sn = '2.03'
+         WHERE company_id = ?`,
+      )
+      .run(companyId);
+
+    const { xml } = buildNfeXml({
+      sale: venda(),
+      config,
+      recipient: DEST_PJ,
+      serie: 1,
+      number: 2,
+    });
+
+    expect(xml).toContain('<ICMSSN101>');
+    expect(xml).toContain('<CSOSN>101</CSOSN>');
+    expect(xml).toContain('<pCredSN>2.03</pCredSN>');
+    expect(xml).toContain('<vCredICMSSN>4.06</vCredICMSSN>');
+    expect(xml).not.toContain('<ICMSSN102>');
+    expect(validateAgainstSchema(xml).problems).toEqual([]);
   });
 
   /** Impressão retrato, não formato de cupom. */
