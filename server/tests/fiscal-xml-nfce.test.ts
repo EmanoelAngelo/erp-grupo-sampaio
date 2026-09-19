@@ -102,6 +102,25 @@ describe('estrutura do XML', () => {
     expect(validateAgainstSchema(xml).wellFormed).toBe(true);
   });
 
+  it('converte CSOSN 101 em 102 somente na NFC-e e não envia crédito do Simples', () => {
+    getConnection()
+      .prepare(
+        `UPDATE core_tax_groups
+         SET csosn = '101', p_cred_sn = '2.03'
+         WHERE company_id = ?`,
+      )
+      .run(companyId);
+
+    const { xml } = buildNfceXml({ sale: vendaBase(), config, serie: 1, number: 2 });
+
+    expect(xml).toContain('<ICMSSN102>');
+    expect(xml).toContain('<CSOSN>102</CSOSN>');
+    expect(xml).not.toContain('<ICMSSN101>');
+    expect(xml).not.toContain('<pCredSN>');
+    expect(xml).not.toContain('<vCredICMSSN>');
+    expect(validateAgainstSchema(xml).problems).toEqual([]);
+  });
+
   it('emite em HOMOLOGAÇÃO por padrão (tpAmb 2)', () => {
     const { xml } = buildNfceXml({ sale: vendaBase(), config, serie: 1, number: 1 });
     expect(xml).toContain('<tpAmb>2</tpAmb>');
