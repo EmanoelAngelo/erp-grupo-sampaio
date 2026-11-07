@@ -3,6 +3,171 @@
 ERP multiempresa para as operações do Grupo Sampaio: lojas, oficina,
 e-commerce, financeiro, CRM e integrações.
 
+## Conheça o projeto
+
+O Grupo Sampaio — Gestão Empresarial reúne a operação de balcão e o acompanhamento administrativo de diferentes negócios em uma aplicação. O objetivo é conectar o trabalho de quem vende, atende e recebe pagamentos às informações utilizadas pela gestão, mantendo o contexto da operação em cada tela.
+
+A interface utiliza **React, TypeScript, Vite e Tailwind CSS**. O backend utiliza **Node.js, Express e SQLite**. A documentação técnica, as instruções de instalação e as condições das integrações estão disponíveis após esta apresentação.
+
+**Explore:** [Painel de gestão](#painel-de-gestão) · [Operações e módulos](#operações-e-módulos) · [PDVs das lojas](#pdvs-das-lojas) · [PDV da oficina](#pdv-da-oficina) · [Simulação de venda](#simulação-de-venda) · [Como interpretar as capturas](#como-interpretar-as-capturas) · [Documentação técnica e instalação](#documentação-técnica-e-instalação)
+
+> As imagens foram fornecidas pelo autor em uma sessão de demonstração, incluindo a simulação de uma venda. Os valores representam a base e o período exibidos nas telas; não constituem divulgação de resultados comerciais. As capturas mostram estados específicos da aplicação, não substituem testes de funcionamento ou homologação de serviços externos.
+
+### Painel de gestão
+
+![Painel administrativo da Preço Justo com filtros, vendas por vendedor, indicadores e alertas](docs/images/apresentacao/painel-administrativo.png)
+
+O painel apresenta uma visão administrativa da **Preço Justo**, com filtros de operação e período. Na captura, o recorte vai de **07/10/2026 a 06/11/2026**. O gestor pode acompanhar o movimento do período por meio de indicadores e detalhamentos na mesma página.
+
+| Informação visível | Leitura da captura | Utilidade para a gestão |
+| --- | --- | --- |
+| Faturamento | R$ 1.280,00 | Acompanhar o total de vendas de balcão concluídas, conforme o critério informado na própria tela. |
+| Vendas | 16 | Identificar o volume de vendas no período selecionado. |
+| Ticket médio | R$ 80,00 | Relacionar faturamento e quantidade de vendas: R$ 1.280,00 ÷ 16. |
+| A receber em aberto | R$ 0,00 | Consultar o valor apresentado como pendente, sem confundir esse indicador com o faturamento. |
+| Vendas por dia | Valores distribuídos por datas | Observar a distribuição temporal das vendas. |
+| Vendas por vendedor | Quantidade e valor atribuídos ao vendedor | Acompanhar a participação do vendedor no resultado exibido. |
+| Produtos vendidos | Produto, quantidade e valor | Identificar quais itens compõem as vendas do período. |
+| Alertas de estoque | Nenhum alerta na captura | Consultar a sinalização de produtos abaixo do estoque mínimo. |
+
+A página também explica que o faturamento de balcão e o resultado do período no DRE possuem critérios diferentes. Isso ajuda o usuário a interpretar os números antes de comparar relatórios. O texto visível separa ainda os pedidos pagos da loja online, que aparecem zerados nesta captura.
+
+No topo, dois avisos chamam atenção para ações operacionais: **certificado A1 vencido**, com emissão de nota bloqueada, e **gaveta aberta desde outro dia**, com orientação para conferir e fechar o turno anterior. A presença dos avisos faz parte do estado demonstrado; a imagem não comprova emissão fiscal ativa.
+
+**Relação com a venda simulada:** este painel contextualiza onde as informações gerenciais são consultadas. Como não há uma captura posterior identificando a venda de R$ 80,00, os 16 registros e os R$ 1.280,00 não são atribuídos especificamente à simulação apresentada mais adiante.
+
+### Operações e módulos
+
+#### Seleção da operação ativa
+
+<img src="docs/images/apresentacao/seletor-operacoes.png" alt="Seletor administrativo com Preço Justo, Conceito, Gringa, Me Mimei, Oficina e PJ Motors" width="357">
+
+O seletor da barra superior reúne **Preço Justo, Conceito, Gringa, Me Mimei, Oficina e PJ Motors**. A operação ativa fica identificada ao lado da área do administrador, permitindo reconhecer o contexto de trabalho.
+
+Esse controle representa a navegação entre operações da estrutura multiempresa. A separação de acesso e dados depende da sessão e das verificações no servidor; o seletor visual, sozinho, não constitui uma prova de isolamento entre empresas. A arquitetura desse controle está descrita em [Arquitetura do núcleo](docs/ARQUITETURA-NUCLEO.md).
+
+#### Navegação administrativa
+
+<img src="docs/images/apresentacao/menu-modulos.png" alt="Menu lateral com as áreas administrativas do ERP Grupo Sampaio" width="203">
+
+O menu organiza o acesso por áreas de trabalho:
+
+| Área | Papel na organização da interface |
+| --- | --- |
+| Início | Entrada para o painel de acompanhamento. |
+| Pessoas | Acesso à gestão de pessoas e cadastros relacionados. |
+| Produtos e Estoque | Acesso aos cadastros de mercadorias e controles de estoque. |
+| Vendas e Financeiro | Acesso às rotinas comerciais e financeiras. |
+| Compras | Acesso às rotinas de aquisição. |
+| Oficina | Acesso ao atendimento e às rotinas de manutenção. |
+| E-commerce e Fiscal | Acesso aos módulos de comércio eletrônico e rotinas fiscais. |
+| CRM e Locação | Acesso às áreas de relacionamento e locação. |
+| Relatórios e Configurações | Consulta de informações e administração do sistema. |
+
+A captura evidencia a organização da navegação. O estado de implementação de cada módulo e as dependências de serviços externos devem ser consultados em [Estado atual](docs/ESTADO-ATUAL.md), sem presumir que a presença de um item de menu significa homologação completa.
+
+### PDVs das lojas
+
+#### Preço Justo — estrutura de atendimento no balcão
+
+![PDV da Preço Justo com busca de produtos, identificação do vendedor, carrinho e ações de venda](docs/images/apresentacao/pdv-preco-justo.png)
+
+O PDV concentra as ações utilizadas no atendimento: pesquisa por **código, código de barras, produto ou referência**, quantidade, preço unitário, identificação do vendedor e cliente, lista de itens e total da venda.
+
+A organização coloca a entrada de produtos à esquerda e o resumo do carrinho à direita. Na parte inferior ficam as ações de aguardar, guardar no servidor, cancelar, finalizar, preparar orçamento/pré-venda, selecionar cliente e registrar observações. Os atalhos de teclado aparecem junto aos comandos e na orientação abaixo da busca.
+
+Nesta captura, o carrinho está vazio e o total é **R$ 0,00**. O caixa está identificado como aberto, mas há um aviso de turno anterior ainda pendente de fechamento. O cabeçalho também informa pendências fiscais. A mensagem central de disponibilidade para nova venda deve ser lida em conjunto com esses avisos.
+
+#### Mesma estrutura de PDV, identidade de cada negócio
+
+As telas abaixo mostram a continuidade do fluxo de atendimento entre as lojas. Nome da operação, identificação do vendedor, cores e ações principais permitem reconhecer o negócio em que o usuário está trabalhando.
+
+**Me Mimei**
+
+![PDV da Me Mimei com identidade rosa e aviso de caixa fechado](docs/images/apresentacao/pdv-me-mimei.png)
+
+A operação Me Mimei utiliza identidade em rosa e mantém a busca, os campos de quantidade e preço e o carrinho no mesmo arranjo do PDV. O vendedor está identificado como **ME MIMEI**. O aviso superior informa que **não há caixa aberto** e oferece a ação “Abrir caixa (F3)”, indicando o passo necessário antes de iniciar vendas. A captura também apresenta o estado fiscal não configurado.
+
+**Gringa**
+
+![PDV da Gringa com identidade azul e identificação da operação](docs/images/apresentacao/pdv-gringa.png)
+
+Na Gringa, o cabeçalho e os botões adotam tons de azul, preservando o padrão de atendimento. A identificação **GRINGA** aparece no contexto da operação e no campo de vendedor. Carrinho vazio, total zerado e aviso de caixa fechado mostram o estado anterior ao início de uma venda, com a ação de abertura de caixa disponível no topo.
+
+**Conceito**
+
+![PDV da Conceito com identidade escura e comandos de atendimento](docs/images/apresentacao/pdv-conceito.png)
+
+A Conceito utiliza uma composição escura nos elementos de identificação e ação. A tela mantém busca por produto, seleção de cliente, orçamento/pré-venda e totalização em posições consistentes com os demais PDVs. O vendedor está identificado como **CONCEITO**, e a faixa de caixa fechado orienta o operador a abrir o caixa para começar.
+
+**PJ Motors**
+
+![PDV da PJ Motors com cabeçalho escuro, finalização em verde e caixa fechado](docs/images/apresentacao/pdv-pj-motors.png)
+
+Na PJ Motors, o nome da operação e o vendedor **PJ MOTORS** identificam o contexto de venda. O botão de finalização e o total aparecem em verde. A captura mostra o PDV sem itens e com caixa fechado; ela apresenta a interface de balcão desta operação, não uma venda de veículo concluída.
+
+Essa consistência visual reduz a necessidade de reaprender a posição dos comandos ao trabalhar em diferentes operações. As capturas demonstram a adaptação de identidade e contexto, sem afirmar que as cinco lojas compartilharam caixa ou realizaram vendas nessa sessão.
+
+### PDV da oficina
+
+![PDV da oficina da Preço Justo com ações de ordens de serviço e identificação do operador](docs/images/apresentacao/pdv-oficina-preco-justo.png)
+
+Esta tela mostra o atendimento da **oficina da Preço Justo**, identificado pelo operador/vendedor **OFICINA-PREÇO JUSTO**. O cabeçalho continua associado à Preço Justo: o perfil de atendimento da oficina não deve ser confundido com uma nova empresa apenas por possuir identificação própria.
+
+Além dos comandos de balcão, a tela apresenta:
+
+- **Incluir peças da oficina:** opção visível junto à busca para o contexto de peças de manutenção.
+- **OS a receber (1):** acesso à fila de recebimento, com um registro sinalizado no momento da captura.
+- **Abrir OS:** entrada para a abertura de uma ordem de serviço.
+
+O objetivo desse conjunto é aproximar o atendimento de manutenção do recebimento no caixa. A imagem mostra os pontos de entrada desse fluxo, mas não exibe o conteúdo da OS ou sua liquidação.
+
+O projeto contempla duas oficinas na documentação técnica. **A captura fornecida nesta apresentação representa apenas a oficina da Preço Justo**; não é uma imagem da oficina de motos. O estado de caixa e os avisos fiscais permanecem visíveis para orientar o atendimento.
+
+### Simulação de venda
+
+A sequência fornecida pelo autor exemplifica a preparação de uma venda de **um cartão de memória por R$ 80,00**, na operação Preço Justo, seguida do lançamento do pagamento em dinheiro.
+
+#### Etapa 1 — produto no carrinho
+
+![Simulação com um cartão de memória no carrinho por R$ 80,00](docs/images/apresentacao/venda-carrinho.png)
+
+O produto **Cartão de Memória** aparece no carrinho com quantidade **1**, preço unitário de **R$ 80,00** e total de **R$ 80,00**. A linha permite visualizar quantidade e desconto, além do comando de remoção. O resumo inferior mostra um item, nenhum item cancelado e ausência de desconto ou acréscimo.
+
+O vendedor permanece identificado como Preço Justo e o cliente aparece como consumidor final. O total em destaque e a ação “Finalizar (F10)” conduzem ao pagamento. A captura evidencia a composição do carrinho; ainda não é uma confirmação de venda concluída.
+
+#### Etapa 2 — lançamento do pagamento
+
+![Janela de pagamento com R$ 80,00 lançados em dinheiro e saldo a receber zerado](docs/images/apresentacao/venda-pagamento.png)
+
+A janela de pagamento apresenta o resumo financeiro e as opções **Dinheiro, Débito, Crédito e PIX**, acompanhadas de atalhos. Na simulação, há um lançamento em **dinheiro de R$ 80,00**.
+
+| Campo | Valor exibido | Significado neste exemplo |
+| --- | --- | --- |
+| Total da venda | R$ 80,00 | Valor do carrinho levado ao pagamento. |
+| Pagamento lançado | Dinheiro — R$ 80,00 | Valor já incluído na lista de recebimentos da janela. |
+| Falta receber | R$ 0,00 | O pagamento lançado cobre o total apresentado. |
+| Troco | R$ 0,00 | Não há diferença a devolver no exemplo. |
+
+Também estão visíveis o campo de valor recebido, o campo de acréscimo, o botão “Lançar”, a remoção de pagamento e a ação final de confirmação.
+
+**Limite da evidência:** a janela permanece aberta e o botão “Finalizar (F10)” ainda está disponível. Portanto, esta sequência comprova visualmente o carrinho e o pagamento preparado. Não há, nestas imagens, comprovante de conclusão, autorização de cartão, confirmação bancária de PIX, nota fiscal emitida ou painel posterior que individualize essa transação.
+
+O fluxo entre PDV e gestão é implementado pelo backend: o [serviço de vendas](server/src/services/core/SalesService.ts) reúne registro de itens, movimentos de estoque, caixa e financeiro em transação; o [painel administrativo](src/pages/gs/PainelPage.tsx) consulta os dados por operação e período. Essa relação explica a arquitetura do processo, sem transformar a captura do pagamento em prova de execução de todas essas etapas.
+
+### Como interpretar as capturas
+
+- **Caixa fechado:** o sistema informa a condição e oferece a abertura do caixa.
+- **Turno anterior aberto:** o aviso orienta a conferência e o fechamento antes de prosseguir com o novo dia.
+- **Fiscal não configurado e certificado vencido:** são estados visíveis do ambiente retratado; as imagens não demonstram emissão fiscal habilitada.
+- **Opções de débito, crédito e PIX:** mostram os meios apresentados pela interface; não comprovam homologação de terminal ou provedor.
+- **Indicadores de gestão:** pertencem ao filtro e à base exibidos, sem vínculo individual demonstrado com a venda simulada.
+- **Imagens originais:** as 11 capturas foram incluídas sem alteração dos valores e mensagens da aplicação.
+
+## Documentação técnica e instalação
+
+A seguir estão as instruções técnicas do projeto. Para o estado vigente de cada módulo, consulte sempre [Estado atual](docs/ESTADO-ATUAL.md).
+
 > **Estado honesto do projeto.** O sistema roda: balcão, estoque, caixa,
 > vendas, financeiro, compras, oficina, e-commerce, CRM, locação, BI e
 > conciliação estão sobre banco central e cobertos por teste. Os módulos que
