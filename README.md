@@ -1,17 +1,127 @@
-# Grupo Sampaio — Gestão Empresarial
+# Grupo Sampaio — Sites, e-commerce e gestão empresarial
 
-ERP multiempresa para as operações do Grupo Sampaio: lojas, oficina,
-e-commerce, financeiro, CRM e integrações.
+Desenvolvi uma solução que reúne **os sites das lojas, o e-commerce, o sistema de gestão e os PDVs** do Grupo Sampaio. Integrei a apresentação dos produtos e a área de compras do cliente às rotinas de cadastro, estoque e gestão de cada operação.
+
+## Sites das lojas e e-commerce integrado
+
+Além do sistema de gestão e dos PDVs, desenvolvi **o site do Grupo Sampaio e as vitrines de cada loja**. Reuni essas duas frentes no mesmo projeto: a equipe administra os produtos no ERP e os clientes acessam o catálogo online, criam sua conta e realizam pedidos pela área de compras.
+
+Desenvolvi os sites com **layout responsivo para celular, tablet e computador**, adaptando grades, filtros e formulários à largura disponível. Mantive a identidade visual de cada negócio, com cores e informações próprias dentro de uma estrutura compartilhada.
+
+**Nesta apresentação:** [Portal do grupo](#portal-do-grupo) · [Sites de cada loja](#sites-de-cada-loja) · [Integração com o ERP](#integração-do-catálogo-com-o-erp) · [Conta do cliente e compras](#conta-do-cliente-e-compras) · [Responsividade](#celular-tablet-e-computador) · [Sistema e PDVs](#conheça-o-projeto)
+
+### Portal do grupo
+
+![Portal do Grupo Sampaio com acesso às cinco lojas, conta do cliente, carrinho e filtros de produtos](docs/images/apresentacao/site-grupo-sampaio.png)
+
+Criei uma página de entrada para apresentar as cinco lojas: **Conceito, Gringa, Me Mimei, PJ Motors e Preço Justo**. Organizei os acessos em cards com o nome de cada negócio e a quantidade de produtos online, permitindo que o cliente escolha a loja que deseja visitar.
+
+No cabeçalho, disponibilizei os acessos **“Entre ou cadastre-se”** e **“Carrinho”**, com quantidade de itens e valor total. Abaixo das lojas, incluí busca de produtos, faixa de preços e ordenação. Com essa estrutura, ofereço tanto uma entrada pelo grupo quanto um caminho para a vitrine específica de cada negócio.
+
+Na captura, as cinco lojas estão sem produtos publicados e a página apresenta a mensagem de catálogo vazio. Esse é o estado do ambiente no momento do registro; as imagens seguintes também mostram as vitrines nessa condição.
+
+### Sites de cada loja
+
+Utilizei uma base compartilhada para manter a navegação consistente e personalizei a apresentação de cada loja com nome, cores, segmento e identificação no rodapé. Em todas as vitrines abaixo, deixei acessíveis a conta do cliente, o carrinho, a busca e os filtros.
+
+#### Conceito — moda e vestuário
+
+![Site da Conceito com identidade escura, busca, filtros e acesso à conta e ao carrinho](docs/images/apresentacao/site-conceito.png)
+
+Para a Conceito, utilizei um cabeçalho escuro e destaquei o segmento **“Moda e vestuário”**. Abaixo da apresentação, organizei a busca, os limites mínimo e máximo de preço e a ordenação dos produtos.
+
+Na captura, aparecem os textos “Retire na loja” e “Troca em 7 dias”, além dos links de conta, pedidos e políticas no rodapé. A vitrine está sem itens publicados, por isso o espaço do catálogo informa que não há produtos disponíveis naquele momento.
+
+#### Gringa — moda e vestuário
+
+![Site da Gringa com identidade azul, apresentação da loja e ferramentas de busca do catálogo](docs/images/apresentacao/site-gringa.png)
+
+Na Gringa, apliquei a identidade em azul ao cabeçalho e aos elementos de apresentação. Mantive o segmento **“Moda e vestuário”** e a mesma organização de busca e filtros utilizada na estrutura das lojas.
+
+No rodapé, identifiquei a empresa e reuni os caminhos para a conta do cliente, os pedidos e as políticas. Assim, preservei a identidade da Gringa sem alterar o padrão de navegação que o cliente encontra nas demais vitrines.
+
+#### Me Mimei — beleza e maquiagem
+
+![Site da Me Mimei com identidade rosa, segmento de beleza e maquiagem, busca e filtros](docs/images/apresentacao/site-me-mimei.png)
+
+Para a Me Mimei, utilizei tons de rosa no cabeçalho, no segmento **“Beleza e maquiagem”** e nos destaques da interface. Mantive o catálogo, a conta do cliente e o carrinho dentro do mesmo fluxo das outras lojas.
+
+A captura mostra como adaptei a identidade para um negócio de outro segmento sem precisar criar uma aplicação independente. Os filtros de preço e a ordenação permanecem disponíveis mesmo no estado de catálogo vazio.
+
+#### PJ Motors — motos elétricas e acessórios
+
+![Site da PJ Motors com apresentação de motos elétricas e acessórios e acesso ao catálogo](docs/images/apresentacao/site-pj-motors.png)
+
+Na PJ Motors, apresentei o segmento **“Motos elétricas e acessórios”** com uma identidade em tons escuros e cinza. Organizei a página para que o cliente possa pesquisar os produtos disponibilizados pela operação e avançar pelo carrinho.
+
+Este site faz parte do e-commerce integrado ao ERP Grupo Sampaio. Ele é uma frente diferente da landing page comercial da PJ Motors, que será apresentada em seu próprio projeto.
+
+#### Preço Justo — importadora de variedades
+
+![Site da Preço Justo com identidade verde, pesquisa de produtos e identificação da empresa no rodapé](docs/images/apresentacao/site-preco-justo.png)
+
+Na Preço Justo, apliquei a identidade verde e destaquei o segmento **“Importadora de variedades”**. Nesta composição, posicionei a busca antes da apresentação da loja, mantendo os filtros de preço e a ordenação logo abaixo.
+
+No rodapé, incluí a identificação da empresa, os dados comerciais exibidos pela aplicação e os links de conta, pedidos e políticas. A captura conecta a marca que já apresentei no PDV à sua frente de atendimento online.
+
+### Integração do catálogo com o ERP
+
+Integrei a vitrine ao cadastro de produtos e ao saldo de estoque das operações. **Não mantive um catálogo ou estoque paralelo para o e-commerce.** Os produtos gerenciados no sistema são a origem das informações apresentadas nas lojas online.
+
+A publicação possui um controle próprio: **cadastrar um produto não o torna automaticamente público**. O serviço da vitrine consulta os itens ativos e habilitados para publicação online, respeitando as regras de visibilidade. Peças de bancada não entram nessa seleção de mercadorias.
+
+| Etapa | Como organizei a integração |
+| --- | --- |
+| Cadastro | Centralizei no ERP os produtos de cada operação. |
+| Publicação | Utilizei o controle de publicação online para selecionar os itens da vitrine. |
+| Catálogo | Reutilizei os dados comerciais e o saldo da operação na apresentação dos produtos. |
+| Carrinho e pedido | Conectei a seleção do cliente ao fluxo de checkout, com recorte por operação. |
+| Estoque | No serviço de loja, implementei reserva pelo pedido e baixa após confirmação do pagamento; o cancelamento libera a reserva. |
+| Gestão | Mantive o atendimento de balcão e os pedidos online no mesmo projeto, com critérios próprios de acompanhamento. |
+
+Implementei essas regras no [serviço da loja online](server/src/services/core/StorefrontService.ts). A [página da loja](src/pages/gs/LojaPage.tsx) reúne a navegação do catálogo e o checkout.
+
+### Conta do cliente e compras
+
+Criei uma área de conta para conectar a compra à identificação do cliente. Além de disponibilizar “Entre ou cadastre-se” no cabeçalho, incluí no projeto recursos para gerenciar os dados da conta, salvar endereços e consultar os pedidos.
+
+| Recurso | Finalidade |
+| --- | --- |
+| Cadastro e login | Permitir que o cliente se identifique na área de compras. |
+| Carrinho | Reunir os produtos escolhidos antes do fechamento do pedido. |
+| Endereços salvos | Reutilizar os dados de entrega e facilitar compras posteriores. |
+| Checkout | Associar o pedido à conta e ao endereço selecionado, conforme a modalidade disponível. |
+| Minha conta e meus pedidos | Oferecer acesso às informações da conta e ao acompanhamento das compras. |
+
+Para compras com entrega, previ a seleção ou o cadastro de um endereço completo. As opções de entrega ou retirada e os serviços de pagamento dependem da configuração de cada operação e das integrações disponíveis.
+
+O gerenciamento de endereços está no componente [Conta do cliente](src/components/gs/ContaDoCliente.tsx), e o uso desses dados na compra está em [Checkout da conta](src/components/gs/CheckoutDaConta.tsx).
+
+### Celular, tablet e computador
+
+**Desenvolvi o site para se redimensionar conforme o dispositivo utilizado.** Utilizei grades responsivas, campos que aproveitam a largura disponível e mudanças de disposição para manter os controles acessíveis em diferentes tamanhos de tela.
+
+| Dispositivo | Adaptação prevista no layout |
+| --- | --- |
+| Celular | Grade em uma coluna, acesso compacto aos filtros e campos e botões adequados à largura da tela. |
+| Tablet | Reorganização dos cards em colunas e ajuste dos controles ao espaço intermediário. |
+| Computador | Distribuição mais ampla dos cards, filtros e formulários, aproveitando a largura disponível. |
+
+No código, defini a grade das lojas com uma coluna na base, duas a partir de `sm` e três a partir de `lg`. Também adaptei a abertura dos filtros em telas menores e a distribuição dos campos de checkout. Os limites de layout consideram a largura da tela, não apenas o nome do dispositivo.
+
+As seis imagens desta seção foram capturadas no computador. Elas apresentam as páginas e suas identidades; a adaptação para outras larguras está implementada no layout responsivo e poderá ser ilustrada com capturas de celular e tablet.
+
+---
 
 ## Conheça o projeto
 
-O Grupo Sampaio — Gestão Empresarial reúne a operação de balcão e o acompanhamento administrativo de diferentes negócios em uma aplicação. O objetivo é conectar o trabalho de quem vende, atende e recebe pagamentos às informações utilizadas pela gestão, mantendo o contexto da operação em cada tela.
+Na frente administrativa, reuni a operação de balcão e o acompanhamento de diferentes negócios em uma aplicação. Meu objetivo é conectar o trabalho de quem vende, atende e recebe pagamentos às informações utilizadas pela gestão, mantendo o contexto da operação em cada tela.
 
 A interface utiliza **React, TypeScript, Vite e Tailwind CSS**. O backend utiliza **Node.js, Express e SQLite**. A documentação técnica, as instruções de instalação e as condições das integrações estão disponíveis após esta apresentação.
 
 **Explore:** [Painel de gestão](#painel-de-gestão) · [Operações e módulos](#operações-e-módulos) · [PDVs das lojas](#pdvs-das-lojas) · [PDV da oficina](#pdv-da-oficina) · [Simulação de venda](#simulação-de-venda) · [Como interpretar as capturas](#como-interpretar-as-capturas) · [Documentação técnica e instalação](#documentação-técnica-e-instalação)
 
-> As imagens foram fornecidas pelo autor em uma sessão de demonstração, incluindo a simulação de uma venda. Os valores representam a base e o período exibidos nas telas; não constituem divulgação de resultados comerciais. As capturas mostram estados específicos da aplicação, não substituem testes de funcionamento ou homologação de serviços externos.
+> Registrei as imagens abaixo em uma sessão de demonstração, incluindo a simulação de uma venda. Os valores representam a base e o período exibidos nas telas; não constituem divulgação de resultados comerciais. As capturas mostram estados específicos da aplicação, não substituem testes de funcionamento ou homologação de serviços externos.
 
 ### Painel de gestão
 
